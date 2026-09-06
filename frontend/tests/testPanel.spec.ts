@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVueFlow } from '@vue-flow/core'
 import BuilderCanvas from '../src/components/builder/BuilderCanvas.vue'
 import TestPanel from '../src/components/builder/TestPanel.vue'
+import RunTab from '../src/components/builder/test/RunTab.vue'
 import { useBuilderCanvas } from '../src/composables/useBuilderCanvas'
 import type { CanvasDocumentStore } from '../src/composables/useBuilderCanvas'
 import {
   PANEL_COLLAPSED_PX,
+  PANEL_DEFAULT_PX,
   PANEL_MAX_FRACTION,
   PANEL_MIN_PX,
   TEST_TABS,
@@ -252,6 +254,39 @@ describe('the panel is docked, collapsed, resizable and never modal', () => {
       expect(wrapper.find(`[data-testid="test-tab-${tab}"]`).exists()).toBe(true)
     }
     expect(TEST_TABS).toHaveLength(5)
+
+    wrapper.unmount()
+    harness.app.unmount()
+  })
+
+  /*
+   * THE WORDS, not only the keys - ROUND-2 X1 / ruling 5, AUDIT-R2 N2.
+   *
+   * The strip used to read `Run · Node · Dry run · Code · State`, so the
+   * builder showed four run-shaped words at once - the header's `Run` switch,
+   * this `Run` tab, `Dry run`, and the button inside the tab - and a reader who
+   * wanted to try their workflow had no way to rank them. The keys are the
+   * contract every spec reads; these are what a person reads, and nothing
+   * asserted them, which is how they were allowed to collide.
+   */
+  it("names each tab in the panel's own vocabulary, and never `Run`", () => {
+    const harness = makeTest()
+    const wrapper = mountPanel(harness)
+
+    const words: Record<string, string> = {
+      run: 'Try it',
+      node: 'One step',
+      dry: 'Check',
+      code: 'Code',
+      state: 'Data',
+    }
+    for (const tab of TEST_TABS) {
+      expect(wrapper.get(`[data-testid="test-tab-${tab}"]`).text(), tab).toBe(words[tab])
+    }
+
+    // `Run` is the MODE, and the only place it may appear on the builder is the
+    // header switch that leaves for the console - which is not this component.
+    expect(wrapper.get('.test-tabs').text()).not.toMatch(/Run/)
 
     wrapper.unmount()
     harness.app.unmount()
@@ -1079,6 +1114,151 @@ describe('a failed test run reaches the problems dock', () => {
 
     expect(harness.test.run.nodeStates.draft).toBe('running')
 
+    harness.app.unmount()
+  })
+})
+
+/*
+ * THE RESULT, WHICH THE AUTHOR PRESSED THE BUTTON FOR - item 6, ROUND-2 X2,
+ * AUDIT-R2 H4.
+ *
+ * The panel rendered the body all along and put it BELOW THE FOLD: at the
+ * default height the reader saw the input, the saved-input row and the button,
+ * and reaching the result meant knowing a 6px drag handle existed
+ * (`21-test-done-1440-dark.png`, `24-test-result-1440-dark.png`). Nothing
+ * asserted the reveal, because nothing had one.
+ *
+ * Mounted as `RunTab` rather than as `TestPanel`, because the reveal is this
+ * tab's and the panel is only its landlord - and `scrollIntoView` is stubbed
+ * because jsdom does not implement it. What this file cannot answer is whether
+ * the result ended up ON SCREEN; that is `e2e/test-panel.spec.ts`'s, and it has
+ * an arm for it now.
+ */
+describe('a finished run shows what it produced, without a drag', () => {
+  const BODY = '# Draft\n\nA short post about **the news**.'
+
+  function mountRun(harness: Harness) {
+    return mount(RunTab, {
+      props: { test: harness.test, labels: {} },
+      attachTo: window.document.body,
+    })
+  }
+
+  async function finish(harness: Harness, body = BODY): Promise<void> {
+    harness.test.inputValue.value = 'clinic scheduling'
+    await harness.test.startRun()
+    await flush(4)
+    const build = frameFactory('run-under-test')
+    harness.studio.emit(
+      build('run_state', {
+        event_type: 'FLOW_FINISH',
+        details: { status: 'completed', result: { markdown_body: body } },
+      }),
+    )
+    await flush(6)
+  }
+
+  let scrolled: number
+
+  beforeEach(() => {
+    scrolled = 0
+    // jsdom implements no layout, so this method does not exist at all; a
+    // component calling it unguarded would throw here and nowhere else.
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: () => {
+        scrolled += 1
+      },
+    })
+  })
+
+  it('grows the panel off its floor once, and scrolls the result into view', async () => {
+    const harness = makeTest()
+    harness.test.toggle(true)
+    harness.test.paneHeight.value = 900
+    harness.test.setHeight(PANEL_MIN_PX)
+    const wrapper = mountRun(harness)
+
+    await finish(harness)
+
+    expect(wrapper.find('[data-testid="test-run-result"]').exists()).toBe(true)
+    expect(harness.test.height.value).toBe(PANEL_DEFAULT_PX)
+    expect(scrolled).toBe(1)
+
+    wrapper.unmount()
+    harness.app.unmount()
+  })
+
+  it('leaves a height the author chose alone', async () => {
+    const harness = makeTest()
+    harness.test.toggle(true)
+    harness.test.paneHeight.value = 900
+    const chosen = PANEL_DEFAULT_PX + 90
+    harness.test.setHeight(chosen)
+    const wrapper = mountRun(harness)
+
+    await finish(harness)
+
+    // A panel that resized itself under somebody who had just sized it is
+    // worse than one that never moved.
+    expect(harness.test.height.value).toBe(chosen)
+    expect(scrolled).toBe(1)
+
+    wrapper.unmount()
+    harness.app.unmount()
+  })
+
+  it('renders the body as Markdown, and hands over the exact bytes behind `Show raw`', async () => {
+    const harness = makeTest()
+    harness.test.toggle(true)
+    harness.test.paneHeight.value = 900
+    const wrapper = mountRun(harness)
+
+    await finish(harness)
+
+    const rendered = wrapper.get('[data-testid="test-run-result"] .markdown-body')
+    expect(rendered.find('h1').exists()).toBe(true)
+    expect(rendered.find('strong').exists()).toBe(true)
+
+    const raw = wrapper.get('[data-testid="test-run-result-raw"]')
+    // Present but hidden: `v-show`, so a spec reading textContent sees it and a
+    // reader does not.
+    expect(raw.text()).toBe(BODY)
+    const toggle = wrapper.get('[data-testid="test-result-raw-toggle"]')
+    expect(toggle.text()).toBe('Show raw')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+
+    await toggle.trigger('click')
+    expect(toggle.text()).toBe('Hide raw')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+
+    wrapper.unmount()
+    harness.app.unmount()
+  })
+
+  it('re-arms for the next run rather than revealing once per session', async () => {
+    const harness = makeTest()
+    harness.test.toggle(true)
+    harness.test.paneHeight.value = 900
+    harness.test.setHeight(PANEL_MIN_PX)
+    const wrapper = mountRun(harness)
+
+    await finish(harness)
+    expect(scrolled).toBe(1)
+
+    // The same frame again is the reconnect replay, not a second run.
+    const build = frameFactory('run-under-test')
+    harness.studio.emit(
+      build('run_state', {
+        event_type: 'FLOW_FINISH',
+        details: { status: 'completed', result: { markdown_body: BODY + ' more' } },
+      }),
+    )
+    await flush(6)
+    expect(scrolled).toBe(1)
+
+    wrapper.unmount()
     harness.app.unmount()
   })
 })

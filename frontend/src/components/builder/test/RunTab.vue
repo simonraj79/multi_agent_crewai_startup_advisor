@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Play, Square } from 'lucide-vue-next'
 import RunLog from './RunLog.vue'
 import TestInputPicker from './TestInputPicker.vue'
 import { renderMarkdown } from '../../../utils/markdown'
-import type { FlowTest } from '../../../composables/useFlowTest'
+import { PANEL_DEFAULT_PX, PANEL_MIN_PX, type FlowTest } from '../../../composables/useFlowTest'
 
 /**
- * The Run tab: pick an input, press Run, watch it on the canvas, read the body.
+ * The Try it tab: pick an input, press Try it, watch it on the canvas, read
+ * the body.
  *
  * The node STATES are not drawn here. They are drawn on the builder canvas,
  * through `[data-mode='run']` (13 D2, `builder.css`) - which is the whole reason
@@ -31,6 +32,59 @@ const rendered = computed(() => (body.value ? renderMarkdown(body.value) : ''))
  * outcomes are the author's to name.
  */
 const forwardOption = computed(() => run.pendingGate.value?.options[0]?.id ?? 'approve')
+
+/* ── the result, which the author pressed the button FOR (item 6, X2) ──────
+ *
+ * AUDIT-R2 H4, measured: at the panel's default height the reader saw the
+ * input, the saved-input row and the button, and the result was BELOW THE
+ * FOLD - the one thing the run was for was the one thing not on screen, and
+ * finding it meant knowing the 6px drag handle existed. This is the same
+ * "open on the first body" behaviour `ReportPanel.vue` already implements on
+ * the console, in the panel's own terms.
+ *
+ * THREE THINGS, AND EACH ONE IS BOUNDED:
+ *
+ *   grow  ONCE, and only from the FLOOR. `PANEL_MIN_PX` -> `PANEL_DEFAULT_PX`,
+ *         so a reader who dragged the panel anywhere above the minimum keeps
+ *         the height they chose - a panel that resized itself under somebody
+ *         who had just sized it is worse than one that never moved. Read off
+ *         `height`, not `panelHeight`: the latter answers the COLLAPSED strip
+ *         while the panel is shut, which would look like the floor and is not.
+ *   scroll `block: 'nearest'`, which moves the panel's own scroller and
+ *         nothing else on the page - the canvas the author is watching must
+ *         not jump. Guarded, because jsdom does not implement
+ *         `scrollIntoView` and a unit mount would throw on a real behaviour.
+ *   once  keyed on the run id, so a second Try it re-arms it and a re-render
+ *         mid-run does not scroll the reader away from the log.
+ */
+const resultEl = ref<HTMLElement | null>(null)
+const revealedFor = ref<string | null>(null)
+const TERMINAL = ['completed', 'cancelled', 'error'] as const
+
+watch(
+  () => [run.runId.value, run.status.value, body.value] as const,
+  async ([id, status, text]) => {
+    if (!id || !text) return
+    if (!(TERMINAL as readonly string[]).includes(status)) return
+    if (revealedFor.value === id) return
+    revealedFor.value = id
+    if (props.test.height.value <= PANEL_MIN_PX) props.test.setHeight(PANEL_DEFAULT_PX)
+    await nextTick()
+    const el = resultEl.value
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+  },
+)
+
+/**
+ * The exact bytes, behind a disclosure - the pattern the trace rows already use.
+ *
+ * The renderer is escape-first (`utils/markdown.ts`) and degrades anything it
+ * does not recognise to an escaped paragraph, which is the right default: a
+ * real agent's last output is prose. It is also why the raw view has to exist -
+ * a compiled flow whose last node returns JSON renders as one long paragraph,
+ * and the author who needs the keys needs the string.
+ */
+const showRaw = ref(false)
 </script>
 
 <template>
@@ -58,7 +112,7 @@ const forwardOption = computed(() => run.pendingGate.value?.options[0]?.id ?? 'a
         @click="void test.startRun()"
       >
         <Play :size="13" aria-hidden="true" />
-        {{ run.launching.value ? 'Starting…' : 'Run' }}
+        {{ run.launching.value ? 'Starting…' : 'Try it' }}
       </button>
       <button
         v-if="run.isActive.value"
@@ -116,10 +170,26 @@ const forwardOption = computed(() => run.pendingGate.value?.options[0]?.id ?? 'a
       :labels="labels"
     />
 
-    <section v-if="rendered" class="test-result" data-testid="test-run-result">
-      <h3 class="test-result-title">Result</h3>
+    <section v-if="rendered" ref="resultEl" class="test-result" data-testid="test-run-result">
+      <header class="test-result-head">
+        <h3 class="test-result-title">Result</h3>
+        <button
+          type="button"
+          class="test-result-raw-toggle"
+          data-testid="test-result-raw-toggle"
+          :aria-expanded="showRaw"
+          aria-controls="test-result-raw"
+          @click="showRaw = !showRaw"
+        >{{ showRaw ? 'Hide raw' : 'Show raw' }}</button>
+      </header>
       <!-- eslint-disable-next-line vue/no-v-html -- `renderMarkdown` escapes first; see utils/markdown.ts -->
-      <div class="markdown-body" v-html="rendered" />
+      <div v-show="!showRaw" class="markdown-body" v-html="rendered" />
+      <pre
+        v-show="showRaw"
+        id="test-result-raw"
+        class="test-result-raw"
+        data-testid="test-run-result-raw"
+      >{{ body }}</pre>
     </section>
   </div>
 </template>
@@ -160,6 +230,34 @@ const forwardOption = computed(() => run.pendingGate.value?.options[0]?.id ?? 'a
 .test-gate-copy { flex: 1 1 200px; margin: 0; min-width: 0; color: var(--text-title); font: 400 var(--fs-12)/1.5 var(--font-body); }
 
 .test-result { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.test-result-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.test-result-raw-toggle {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 var(--fs-11)/1.4 var(--font-body);
+  cursor: pointer;
+}
+.test-result-raw-toggle:hover { border-color: var(--border-hover); color: var(--text-body); }
+.test-result-raw-toggle:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+/* `pre-wrap`, not `pre`: the raw body is one line of JSON often enough that a
+   horizontal scrollbar inside a 260px dock would be the whole reading
+   experience. `anywhere` because a URL in it has no break opportunity. */
+.test-result-raw {
+  margin: 0;
+  padding: 8px 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--text-body);
+  font: 400 var(--fs-11)/1.5 var(--font-mono);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
 .test-result-title {
   margin: 0;
   color: var(--text-40);

@@ -547,6 +547,11 @@ describe('the overflow menu', () => {
       'menu-import',
       'menu-duplicate',
       'menu-unpublish',
+      // R10 / item C1 (ROUND-2.md row R10): a second door to the run console
+      // for a document bar whose header switch is `display: none` below
+      // 860px. Grouped with the safe items, ABOVE the separator, so Delete
+      // stays "the last item and the only one after the separator".
+      'menu-run',
       'menu-delete',
     ])
     expect(button.attributes('aria-expanded')).toBe('true')

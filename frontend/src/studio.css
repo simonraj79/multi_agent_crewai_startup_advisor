@@ -374,7 +374,10 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
    sentence case already. Left in place it would title-case the multi-word
    labels: "Waiting For You". */
 .canvas-meta span { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font: var(--type-meta); }
-.canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
+/* `.canvas-meta code` was here and is gone with the element it styled: the
+   graph version moved off this line into the heading's `title` and the rail's
+   `Details` block (AUDIT-R2 N6). A rule for a class nothing renders is what
+   makes the next reader believe the element still exists. */
 
 .validator-flow { width: 100%; height: 100%; }
 
@@ -696,13 +699,29 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
 
    `:where()` CONTRIBUTES NO SPECIFICITY, so this whole selector is (0,1,0) -
    `.workspace-switch` and `.format-picker` still outrank it and keep their own
-   columns and padding, exactly as they do today. And the guard is a baseline
-   rather than a preference: the builder's sixteen full-page screenshots contain
-   its header, so giving its pair the chrome it has always lacked is a
-   sixteen-baseline change. SHELL-SCOPE.md §6.5 is the commit that drops the
-   `:not()` and regenerates them.
+   columns and padding, exactly as they do today.
+
+   THE `:not(.is-builder)` GUARD IS GONE (2026-09-06, ROUND-2 X3,
+   SHELL-SCOPE.md §6.5). It shipped as a baseline-stability measure, not a
+   design decision - the comment above said so in as many words - and it had
+   a real cost nobody had priced until RV4's follow-ups named it: on the
+   builder, BOTH halves of `.workspace-switch` painted the user agent's own
+   button chrome, `rgb(240,240,240)` on `rgb(0,0,0)`, so nothing on screen
+   said which mode - Build or Run - was current. `aria-pressed` was the only
+   place the state lived. `:where(.studio-shell)` now reaches both shells, so
+   the pressed half gets the same `--text-title` ink, `--surface-raised`
+   ground and `--ring-pressed` ring the console has always had. Every other
+   builder `.segmented` (the fan-in AND/OR, the tier and on-error pickers, the
+   LLM preset chips) sits inside a `FieldRow`, whose own `.field-row
+   :deep(.segmented)` rule already outranks this one on specificity regardless
+   of the guard - so this change reaches exactly one control, and reconciling
+   it with `BuilderView.vue`'s own `.workspace-switch` overrides (28px halves,
+   192px width, no movement across gallery/unpublished/published - D-15-14) is
+   `BuilderView.vue`'s half of the same commit. This regenerates all sixteen
+   builder full-page baselines, which is the trade the old comment was
+   guarding against and round 2 is already paying elsewhere.
    --------------------------------------------------------------------------- */
-:where(.studio-shell:not(.is-builder)) .segmented {
+:where(.studio-shell) .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
   padding: 3px;
@@ -711,7 +730,7 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-inset-well);
 }
-:where(.studio-shell:not(.is-builder)) .segmented button {
+:where(.studio-shell) .segmented button {
   display: inline-flex;
   min-height: 34px;
   align-items: center;
@@ -724,13 +743,13 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
   cursor: pointer;
   transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
 }
-:where(.studio-shell:not(.is-builder)) .segmented button:hover:not(:disabled) { color: var(--text-body); }
-:where(.studio-shell:not(.is-builder)) .segmented button[aria-pressed='true'] {
+:where(.studio-shell) .segmented button:hover:not(:disabled) { color: var(--text-body); }
+:where(.studio-shell) .segmented button[aria-pressed='true'] {
   color: var(--text-title);
   background: var(--surface-raised);
   box-shadow: var(--ring-pressed);
 }
-:where(.studio-shell:not(.is-builder)) .segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
+:where(.studio-shell) .segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @media (max-width: 1180px) {
   .studio-main { grid-template-columns: var(--chat-width) minmax(0, 1fr); }
@@ -1159,6 +1178,44 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* R5 / item 59 - THE CONTROL CLUSTER ESCAPES THE SCRIM.
+
+     RV1 measured `elementFromPoint` at each of the five buttons' centres and
+     got `button.rail-scrim` for four of them and `button.control-toggle` for
+     the fifth (Hand): the cluster grew from three buttons to five with the
+     unified shell, but `.graph-workspace`'s own z-index never moved, so the
+     44px gutter this file already reserves for the toggle (`.control-rail`'s
+     width is `calc(100vw - 44px)` for exactly that reason, two blocks up) was
+     still painted OVER by the scrim, which sits above the canvas precisely
+     because a rail can be open. The scrim's own coverage is not the bug -
+     everywhere the rail's own 346px body actually reaches, `--z-rail`
+     unambiguously beats this and nothing the rail visibly covers changes.
+     Only the sliver the rail was already leaving alone stops being dimmed
+     through a scrim nothing there could ever reach anyway.
+
+     Same expression the scrim itself uses, not a new one: tied at
+     `--z-rail - 1`, so DOM order breaks the tie - the canvas paints after the
+     scrim and before either rail, so it wins the tie against the scrim and
+     correctly loses to both rails, which are unambiguously `--z-rail` itself. */
+  .studio-shell:not(.is-builder) .graph-workspace {
+    z-index: calc(var(--z-rail) - 1);
+  }
+
+  /* R5 / item 59, part two - THE HAND BUTTON CLEARS THE TOGGLE.
+
+     Winning back the scrim was not enough on its own: the fifth button
+     (Hand) sits, at the cluster's default position, inside `.control-toggle`'s
+     own 44x44 box (`bottom: var(--space-5); left: -44px`, above) - and the
+     toggle is part of the RAIL's own stacking context, so it keeps beating the
+     canvas regardless of the canvas's z-index, by design, because it has to
+     stay reachable to CLOSE the rail. Every term below is already named at the
+     site that positions the toggle: its own height, its own gap from the
+     bottom, and one more spacing step so the fifth button's box ends above the
+     toggle's top edge with room rather than flush against it. */
+  .studio-shell:not(.is-builder) .validator-flow .vue-flow__controls {
+    margin-bottom: calc(var(--space-5) + 44px + var(--space-4));
+  }
+
   /* THE WORDMARK STANDS DOWN ON A PHONE, and both canvases, not one.
 
      Measured at 390 with the wordmark in: the console's header read
@@ -1371,6 +1428,16 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
   margin: 0 auto;
 }
 
+/* The product sentence, under the header's brand and above everything the page
+   holds (ROUND-2 X2). `--space-6` OFF the page's `--space-8` row gap rather
+   than a rule of its own: it is the brand's second line, so it must read as
+   attached to the header and not as the first of the page's four blocks. */
+.home-lede {
+  margin: calc(var(--space-6) * -1) 0 0;
+  color: var(--text-muted);
+  font: var(--type-body);
+}
+
 .home-resuming,
 .home-empty {
   display: flex;
@@ -1398,6 +1465,62 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 }
 
 .home-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+
+/* The sentence under a section heading. One per section, never one per card. */
+.home-section-lede {
+  max-width: 56ch;
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font: var(--type-body);
+}
+
+/* A template card's action, pinned to the bottom of the card so the row lines
+   up across cards whose blurbs are different lengths. */
+.home-card-action {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--on-accent-cyan);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+}
+
+.home-card:hover .home-card-action { color: var(--text-title); }
+
+/*
+ * THE ONE CARD WITH TWO ACTIONS (item 3).
+ *
+ * A saved workflow can be opened for editing and, once published, run. Two
+ * actions cannot both live inside one card-shaped button, and a button inside a
+ * button is invalid HTML - so the card keeps the whole cell and the second
+ * action is a sibling layered over its bottom-right corner. The cell is the
+ * positioning context; the card fills it, so nothing about the grid changes.
+ */
+.home-cell { position: relative; display: flex; min-width: 0; }
+.home-cell > .home-card { flex: 1 1 auto; }
+
+/* Space kept for the overlaid button, so a long action never runs under it. */
+.home-card.is-runnable .home-card-action { padding-right: var(--space-8); }
+
+.home-card-run {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 1;
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-title);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.home-card-run:hover { border-color: var(--border-hover-strong); color: var(--text-title); }
+.home-card-run:focus-visible { outline: 2px solid var(--on-accent-cyan); outline-offset: 2px; }
 .home-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
 
 /* The finished run, above everything. It is the one card on this page about a
@@ -1416,6 +1539,9 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 }
 
 .home-last-run h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+/* The status, under the workflow's name. It used to BE the heading, so the card
+   said a run happened and never what it was about (item 3). */
+.home-last-run-state { margin: var(--space-1) 0 0; color: var(--text-muted); font: var(--type-meta); }
 
 /* `auto-fill` over a 232px floor, the same track the builder gallery uses, so
    the two screens line their cards up at every width instead of each finding

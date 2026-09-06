@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import BrandLockup from '../src/components/BrandLockup.vue'
 import BrandMark from '../src/components/BrandMark.vue'
-import { PRODUCT_NAME, pageTitle } from '../src/data/brand'
+import { PRODUCT_NAME, PRODUCT_SENTENCE, pageTitle } from '../src/data/brand'
 
 /**
  * `docs/ux-shell/DEFINITION-OF-DONE.md` row U5: one brand, spelled once.
@@ -286,5 +286,44 @@ describe('the four surfaces render the lockup rather than their own copy of it',
   it('has no CircleDot placeholder left anywhere', () => {
     const placeholders = hits(/CircleDot/)
     expect(placeholders, placeholders.join('\n')).toEqual([])
+  })
+})
+
+/**
+ * ROUND-2 X2 / §5 ruling 2: the product sentence is one string, and the home is
+ * now one of its readers.
+ *
+ * The defect this closes was not a wrong sentence, it was a MISSING reader.
+ * `SignInPanel` said what the product is and the signed-in home said nothing at
+ * all, so the only screen that answered "what can I do here" was the one you
+ * stop seeing the moment you have an account (AUDIT-R2 H1, and half of the cold
+ * read's Q2 failure). The obvious way to fix that is to paste the sentence into
+ * `HomeView`, which is two strings that agree today; these three assertions are
+ * what make it one string instead - and the last of them fails on that paste
+ * rather than waiting for the two to drift.
+ */
+describe('the product sentence is spelled once and read on both surfaces', () => {
+  const readers = ['src/views/HomeView.vue', 'src/components/SignInPanel.vue']
+
+  it('is declared in data/brand.ts', () => {
+    expect(PRODUCT_SENTENCE.length).toBeGreaterThan(40)
+    expect(read('src/data/brand.ts')).toContain(PRODUCT_SENTENCE.slice(0, 40))
+  })
+
+  it('is rendered by the home and by the sign-in wall, from the constant', () => {
+    for (const file of readers) {
+      const source = read(file)
+      expect(source, `${file} does not import PRODUCT_SENTENCE`).toContain('PRODUCT_SENTENCE')
+      expect(source, `${file} does not render it`).toContain('{{ PRODUCT_SENTENCE }}')
+    }
+  })
+
+  it('is written out nowhere but data/brand.ts', () => {
+    // The first six words are enough to catch a paste and short enough to
+    // survive a later edit to the tail of the sentence.
+    const opening = PRODUCT_SENTENCE.split(' ').slice(0, 6).join(' ')
+    const spellings = hits(new RegExp(opening.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      .filter((hit) => !hit.startsWith('src/data/brand.ts:'))
+    expect(spellings, spellings.join('\n')).toEqual([])
   })
 })

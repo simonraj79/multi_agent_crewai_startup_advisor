@@ -124,6 +124,24 @@ describe('the home hands over to the console only for a run that is still live',
     }
   })
 
+  /**
+   * The clause above is about an UN-LAUNCHED handoff, and after RV4 follow-up 1
+   * that is the only kind there is.
+   *
+   * The rule did not change and this test asserts what changed around it: the
+   * handoff is a navigation record, `StudioView.launchRun` clears it the moment
+   * the run it carried is created, so `handoff: true` with a TERMINAL pointer -
+   * the state a Build-launched author was left in, where `#/` handed straight
+   * back to a finished run and R4's Last-run card was unreachable - is no
+   * longer a state this predicate can be asked about. It is spelled out here
+   * because a reader of the row above would otherwise reasonably conclude the
+   * home still bounces, and the predicate alone cannot say otherwise.
+   */
+  it('is only ever asked about a handoff nothing has launched yet', () => {
+    expect(homeResumesConsole({ handoff: true, pointer: 'none' })).toBe(true)
+    expect(homeResumesConsole({ handoff: false, pointer: 'terminal' })).toBe(false)
+  })
+
   it('hands over for a live pointer, which includes one the server would not confirm', () => {
     expect(homeResumesConsole({ handoff: false, pointer: 'live' })).toBe(true)
   })

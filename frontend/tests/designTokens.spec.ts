@@ -470,3 +470,94 @@ describe('the scope survives the merge to main (DEFINITION-OF-DONE D5)', () => {
     expect(coveredFiles().length).toBeGreaterThan(0)
   })
 })
+
+/* ── C5: the builder's state text reads on paper ────────────────────────────
+ *
+ * ROUND-2 §5 ruling 7. `--on-accent-cyan` / `--on-accent-mint` have existed
+ * since the run shell, with light values already measured, and NINE run-shell
+ * files adopted them while **no file under `components/builder/` did** - so the
+ * builder's save state, its publish verdict and every one of its kickers were
+ * the DARK theme's pastel on paper. Measured against the composited ground at
+ * 1440x900 in this worktree, before the swap:
+ *
+ *     1.02:1   #aaffcd   `saved · v1`, `v1 is live`, the PUBLISHED chips
+ *     1.10:1   #aaffcd   the problems dock's clean headline
+ *     1.13:1   #99eaf9   PALETTE, WORKFLOW and every other kicker
+ *
+ * and after it, 5.09 - 5.48:1 on the same grounds, dark unchanged by
+ * construction because `--on-accent-*` IS `--accent-*` in the dark block.
+ *
+ * This is a source scan and not a contrast measurement, and that is deliberate:
+ * `contrast-audit.mjs` measures the RUN SHELL's declared pairings, so it cannot
+ * see a builder file at all - and the failure this closes is a swap that gets
+ * reverted by somebody reaching for the nearest accent token, which is a fact
+ * about the source. The distinction accents keep is the one design.md §7 draws:
+ * an accent as TEXT is legibility and swaps; an accent as a border, a fill or an
+ * `accent-color` is IDENTITY and stays shared across both themes.
+ */
+describe('the builder states its own state in a colour the light theme can print', () => {
+  const SITES: ReadonlyArray<readonly [string, string]> = [
+    ['src/components/builder/SaveChip.vue', '.is-clean .save-chip-line'],
+    ['src/components/builder/SaveChip.vue', '.is-saving .save-chip-line'],
+    ['src/components/builder/ProblemsPanel.vue', '.problems-headline.is-clean'],
+    ['src/components/builder/DocumentBar.vue', '.live-note.is-current'],
+    ['src/components/builder/InspectorRail.vue', '.rail-kicker'],
+    ['src/components/builder/PublishDialog.vue', '.publish-kicker'],
+    ['src/components/builder/ShortcutSheet.vue', '.shortcut-kicker'],
+    ['src/components/builder/VersionBrowser.vue', '.version-kicker'],
+    ['src/components/builder/TemplateGallery.vue', '.gallery-kicker'],
+    ['src/components/builder/TemplateGallery.vue', '.status-pill.is-published'],
+    ['src/assets/styles/builder.css', '.builder-palette-kicker'],
+    ['src/assets/styles/builder.css', '.builder-library-status.is-published'],
+  ]
+
+  it('paints every state-text site through an --on-accent-* token', () => {
+    const wrong: string[] = []
+    for (const [file, selector] of SITES) {
+      const source = readFileSync(path.join(FRONTEND, file), 'utf8')
+      const rule = source
+        .split(LINE_BREAK)
+        .find((line) => line.trimStart().startsWith(selector + ' ') || line.trimStart().startsWith(selector + '{'))
+      if (!rule) {
+        wrong.push(`${file}: no rule for ${selector} - it was renamed, and the swap went with it`)
+        continue
+      }
+      const colour = /(?:^|[;{]\s*)color:\s*var\(--([a-z-]+)\)/.exec(rule)?.[1]
+      if (!colour?.startsWith('on-accent-')) {
+        wrong.push(`${file} ${selector}: color is ${colour ?? '(not a token)'}, not an --on-accent-*`)
+      }
+    }
+    expect(wrong, wrong.join('\n')).toEqual([])
+  })
+
+  it('leaves the accents that are IDENTITY alone, which is the other half', () => {
+    // A swap that took every `--accent-*` with it would be the opposite defect:
+    // borders, fills and `accent-color` are shared across themes on purpose.
+    const bar = readFileSync(path.join(FRONTEND, 'src/components/builder/DocumentBar.vue'), 'utf8')
+    expect(bar).toContain('border-color: var(--accent-cyan)')
+    const rail = readFileSync(path.join(FRONTEND, 'src/components/builder/InspectorRail.vue'), 'utf8')
+    expect(rail).toContain('accent-color: var(--accent-cyan)')
+    const gallery = readFileSync(path.join(FRONTEND, 'src/components/builder/TemplateGallery.vue'), 'utf8')
+    expect(gallery).toContain('color-mix(in srgb, var(--accent-mint) 14%, transparent)')
+  })
+
+  it('declares an --on-accent-* for every accent it swapped', () => {
+    // If this fails, the swap above is naming a token that does not exist and
+    // every one of those sites is rendering `inherit`.
+    const tokens = readFileSync(path.join(FRONTEND, 'src/assets/styles/tokens.css'), 'utf8')
+    for (const name of ['--on-accent-cyan', '--on-accent-mint']) {
+      // TWO declarations, and each is half of the mechanism. The unconditional
+      // `:root` one aliases the accent, which is what makes the dark theme
+      // provably unchanged by this swap; the light override is the hex that
+      // makes it readable on paper. Either alone does nothing: an alias with no
+      // override is the pastel, and an override with no alias is `inherit` in
+      // the dark.
+      const declarations = [...tokens.matchAll(new RegExp(`${name}:\\s*([^;]+);`, 'g'))].map(
+        (match) => match[1].trim(),
+      )
+      expect(declarations, name).toHaveLength(2)
+      expect(declarations[0], `${name} dark`).toMatch(/^var\(--accent-/)
+      expect(declarations[1], `${name} light`).toMatch(/^#[0-9a-f]{6}$/i)
+    }
+  })
+})

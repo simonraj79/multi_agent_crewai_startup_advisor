@@ -389,7 +389,7 @@ const advancedCount = ADVANCED_FIELDS.length
         field="task.async_execution"
         :node-id="id"
         :model-value="config.task.async_execution"
-        help="Lets CrewAI run this task without waiting for it. The graph's own fan-out already runs branches at once, so this is for the case inside one node."
+        help="Lets CrewAI run this task without waiting for it. The workflow's own fan-out already runs branches at once, so this is for the case inside one node."
         @commit="patchTask({ async_execution: $event }, 'Set async execution')"
       />
 

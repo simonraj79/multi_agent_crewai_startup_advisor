@@ -10,9 +10,12 @@ import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
  * `document.title` follows the route - three things a jsdom mount can assert
  * about a component and never about the address bar.
  *
- * NO `@launch` TAG ANYWHERE IN THIS FILE, and that is deliberate rather than
- * incidental: nothing here presses Launch, so the whole file is free against a
- * deployed origin as well as against `SYNTHETIC=1`.
+ * ONE `@launch` TEST, AND EXACTLY ONE. Everything else here is free against a
+ * deployed origin as well as against `SYNTHETIC=1`, and that was the whole file
+ * until RV4 follow-up 1: the defect is that the home hands back to the console
+ * after a run REACHED FROM BUILD AND FINISHED, and there is no way to reach that
+ * state without finishing a run. It carries the tag, so
+ * `--grep-invert @launch` against a paid origin still presses nothing.
  *
  * ## Helpers restated rather than imported
  *
@@ -63,7 +66,15 @@ async function clearLibrary(request: APIRequestContext): Promise<void> {
   const listed = await request.get('/api/builder/workflows')
   if (!listed.ok()) return
   const documents = (await listed.json()) as { id: string }[]
-  for (const entry of documents) await request.delete(`/api/builder/workflows/${entry.id}`)
+  for (const entry of documents) {
+    // UNPUBLISH FIRST, which `builder.spec.ts`'s original could not do and
+    // CLAUDE.md item 44 is the record of: `DELETE` answers 409 while any
+    // version is registered, so a file that publishes anything leaves one
+    // behind on every run and a long-lived backend accumulates them. This file
+    // publishes one workflow now (the Build-launched arm), so it cleans one up.
+    await request.post(`/api/builder/workflows/${entry.id}/unpublish`).catch(() => undefined)
+    await request.delete(`/api/builder/workflows/${entry.id}`)
+  }
 }
 
 /**
@@ -99,6 +110,79 @@ async function createDocument(request: APIRequestContext, name: string): Promise
   })
   expect(created.status(), await created.text()).toBe(201)
   return (await created.json()).id as string
+}
+
+/**
+ * A gateless `idea -> agent -> report` workflow, saved AND published, through
+ * the API.
+ *
+ * `createDocument` above is deliberately one input node, because the tests it
+ * serves only need the home to LIST something. The Build-launched arm needs a
+ * workflow that really runs, and a run resolves a REGISTERED version - so this
+ * is the smallest document that both validates and publishes. The shape is
+ * `failure-modes.spec.ts`'s, restated for the same reason every other helper in
+ * this file is: a spec file cannot be imported without registering its tests
+ * here a second time.
+ */
+async function publishRunnable(request: APIRequestContext, name: string): Promise<string> {
+  const created = await request.post('/api/builder/workflows', {
+    data: {
+      document: {
+        schema: 'builder.flow/v1',
+        name,
+        version: 1,
+        input_field: 'idea',
+        nodes: [
+          {
+            id: 'idea',
+            kind: 'input',
+            label: 'Idea',
+            position: { x: 0, y: 0 },
+            config: { field: 'idea', label: null, max_chars: 2000, required: true },
+          },
+          {
+            id: 'writer',
+            kind: 'agent',
+            label: 'Writer',
+            position: { x: 260, y: 0 },
+            config: {
+              role: 'note taker',
+              goal: 'write the note',
+              backstory: 'years of it',
+              task: {
+                description: 'work from ${state.out__idea}',
+                expected_output: 'a paragraph',
+              },
+              // The same constant `failure-modes.spec.ts` and `cast.spec.ts`
+              // author with, and it is never called: `SYNTHETIC=1` replaces the
+              // crew factories, so this names a model rather than spending one.
+              llm: { model: 'google/gemini-3.8-flash' },
+              tier: 'cheap',
+              on_error: 'fail',
+            },
+          },
+          {
+            id: 'report',
+            kind: 'output',
+            label: 'Report',
+            position: { x: 520, y: 0 },
+            config: { body_key: 'markdown_body', source: '${state.out__writer}' },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'idea', source_port: 'out', target: 'writer', target_port: 'in' },
+          { id: 'e2', source: 'writer', source_port: 'out', target: 'report', target_port: 'in' },
+        ],
+        joins: {},
+      },
+      expected_version: null,
+    },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const id = (await created.json()).id as string
+  const published = await request.post(`/api/builder/workflows/${id}/publish`)
+  expect(published.status(), await published.text()).toBe(200)
+  return id
 }
 
 /** Home, with nothing left over from a previous test to redirect it away. */
@@ -167,6 +251,81 @@ test.describe('the unified shell', () => {
     for (const title of TEMPLATE_TITLES) {
       await expect(page.locator('[data-testid="home-templates"]'), title).toContainText(title)
     }
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+
+  /*
+   * EVERY CARD NAMES ITS ACTION, AND THERE IS A WAY BACK TO A RUN - item 3,
+   * ROUND-2 X2, AUDIT-R2 H2. Presses nothing, so no `@launch` and no money.
+   */
+  test('names the action on every card, and offers Run on a published one', async ({
+    page,
+    request,
+  }) => {
+    const watch = watchConsole(page)
+    const draft = await createDocument(request, SAVED_GRAPH_NAME)
+    const live = await createDocument(request, `${SAVED_GRAPH_NAME} (live)`)
+    const published = await request.post(`/api/builder/workflows/${live}/publish`)
+    expect(published.status(), await published.text()).toBe(200)
+    await openHome(page)
+
+    // Built in: one action, and it is the mode's word.
+    await expect(
+      page.locator('[data-testid="home-validator"] .home-card-action'),
+    ).toHaveText(/Run/)
+
+    // Saved: the card's own action, plus Run only where a version is
+    // registered. A run resolves a REGISTERED version, so a Run on the draft
+    // would answer 404 for a graph the author can do nothing about from there.
+    await expect(
+      page.locator(`[data-testid="home-document-${draft}"] .home-card-action`),
+    ).toHaveText(/Open in Build/)
+    await expect(page.locator(`[data-testid="home-run-${draft}"]`)).toHaveCount(0)
+    await expect(page.locator(`[data-testid="home-run-${live}"]`)).toBeVisible()
+
+    // Templates: WC1's row, asserted here because this is the page that has to
+    // agree with the builder gallery word for word.
+    await expect(
+      page.locator('[data-testid="home-template-news-to-social"] .home-card-action'),
+    ).toHaveText(/Use this template/)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('the home Run history link opens the console with the list in view', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openHome(page)
+
+    await page.locator('[data-testid="home-run-history"]').click()
+    await expect.poll(() => new URL(page.url()).hash).toBe('#/run')
+
+    /*
+     * IN VIEW, which is the whole of the ask and the one thing jsdom cannot
+     * answer. The list has always been rendered - it is the last block of the
+     * control rail - so what the home lacked was a route to it and what the
+     * console lacked was any reason to show it. Measured against the rail's own
+     * scroller rather than the window: the rail scrolls, the page does not.
+     */
+    const history = page.locator('#run-history')
+    await expect(history).toBeVisible({ timeout: 20_000 })
+    const inView = await page.evaluate(() => {
+      const el = document.querySelector('#run-history')
+      const scroller = document.querySelector('.control-scroll')
+      if (!el || !scroller) return null
+      const a = el.getBoundingClientRect()
+      const b = scroller.getBoundingClientRect()
+      return a.top < b.bottom && a.bottom > b.top
+    })
+    expect(inView, 'the console rendered no history section inside its rail').not.toBeNull()
+    expect(inView, 'Run history landed on a console that was not showing the list').toBe(true)
+
+    // ONE SHOT: a reload must not scroll a reader away from a run they are
+    // watching, so the note is removed as it is read.
+    expect(
+      await page.evaluate(() => window.sessionStorage.getItem('console-reveal-history')),
+    ).toBeNull()
 
     expect(watch.unexpected).toEqual([])
   })
@@ -260,6 +419,82 @@ test.describe('the unified shell', () => {
 
     expect(watch.unexpected).toEqual([])
   })
+
+  /**
+   * THE ARM THE SUITE WAS BLIND TO (RV4 follow-up 1).
+   *
+   * The test above proves an UN-launched handoff still hands over, which is
+   * D2's rule and is right. What nothing covered is the state a real author is
+   * in one minute later: they pressed Run, the run finished, and they went back
+   * to `#/` looking for it. The handoff was still in `sessionStorage`, so the
+   * home read it as "resume" and bounced them into a finished console with R4's
+   * Last-run card unreachable - the card that whole row exists to provide.
+   *
+   * `console-identity.spec.ts`'s home arm cannot see this because it launches
+   * from `#/run`, so it never has a handoff at all; R1's arm clears
+   * `sessionStorage` outright. The blindness was structural, which is why this
+   * arm sets the handoff the way the builder does and then really launches.
+   *
+   * `@launch` and free: `SYNTHETIC=1` replaces the crew factories and nothing
+   * else, so the publish, the compile, the engine and the frames are the
+   * production ones and no model is called.
+   */
+  test(
+    'a Build-launched run that has finished leaves the home on the home',
+    { tag: '@launch' },
+    async ({ page, request }) => {
+      const watch = watchConsole(page)
+      const id = await publishRunnable(request, 'A workflow the home should remember')
+
+      await page.goto('/#/run')
+      await page.evaluate(
+        ({ key, workflowId, name }) => {
+          window.localStorage.clear()
+          window.sessionStorage.setItem(
+            key,
+            JSON.stringify({ workflowId, inputField: 'idea', name }),
+          )
+        },
+        {
+          key: storageKeyFor(DEFAULT_SYNTHETIC_USER, 'builder-run-handoff'),
+          workflowId: id,
+          name: 'A workflow the home should remember',
+        },
+      )
+      await page.reload()
+      await expect(page.locator('.handoff-banner')).toBeVisible()
+
+      // Review, not unattended: this graph declares no gate, and `create_run`
+      // answers 422 for `gates=auto` on a gateless workflow.
+      const review = page.getByRole('button', { name: 'Review', exact: true })
+      if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
+      await page.locator('textarea#idea').fill('Everything the home has to remember about this')
+      await page.locator('.status-panel .control-actions button.button-primary').click()
+      await expect
+        .poll(async () => page.locator('.canvas-meta span').first().textContent(), {
+          timeout: 120_000,
+        })
+        .toMatch(/Finished|Failed|Cancelled/i)
+
+      // The record went with the launch; the run pointer did not.
+      expect(
+        await page.evaluate(
+          (key) => window.sessionStorage.getItem(key),
+          storageKeyFor(DEFAULT_SYNTHETIC_USER, 'builder-run-handoff'),
+        ),
+      ).toBeNull()
+
+      await page.goto('/#/')
+      await page.reload()
+      await expect(page.locator('.home-page')).toBeVisible()
+      expect(new URL(page.url()).hash).toBe('#/')
+      const card = page.locator('.home-last-run')
+      await expect(card).toBeVisible()
+      await expect(card).toContainText('A workflow the home should remember')
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
 
   test('the breadcrumb reads Workflows / <name> on the console and reaches the home', async ({
     page,
@@ -418,6 +653,149 @@ test.describe('the unified shell', () => {
       'aria-pressed',
       'true',
     )
+
+    /*
+     * X1: the VIEW pair names the SURFACE, and the surface is the canvas.
+     * `Graph` was the last visible word on this console calling the workflow's
+     * surface a graph, against a home, a gallery lede and a sign-in sentence
+     * that all say canvas. The prop behind it is still `'graph' | 'activity'`,
+     * which is the same client/DOM boundary the builder scan below draws.
+     */
+    const view = page.locator('.status-panel .segmented[aria-label="Workspace view"]')
+    await expect(view.locator('button').first()).toHaveText(/^\s*Canvas\s*$/)
+    await expect(view.locator('button').nth(1)).toHaveText(/^\s*Activity\s*$/)
+    await expect(view).not.toContainText(/\bgraph\b/i)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  /* == ROUND-2 X1 and X2: the one vocabulary, in a real browser ============
+   *
+   * These read what a PERSON reads. The unit specs assert the same strings
+   * against a mounted component and cannot answer the question the audit's
+   * cold read asked - what does somebody scanning this page actually see -
+   * because a component mount has no page to scan.
+   *
+   * The negative half is the one that matters and it is why these are browser
+   * tests: `not.toContainText(/graph/i)` over a whole rendered surface catches
+   * a word arriving from a template, a stylesheet's generated content, an
+   * `aria-label` a screen reader would speak, or a component nobody thought to
+   * check - which is exactly how the five nouns of N1 accumulated.
+   */
+
+  test('the home says what the product is, and calls a workflow a workflow', async ({
+    page,
+    request,
+  }) => {
+    const watch = watchConsole(page)
+    await createDocument(request, SAVED_GRAPH_NAME)
+    await openHome(page)
+
+    // AUDIT-R2 H1: the sign-in wall's sentence, on the page a signed-in person
+    // actually lands on. It was the only screen answering "what is this", and
+    // it was the screen you stop seeing once you have an account.
+    await expect(page.locator('[data-testid="product-sentence"]')).toHaveText(
+      /^Draw a workflow on a canvas in Build, then Run it as a real CrewAI flow/,
+    )
+
+    // Ruling 4, the same three strings the gallery uses.
+    await expect(page.locator('.home-page')).toContainText('TEMPLATES')
+    await expect(page.locator('.home-page')).toContainText('Start from a working example')
+    await expect(page.locator('.home-page')).toContainText(
+      'Click one to copy it onto the canvas as a new workflow.',
+    )
+    await expect(page.locator('[data-testid="home-template-news-to-social"]')).toContainText(
+      'Use this template',
+    )
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('no visible word on the builder calls a workflow a graph', async ({ page, request }) => {
+    const watch = watchConsole(page)
+    const id = await createDocument(request, SAVED_GRAPH_NAME)
+    await page.goto(`/#/build/${id}`)
+    await expect(page.locator('.builder-flow')).toBeVisible()
+    await expect(page.locator('[data-testid="problems-checking"]')).toHaveCount(0, {
+      timeout: 30_000,
+    })
+
+    // The four the audit's census named on this surface, now one word.
+    const palette = page.locator('.builder-palette')
+    await expect(palette).toContainText('YOUR WORKFLOWS')
+    await expect(palette).toContainText('Saved here')
+    await expect(page.locator('.rail-kicker').first()).toHaveText('WORKFLOW')
+
+    /*
+     * The whole rendered page, case-insensitively, and it is a stronger claim
+     * than the three above: `graph` is gone from what a person can SEE. It says
+     * nothing about the DOM - `GraphThumbnail`, `.graph-workspace` and
+     * `builder.flow/v1` are all still there and all still correct - because
+     * `innerText` is what a reader gets and class names are not.
+     *
+     * TWO THINGS ARE SUBTRACTED, and each is a decision rather than a
+     * convenience.
+     *
+     * The document's own NAME, because `SAVED_GRAPH_NAME` is a fixture this
+     * file chose and a fixture that fails a scan of its own page is a test
+     * about itself. `split().join('')` and not `replace`, because the name is
+     * on screen four times and `replace` takes the first.
+     *
+     * `.problem-message`, because those sentences are the SERVER'S. `bounds.py`
+     * writes "this graph has no output node, so a completed run hands back no
+     * body" and the dock renders it verbatim, which is the right thing to do
+     * with a refusal - the client must not paraphrase a reason it did not
+     * decide. WC1's brief is explicit that a server sentence is reported and
+     * not rewritten, so this is the boundary of the client-side rename and the
+     * assertion below states it rather than hiding it: if the server's
+     * vocabulary is to move, it moves in `src/brief_crew/builder/bounds.py`,
+     * which is nobody's file on this branch.
+     */
+    const seen = await page.locator('.studio-shell').innerText()
+    const serverSentences = await page.locator('.problem-message').allInnerTexts()
+    let visible = seen.split(SAVED_GRAPH_NAME).join('')
+    for (const sentence of serverSentences) visible = visible.split(sentence).join('')
+
+    expect(visible, 'a visible `graph` survives in what the client itself wrote').not.toMatch(
+      /\bgraphs?\b/i,
+    )
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('the gallery names what it holds and what a click will do', async ({ page, request }) => {
+    const watch = watchConsole(page)
+    const id = await createDocument(request, SAVED_GRAPH_NAME)
+    await page.goto('/#/build')
+    await expect(page.locator('.template-gallery')).toBeVisible({ timeout: 30_000 })
+
+    const gallery = page.locator('.template-gallery')
+    await expect(gallery).toContainText('TEMPLATES')
+    await expect(gallery).toContainText('Start from a working example')
+    await expect(gallery.locator('.gallery-lede')).toHaveText(
+      'Click one to copy it onto the canvas as a new workflow.',
+    )
+    // The action on every card, not on one. Nine cards, two rows, and the
+    // second row is inside an open `details` - which is why this counts rather
+    // than checks the first.
+    await expect(gallery.locator('.template-action')).toHaveCount(TEMPLATE_TITLES.length)
+    await expect(gallery.locator('.template-action').first()).toHaveText(/Use this template/)
+
+    // The words it replaced, gone from the whole page.
+    await expect(gallery).not.toContainText('YOUR GRAPHS')
+    await expect(gallery).not.toContainText('A shape that already works')
+
+    /*
+     * X2 ruling 3 on the SAVED row, which was the last surface to miss it
+     * (RV4's closing note): four icon-only buttons and no word for the one
+     * thing the row mostly does. `Open`, not `Open in Build` - the home says
+     * where it is sending you because it is somewhere else, and this list IS
+     * Build. Last in this test, because following it leaves the gallery.
+     */
+    const row = page.locator('.library-row').filter({ hasText: SAVED_GRAPH_NAME })
+    await expect(row.getByTestId('library-open')).toHaveText(/^\s*Open\s*$/)
+    await row.getByTestId('library-open').click()
+    await expect.poll(() => new URL(page.url()).hash).toBe(`#/build/${id}`)
 
     expect(watch.unexpected).toEqual([])
   })

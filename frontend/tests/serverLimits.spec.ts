@@ -46,6 +46,67 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
   })
 }
 
+/*
+ * THE PRIMARY BUTTON'S WORD - ROUND-2 X1 / ruling 5, AUDIT-R2 N2.
+ *
+ * The console said `Launch` / `Relaunch` for the action the workspace switch
+ * two inches above calls `Run`, so the one thing this screen does had two
+ * names. Nothing in the suite read the button's text, which is why the two
+ * vocabularies could sit beside each other for as long as they did.
+ */
+describe('the primary button says what the mode is called', () => {
+  it('reads `Run` at rest and `Run again` once a run is history', () => {
+    expect(mountPanel({ primaryLabel: 'Launch' }).get('[data-testid="launch-button"]').text())
+      .toBe('Run')
+    expect(
+      mountPanel({ primaryLabel: 'Relaunch', status: 'completed' })
+        .get('[data-testid="launch-button"]')
+        .text(),
+    ).toBe('Run again')
+  })
+
+  /*
+   * X1: the VIEW pair names the SURFACE, and the ruled name for it is `Canvas`.
+   * `Graph` was the last visible word on this console calling a workflow's
+   * surface a graph, against a home, a gallery lede and a sign-in sentence that
+   * all say canvas. The PROP is untouched - `activeView` is still
+   * `'graph' | 'activity'` - because a prop is not what a reader gets.
+   */
+  it('calls the workflow surface the Canvas, and still emits `graph`', async () => {
+    const panel = mountPanel()
+    const view = panel.get('[aria-label="Workspace view"]')
+    const buttons = view.findAll('button')
+    expect(buttons[0].text()).toBe('Canvas')
+    expect(buttons[1].text()).toBe('Activity')
+    expect(view.text()).not.toMatch(/graph/i)
+
+    await buttons[0].trigger('click')
+    expect(panel.emitted('selectView')).toEqual([['graph']])
+  })
+
+  it('says `Starting…` while the run is being asked for, as the test panel does', () => {
+    expect(mountPanel({ primaryLabel: 'Launching…' }).get('[data-testid="launch-button"]').text())
+      .toBe('Starting…')
+  })
+
+  it("lets the run's own state win mid-flight, unmapped", () => {
+    expect(
+      mountPanel({ primaryLabel: 'Send', status: 'waiting', isActive: true })
+        .get('[data-testid="launch-button"]')
+        .text(),
+    ).toBe('Waiting for you')
+  })
+
+  it("asks the question the gate pair answers, in words that are not the graph model's", () => {
+    const text = mountPanel().text()
+    expect(text).toContain('WHEN IT NEEDS YOU')
+    expect(text).not.toContain('GATES')
+    // The two buttons keep their words by ruling.
+    expect(text).toContain('Review')
+    expect(text).toContain('Unattended')
+  })
+})
+
 describe('the bounds are stated where they are enforced', () => {
   it('matches the server constant', () => {
     // Drift here is the whole hazard of a duplicated constant, so it is a test
@@ -301,5 +362,81 @@ describe('the elapsed clock', () => {
     await panel.setProps({ usage: { ...zeroUsage(), elapsedMs: 31_000 } })
     await panel.vm.$nextTick()
     expect(panel.get('.metrics-grid dd').text()).toBe('00:31')
+  })
+})
+
+/*
+ * THE RAIL'S READING ORDER - item 9, ROUND-2 X2, AUDIT-R2 H6.
+ *
+ * It used to read input -> WORKFLOW -> GATES -> VIEW -> STATUS (four tiles all
+ * zero) -> Launch, so the console's one action was the sixth block down and,
+ * measured at 1440x720, below the fold. X2's wording is the rule this asserts:
+ * "the input, the launch and the run status read top-to-bottom."
+ *
+ * A jsdom mount cannot say where anything ENDED UP - that is
+ * `e2e/studio.spec.ts`'s new fold test, in a browser. What it can say, and what
+ * nothing said before, is what order the blocks are in.
+ */
+describe('the rail reads input, launch, then status', () => {
+  /** The rail's top-level blocks, in render order, by class. */
+  function blocks(): string[] {
+    return Array.from(mountPanel().element.children).map((el) => (el as Element).className)
+  }
+
+  it('puts the primary action fourth, above VIEW and above STATUS', () => {
+    const order = blocks()
+    const actions = order.findIndex((cls) => cls.includes('control-actions'))
+    const metrics = order.findIndex((cls) => cls.includes('metrics-section'))
+    const logs = order.findIndex((cls) => cls.includes('control-logs'))
+
+    expect(actions, 'the rail has no `.control-actions` block').toBeGreaterThan(-1)
+    // Three sections precede it: the input, WORKFLOW, WHEN IT NEEDS YOU.
+    expect(actions).toBe(3)
+    expect(metrics).toBeGreaterThan(actions)
+    expect(logs).toBeGreaterThan(metrics)
+  })
+
+  it('keeps the primary button inside `.control-actions`', () => {
+    // Eight E2E specs press `.status-panel .control-actions button.button-primary`,
+    // including the run-canvas visual baseline's own launch step. The class is a
+    // contract, not decoration.
+    const panel = mountPanel()
+    expect(panel.find('.control-actions [data-testid="launch-button"]').exists()).toBe(true)
+    expect(panel.find('.control-actions .download-row').exists()).toBe(false)
+    expect(panel.find('.control-logs .download-row').exists()).toBe(true)
+  })
+
+  it('carries the workflow version inside the disclosure, labelled', () => {
+    // On the canvas it was a bare `9c6ca8a6fefbfffd` beside the run's status,
+    // with nothing saying what it was of (AUDIT-R2 N6). In here it can afford
+    // three words - a value nobody can name is not readable just because it is
+    // on screen - and it is the value two E2E specs read to prove the console
+    // is not silently in mock mode.
+    const panel = mountPanel({ graphVersion: '9c6ca8a6fefbfffd' })
+    const details = panel.get('[data-testid="status-details"]')
+    expect(details.find('[data-testid="graph-version"]').exists()).toBe(true)
+    expect(details.get('[data-testid="graph-version"]').text()).toBe('9c6ca8a6fefbfffd')
+    expect(details.text()).toContain('Workflow version')
+
+    // Absent rather than an empty chip while the descriptor has not arrived.
+    expect(mountPanel().find('[data-testid="graph-version"]').exists()).toBe(false)
+  })
+
+  it('shuts the instrumentation away, and leaves the state and the run id out', () => {
+    const panel = mountPanel({ runId: 'a0629576-1111-2222-3333-444455556666', lastSequence: 97 })
+    const details = panel.get('[data-testid="status-details"]')
+
+    // Collapsed by default: `<details>` with no `open` attribute.
+    expect(details.attributes('open')).toBeUndefined()
+    // Still in the DOM, which is what seven E2E specs read it by.
+    expect(details.find('.metrics-grid').exists()).toBe(true)
+    expect(details.find('.stream-line').exists()).toBe(true)
+    expect(details.text()).toContain('seq 97')
+
+    // Out of it: the status word, and the run id - the one value here somebody
+    // quotes, and the one `e2e/studio.spec.ts` asserts is visible.
+    expect(panel.get('.status-badge').text()).toBeTruthy()
+    expect(panel.find('[data-testid="status-details"] .run-id').exists()).toBe(false)
+    expect(panel.get('.run-id').text()).toBe('a0629576')
   })
 })

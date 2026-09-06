@@ -410,6 +410,48 @@ describe('the gallery is the empty state and the way back into saved work', () =
     expect(wrapper.findAll('.template-card')).toHaveLength(ALL_BUILDER_TEMPLATES.length)
   })
 
+  /* ── ROUND-2 §5 rulings 1 and 4: the gallery names what it holds ─────────
+   *
+   * "Gallery - what does it contain" is the owner's own question, and the two
+   * headings on `8d17209` answered neither half of it: `YOUR GRAPHS` used a
+   * noun that appears nowhere else in the product a person can see, and
+   * `START FROM / A shape that already works` named no category at all. Nothing
+   * on the page said that a click COPIES the card onto the canvas, which is
+   * what it does - so the one fact a reader needed before pressing was the one
+   * the screen never carried.
+   */
+
+  it('names the two shelves in the one vocabulary', async () => {
+    const { wrapper } = await gallery(new FakeBuilderApi())
+    const text = wrapper.text()
+    expect(text).toContain('YOUR WORKFLOWS')
+    expect(text).toContain('TEMPLATES')
+    expect(text).toContain('Start from a working example')
+    expect(text).not.toContain('YOUR GRAPHS')
+    expect(text).not.toContain('A shape that already works')
+  })
+
+  it('says what a click does, once, above the cards', async () => {
+    const { wrapper } = await gallery()
+    // ONE sentence for the shelf, not one per card: it is true of all nine, and
+    // nine copies would be nine places for it to go stale.
+    expect(wrapper.findAll('.gallery-lede')).toHaveLength(1)
+    expect(wrapper.get('.gallery-lede').text()).toBe(
+      'Click one to copy it onto the canvas as a new workflow.',
+    )
+  })
+
+  it('names its action on every card, without nesting a button in a button', async () => {
+    const { wrapper } = await gallery()
+    const actions = wrapper.findAll('.template-action')
+    expect(actions).toHaveLength(ALL_BUILDER_TEMPLATES.length)
+    for (const action of actions) expect(action.text()).toContain('Use this template')
+    // The card IS the button. A `<button>` inside a `<button>` is invalid HTML
+    // that no browser repairs the way the author meant, so the action is a
+    // label on the affordance rather than a second affordance.
+    expect(wrapper.findAll('.template-card button')).toHaveLength(0)
+  })
+
   it('renders every caveat verbatim and on those cards alone', async () => {
     // Read off the templates rather than counted, because a caveat is a
     // per-template judgement and a literal here would have to be edited every
@@ -513,7 +555,7 @@ describe('the gallery is the empty state and the way back into saved work', () =
 
   it('says so when there are no saved graphs yet', async () => {
     const { wrapper } = await gallery()
-    expect(wrapper.find('.gallery-empty').text()).toContain('No saved graphs yet')
+    expect(wrapper.find('.gallery-empty').text()).toContain('Nothing saved yet')
   })
 
   describe("the author's own graphs come first, in an order they can read (D-15-15)", () => {
@@ -581,6 +623,35 @@ describe('the gallery is the empty state and the way back into saved work', () =
       expect(row.find('.library-delete').exists()).toBe(true)
     })
 
+    /*
+     * X2 ruling 3's "every card names its action", which this row was the last
+     * surface to miss (RV4's closing note). The home names them (`Run ->`,
+     * `Open in Build ->`) and every template card names one
+     * (`Use this template ->`); here four icon-only buttons stood over the one
+     * thing the row mostly does, and no word said it.
+     *
+     * `Open`, not `Open in Build`: the home says where it is sending you
+     * because it is somewhere else, and this list IS Build. It emits the same
+     * `open` the row itself does, which is asserted here so the two cannot
+     * become two handlers.
+     */
+    it('names the action the row mostly performs, beside the icons', async () => {
+      const { wrapper, ids } = await threeRows()
+      const row = wrapper.findAll('.library-row')[0]
+      const open = row.get('[data-testid="library-open"]')
+      expect(open.text()).toBe('Open')
+      expect(open.attributes('aria-label')).toMatch(/^Open /)
+
+      await open.trigger('click')
+      expect(wrapper.emitted('open')?.at(-1)).toEqual([ids.newest])
+
+      // The four icons are untouched: this is a fifth, named control, not a
+      // replacement for them.
+      for (const action of ['versions', 'duplicate', 'export', 'delete'] as const) {
+        expect(row.find(`[data-testid="library-${action}"]`).exists()).toBe(true)
+      }
+    })
+
     it('separates the one irreversible action from the three that are not (D-15-26)', async () => {
       /*
        * Round 3: "four unlabelled 28px gallery glyphs, delete 34px from
@@ -604,6 +675,7 @@ describe('the gallery is the empty state and the way back into saved work', () =
         child.getAttribute('data-testid') ?? child.className,
       )
       expect(order).toEqual([
+        'library-open',
         'library-versions',
         'library-duplicate',
         'library-export',

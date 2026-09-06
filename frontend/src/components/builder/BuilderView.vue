@@ -830,7 +830,7 @@ async function openDocument(id: DocumentId): Promise<void> {
     await persistence.open(id)
     await afterAdopt()
   } catch (error) {
-    say(error instanceof Error ? error.message : 'that graph could not be opened.', { kind: 'error' })
+    say(error instanceof Error ? error.message : 'that workflow could not be opened.', { kind: 'error' })
   }
 }
 
@@ -948,7 +948,7 @@ function storedIsCurrent(verb: string): boolean {
   // by the critic, because a refusal that does not look like one is exactly
   // what "no persistent surface to re-read it" hides.
   if (persistence.documentId.value === null) {
-    say(`save this graph first — ${verb} works on the stored version.`, { kind: 'error' })
+    say(`save this workflow first — ${verb} works on the stored version.`, { kind: 'error' })
     return false
   }
   if (persistence.saveState.value !== 'clean') {
@@ -1068,7 +1068,7 @@ async function duplicateDocument(): Promise<void> {
     say(`duplicated as “${copy.document.name}”.`, { kind: 'success' })
     emit('openDocument', copy.id as DocumentId)
   } catch (error) {
-    say(messageOf(error, 'the graph could not be duplicated.'), { kind: 'error' })
+    say(messageOf(error, 'the workflow could not be duplicated.'), { kind: 'error' })
   }
 }
 
@@ -1145,7 +1145,7 @@ async function unpublishDocument(): Promise<void> {
     void refreshLibrary()
     say(`unpublished “${doc.value.name}” — it no longer answers launches.`, { kind: 'success' })
   } catch (error) {
-    const message = messageOf(error, 'the graph could not be unpublished.')
+    const message = messageOf(error, 'the workflow could not be unpublished.')
     if (deleteAsk.value) deleteProblem.value = message
     else say(message, { kind: 'error' })
   } finally {
@@ -1189,7 +1189,7 @@ async function confirmDelete(): Promise<void> {
     emit('closeDocument')
     say(`deleted “${name}”.`, { kind: 'success' })
   } catch (error) {
-    deleteProblem.value = messageOf(error, 'the graph could not be deleted.')
+    deleteProblem.value = messageOf(error, 'the workflow could not be deleted.')
     deleteRefused.value = error instanceof BuilderConflictError
   } finally {
     deleteInFlight.value = false
@@ -1348,6 +1348,57 @@ function runPublished(workflowId: string, inputField: string): void {
   writeRunHandoff({ workflowId, inputField, name: doc.value.name }, props.user?.id ?? null)
   publishOpen.value = false
   emit('runWorkspace')
+}
+
+/**
+ * The header's Run switch, which used to be a bare navigation (item 57, R2 R3).
+ *
+ * It emitted `runWorkspace` and nothing else, so leaving a builder document by
+ * the switch landed on a console pointed at the BUILT-IN validator - the
+ * breadcrumb had just named the author's workflow and the next screen did not.
+ * The switch is the mode pair of ONE workflow, so it has to carry that
+ * workflow, and there are exactly three states it can be in:
+ *
+ *   published document   write the same handoff "Run it" writes, then go.
+ *                        `runPublished` is reused rather than copied, so the
+ *                        two doors cannot drift.
+ *   unpublished document refuse, visibly. A run resolves a REGISTERED version,
+ *                        so navigating would land on a console that answers
+ *                        404 for this graph - a refusal the author can do
+ *                        nothing about from there. The remedy is one button
+ *                        away and the disabled control names it.
+ * BOTH DOORS COME HERE (RV4 follow-up 2). `DocumentBar`'s `⋮ > Run` - which at
+ * 390 is the ONLY route, because `.workspace-switch` is `display: none` there -
+ * was still wired to a bare `emit('runWorkspace')`, the pre-R3 path, so the
+ * phone route landed on the built-in validator while the desktop route carried
+ * the workflow correctly. Measured: a published `News to social post` gave
+ * breadcrumb `Idea Validator`. The menu item is handed `runSwitchBlocked` as
+ * well, so the unpublished state reads `Publish to run` in both places.
+ *
+ *   the gallery          unchanged: `emit('runWorkspace')`, which reaches the
+ *                        console's own built-in workflow. There is no open
+ *                        document to carry, the pair is kept here for a
+ *                        measured reason (`e2e/builder-layout.spec.ts` pins
+ *                        its left edge at `#/build`), and the console is a
+ *                        legitimate place to be going.
+ *
+ * `publishedVersion`, not `status`: a head whose row says `draft` may still
+ * have an OLDER version registered, and that older version is the one a run
+ * resolves. It is the same predicate `useFlowTest` uses for the Run tab, for
+ * the same reason.
+ */
+const runSwitchBlocked = computed(
+  () => started.value && persistence.publishedVersion.value === null,
+)
+
+function runWorkflow(): void {
+  const id = persistence.documentId.value
+  if (!started.value || id === null) {
+    emit('runWorkspace')
+    return
+  }
+  if (persistence.publishedVersion.value === null) return
+  runPublished(id, doc.value.input_field)
 }
 
 /* ── keyboard ──────────────────────────────────────────────────────────── */
@@ -1754,7 +1805,7 @@ watch(
 </script>
 
 <template>
-  <a class="skip-link" href="#builder-canvas">Skip to the graph</a>
+  <a class="skip-link" href="#builder-canvas">Skip to the canvas</a>
   <div
     class="studio-shell is-builder"
     :class="{
@@ -1831,8 +1882,43 @@ watch(
           <button type="button" :aria-pressed="true">
             <PenTool :size="14" aria-hidden="true" /> Build
           </button>
-          <button type="button" :aria-pressed="false" @click="emit('runWorkspace')">
-            <Play :size="14" aria-hidden="true" /> Run
+          <!--
+            THE SWITCH CARRIES THE WORKFLOW (item 57). Its label is the reason
+            it is disabled, in the control rather than in a tooltip, because a
+            reason only a hover can reach is a dead button to everybody who
+            does not hover - and the title then names the button that lifts it.
+          -->
+          <button
+            type="button"
+            :aria-pressed="false"
+            :disabled="runSwitchBlocked"
+            data-testid="run-switch"
+            :data-run-state="runSwitchBlocked ? 'blocked' : 'ready'"
+            :title="runSwitchBlocked
+              ? 'Publish this workflow before you can run it — use the Publish button in the bar below'
+              : 'Run this workflow'"
+            @click="runWorkflow"
+          >
+            <Play :size="14" aria-hidden="true" />
+            <!--
+              BOTH LABELS ARE ALWAYS IN THE DOM, stacked in one grid cell, and
+              the one that does not apply is `visibility: hidden`. That is not a
+              flourish: `e2e/builder-layout.spec.ts`'s D-15-14 pins this control
+              against MOVING, on the critic's own finding that a persistent mode
+              control which jumps moves under the pointer about to click it -
+              and a label that grows from `Run` to `Publish to run` when a
+              document opens does exactly that. Measured: it moved the toggle
+              53 px, and that test caught it. Reserving the wider label's width
+              in both states is what keeps the switch still.
+
+              `visibility: hidden` rather than `display: none` because only the
+              former both reserves the space AND takes the word out of the
+              accessible name, so the button is announced as one label.
+            -->
+            <span class="switch-label">
+              <span :class="{ 'is-spare': runSwitchBlocked }">Run</span>
+              <span :class="{ 'is-spare': !runSwitchBlocked }">Publish to run</span>
+            </span>
           </button>
         </div>
 
@@ -1930,6 +2016,7 @@ watch(
             :versions-open="versionsOpen"
             :read-only="persistence.viewingVersion.value"
             :head-version="persistence.headVersion.value"
+            :run-blocked="runSwitchBlocked"
             @rename="store.setName"
             @save="() => void persistence.save()"
             @undo="undo"
@@ -1943,6 +2030,7 @@ watch(
             @import="importFile"
             @duplicate="duplicateDocument"
             @unpublish="unpublishDocument"
+            @run-workspace="runWorkflow"
             @delete="askDelete"
             @menu-extent="onMenuExtent"
           >
@@ -2267,6 +2355,7 @@ watch(
             :run-problems="flowTest.runProblems.value"
             :labels="anchorLabels"
             :viewing-version="readOnlyVersion"
+            :published="persistence.publishedVersion.value !== null"
             @focus="onEdgeSelectFromPanel"
           />
         </template>
@@ -2388,7 +2477,16 @@ watch(
    budget meter took the canvas's `1fr` and the canvas fell into an implicit
    `auto` row. A jsdom mount cannot see that; only a browser can. */
 .graph-workspace {
-  grid-template-rows: 64px auto auto minmax(0, 1fr) auto auto;
+  /* R8 / item C2: row 1 was a bare `64px`, which is a CEILING as much as a
+     floor once a track has an explicit length - so `.document-bar`'s own
+     `@media (max-width: 520px)` wrap (DocumentBar.vue) grew the bar's content
+     to ~124px while the grid row held it at 64, and the extra 60px spilled
+     over `overflow: visible` straight onto the budget meter's row underneath
+     it (measured: `Publish` and the budget meter's `$0.06 ... ceiling` line
+     sharing the same pixels). `minmax(64px, auto)` keeps the 64px floor every
+     wider layout already relies on and lets the row grow for the one case
+     that now needs more. */
+  grid-template-rows: minmax(64px, auto) auto auto minmax(0, 1fr) auto auto;
 }
 .graph-workspace > .document-bar { grid-row: 1; }
 .graph-workspace > .builder-dock { grid-row: 2; }
@@ -2401,8 +2499,82 @@ watch(
    variable-height strip between a node and the row that names it. */
 .graph-workspace > .test-panel { grid-row: 6; }
 
-.workspace-switch { grid-template-columns: auto auto; padding: 2px; }
-.workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+/* `display: grid` STATED HERE, and it is not a flourish (RV4 follow-up 6).
+   `studio.css`'s `.segmented` base used to be scoped
+   `:where(.studio-shell:not(.is-builder))`, so this control inherited no
+   `display` at all and the `grid-template-columns` below reached nothing: the
+   two halves were inline-blocks on a BASELINE, which is why they could sit
+   15px out of vertical alignment with each other. A grid row stretches both
+   halves to one height by construction, which is the same thing the console's
+   own switch has always done.
+
+   THE GUARD IS GONE NOW (2026-09-06, ROUND-2 X3, SHELL-SCOPE.md §6.5), and
+   `:where(.studio-shell) .segmented` reaches this control too - which is the
+   point: the pair had no visual pressed state at all, both halves painting
+   the browser's own button chrome (`docs/ux-shell/evidence/r2/final/X3`).
+   `grid-template-columns: auto auto` and `padding: 2px` still win over the
+   shared rule's `1fr 1fr` / `3px` on specificity (a plain scoped class beats
+   `:where()`, which contributes none), so the 192px auto-sized width and the
+   no-movement invariant (D-15-14) are untouched - only the ground, border,
+   radius and box-shadow the container never declared for itself are new, and
+   they are the shared rule's. */
+.workspace-switch { display: grid; grid-template-columns: auto auto; align-items: stretch; padding: 2px; }
+/* `height`, not `min-height` (RV4 follow-up 6). A minimum is a floor, and the
+   stacked spare label below turned it into a variable: measured at 1440 on
+   `ux/round-2`, the `Run` half was 96.7 x 41 against `Build`'s 67.8 x 28, so the
+   segmented pair had two different heights and one of them overhung the 52px
+   header. The control is one row of one line of text in both states, so its
+   height is a constant and is written as one.
+
+   `min-height: 28px` ADDED HERE (ROUND-2 X3). The shared rule's own
+   `.segmented button` sets `min-height: 34px` for the console, and `height`
+   and `min-height` are different properties - the cascade does not have them
+   compete, so without a `min-height` of its own this rule's `height: 28px`
+   would still lose to the shared rule's floor and render at 34px, exactly
+   the console's height. Restating it here is what keeps the builder's 28px
+   halves 28px now that the shared rule reaches them. */
+/* `display: inline-flex` STATED HERE TOO (RV4 follow-up NEW 1). Clamping the
+   height fixed the BOX and stopped there - the button itself inherited no
+   `display` from the grid parent above, so a browser's own button default
+   blockifies to `block` inside a grid cell, and the icon and the label then
+   stack as two block boxes instead of sitting side by side. `Build` has no
+   `<span>` label so this was invisible on that half; `Run` does, and its word
+   rendered 11px below the button it belongs to - on the header's dark ground,
+   for the one word a first-time reader needs. `align-items: center` and
+   `gap: var(--space-2)` are `studio.css`'s `.segmented button` rule, verbatim -
+   the same tokens, so the two switches are one shape - and `justify-content:
+   center` matches it for the same reason. The stacked-label grid below is
+   unchanged: the reservation is a `display: grid` question, this fix is a
+   `display: inline-flex` one, and they nest exactly as before.
+
+   Everything the shared rule sets and this rule does not - `color:
+   var(--text-muted)`, `background: transparent`, `border-radius: var(--r-md)`
+   on the unpressed half, plus the hover and `[aria-pressed='true']` rules
+   below this block - now reaches the builder unopposed. That is the whole
+   fix: the pressed half gets `color: var(--text-title)`,
+   `background: var(--surface-raised)` and `box-shadow: var(--ring-pressed)`,
+   same computed values as the console, with nothing declared here to block
+   them. */
+.workspace-switch button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 28px; min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+/* The Run switch while this workflow is unpublished (item 57). The shared
+   rule's own `.segmented button:disabled` now reaches the builder too
+   (opacity 0.5), but this rule's higher specificity still wins - deliberately
+   different at 0.55, kept because the label change to "Publish to run" is
+   already the affordance under the label; a control that reads that and
+   still looks pressable is a worse answer than either half alone. */
+.workspace-switch button:disabled { cursor: not-allowed; opacity: 0.55; }
+/* One grid cell, two labels, the wider one always paying for the width. See
+   the comment on the markup: D-15-14 pins this control against moving. */
+.workspace-switch .switch-label { display: grid; }
+/* `white-space: nowrap` on BOTH, and it is the whole of follow-up 6's cause.
+   The spare label is in the DOM to reserve the WIDER label's width so the
+   control cannot move (D-15-14) - but a label free to wrap answers that demand
+   by taking a second LINE instead, and `Publish to run` did exactly that,
+   growing the button to 41px while its sibling stayed 28. Reserving a width
+   means reserving it on one line; anything else reserves a height nobody
+   asked for. */
+.workspace-switch .switch-label > span { grid-area: 1 / 1; white-space: nowrap; }
+.workspace-switch .switch-label > span.is-spare { visibility: hidden; }
 
 /* A toast in the header row, in the layout (never over the canvas, R15): an
    icon that says which kind of line it is, room for two lines before an
@@ -2506,5 +2678,46 @@ watch(
 
 @media (max-width: 860px) {
   .workspace-switch { display: none; }
+}
+
+/* THE TWO TOGGLES STOP ANCHORING TO COLUMNS THAT NO LONGER EXIST (RV4
+   follow-up 3).
+
+   Both hang off a rail's inner edge - `left: var(--chat-width)` for the
+   palette, `right: var(--control-width)` for the inspector - which is right
+   while those variables name real COLUMNS. At 640 and below they do not:
+   `studio.css` turns the palette into a full-width BOTTOM SHEET and the
+   inspector into a `width: 100%` overlay, and the two variables keep their
+   builder values (236px and 340px) describing tracks nothing lays out any
+   more. So the toggles land in the middle of the strip.
+
+   Measured at 390x844 on a saved document, by scanning `elementFromPoint`
+   across each element's own centre line:
+
+     Expand the inspector   x 18  y 65  32x38   z 2
+     Expand the palette     x 236 y 65  32x38   z 2
+     .document-name  "News to social post"   10 of 133 columns covered
+     .save-chip      "saved - v1"            28 of  78 columns covered
+
+   and they cover each OTHER at around 600, where the inspector's right edge
+   (600 - 340 = 260) is inside the palette's box (236-268). Neither is
+   reachable by widening the bar's inset: the palette's toggle is at the middle
+   of the row, not at its edge.
+
+   The bar already declares the answer for the case where the anchors DO mean
+   something - `padding: 0 40px`, the same inset `.canvas-heading` carries in
+   `studio.css` and for the same stated reason, that these two controls are
+   positioned into this strip from either side and outrank it. Sending them to
+   the edges at this breakpoint puts them back inside that inset, which is
+   where the 40px was reserved for them in the first place.
+
+   Why they outrank a bar whose `z-index` is 9 at all: they are children of
+   `.studio-main`, siblings of `.graph-workspace`, and `.graph-workspace` is
+   `z-index: 0` - a stacking context, so the bar's 9 is spent inside it and
+   never reaches these. That is CLAUDE.md section 12's `.canvas-heading`
+   defect exactly, on a new surface. */
+@media (max-width: 640px) {
+  .rail-toggle { left: 0; }
+  .control-toggle { right: 0; }
 }
 </style>

@@ -98,7 +98,7 @@ async function copy(which: 'yaml' | 'python'): Promise<void> {
     </div>
 
     <p v-else-if="!test.compiledPending.value" class="test-note" data-testid="code-empty">
-      Save this graph, and what it compiles to appears here.
+      Save this workflow, and what it compiles to appears here.
     </p>
   </div>
 </template>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Clock3, FilePlus2, GitBranch, Loader, Play, TriangleAlert } from 'lucide-vue-next'
+import { ArrowRight, Clock3, FilePlus2, GitBranch, History, Loader, Play, TriangleAlert } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
 import BrandLockup from '../components/BrandLockup.vue'
 import GraphThumbnail from '../components/builder/GraphThumbnail.vue'
-import { PRODUCT_NAME } from '../data/brand'
+import { PRODUCT_NAME, PRODUCT_SENTENCE } from '../data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../data/builderTemplates'
-import { readRunHandoff } from '../data/builderRunHandoff'
+import { readRunHandoff, writeRunHandoff } from '../data/builderRunHandoff'
+import { askToRevealHistory } from '../components/RunHistory.vue'
 import { scopedKey } from '../data/identityStorage'
 import { MOCK_GRAPH } from '../data/mockGraph'
 import { runStatusDisplay } from '../data/runStatusDisplay'
@@ -109,13 +110,23 @@ const identity = computed(() => props.user?.id ?? null)
  * blank screen on a request that may time out.
  */
 
-/** The stored run id, or null. Guarded: site data can be blocked outright. */
-function storedRunId(): string | null {
+/**
+ * The stored run pointer, or null. Guarded: site data can be blocked outright.
+ *
+ * `workflowId` comes back beside the run id because the LAST RUN card has to
+ * name the workflow (item 3, and WA's own follow-up on R4): the card read
+ * `LAST RUN / Finished / Open it`, which says a run happened and not what it
+ * was. `GET /api/runs/{id}` answers a `RunSnapshot`, which carries a status and
+ * no workflow at all - so the name is a lookup, and this is the only carrier of
+ * the key to look it up by.
+ */
+function storedRunPointer(): { runId: string; workflowId: string } | null {
   try {
     const raw = globalThis.localStorage?.getItem(scopedKey(ACTIVE_RUN_STORAGE_KEY, identity.value))
     if (!raw) return null
-    const parsed = JSON.parse(raw) as { version?: number; runId?: string }
-    return parsed.version === 1 && parsed.runId ? parsed.runId : null
+    const parsed = JSON.parse(raw) as { version?: number; runId?: string; workflowId?: string }
+    if (parsed.version !== 1 || !parsed.runId) return null
+    return { runId: parsed.runId, workflowId: parsed.workflowId ?? '' }
   } catch {
     return null
   }
@@ -124,17 +135,18 @@ function storedRunId(): string | null {
 const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ['completed', 'error', 'cancelled']
 
 /** The run the console left behind, once the server has been asked about it. */
-const lastRun = ref<{ id: string; status: RunStatus } | null>(null)
+const lastRun = ref<{ id: string; status: RunStatus; workflowId: string } | null>(null)
 const checkingPointer = ref(false)
 
 async function resolvePointer(): Promise<RunPointerState> {
-  const id = storedRunId()
-  if (!id) return 'none'
+  const pointer = storedRunPointer()
+  if (!pointer) return 'none'
+  const id = pointer.runId
   checkingPointer.value = true
   try {
     await studioApi.initialize()
     const snapshot = await studioApi.getRun(id)
-    lastRun.value = { id, status: snapshot.status }
+    lastRun.value = { id, status: snapshot.status, workflowId: pointer.workflowId }
     return TERMINAL_RUN_STATUSES.includes(snapshot.status) ? 'terminal' : 'live'
   } catch {
     // Recovery wins. A pointer whose status could not be read is treated as a
@@ -147,12 +159,68 @@ async function resolvePointer(): Promise<RunPointerState> {
   }
 }
 
-/** The card the home shows for a finished run: history, not a hand-over. */
+/**
+ * The card the home shows for a finished run: history, not a hand-over.
+ *
+ * It NAMES THE WORKFLOW now. This page already holds both lists the name can
+ * come from - the library it fetched and the built-in it read - so the lookup
+ * costs no request; a workflow that has since been deleted, or a pointer
+ * written before this field existed, falls back to a heading that is at least
+ * true. The status keeps its own line either way, because "Finished" is the
+ * other half of what the card says and losing it would trade one gap for
+ * another.
+ */
 const lastRunCard = computed(() => {
   const run = lastRun.value
   if (!run || !TERMINAL_RUN_STATUSES.includes(run.status)) return null
-  return { id: run.id, display: runStatusDisplay(run.status) }
+  const named =
+    run.workflowId === validatorGraph.value.id
+      ? validatorGraph.value.name
+      : library.value.find((row) => row.id === run.workflowId)?.name ?? ''
+  return { id: run.id, name: named || 'Your last run', display: runStatusDisplay(run.status) }
 })
+
+/**
+ * `Run history`, which opens the console with the list revealed.
+ *
+ * The list lives at the bottom of the console's control rail and always has;
+ * what the home lacked was any mention of runs at all (AUDIT-R2 H2, and half of
+ * the Q5 FAIL). The hint is a one-shot `sessionStorage` note that `RunHistory`
+ * itself declares and `StudioView` consumes on its next mount - see
+ * `RunHistory.vue`'s own block for why it is not a route field.
+ */
+function openRunHistory(): void {
+  askToRevealHistory()
+  emit('run')
+}
+
+/**
+ * A saved workflow can be RUN from this page, not only opened for editing.
+ *
+ * Two conditions, and the second is not caution. `status === 'published'`
+ * because a run resolves a REGISTERED version; and the document must have
+ * arrived, because the handoff has to carry `input_field` - the key `inputs`
+ * must use - and the LIST endpoint is a summary that does not carry it. The
+ * document is already being fetched for the thumbnail, so this costs no extra
+ * request; a row whose picture has not landed yet simply does not offer Run
+ * until it has, which is honest rather than a button that would 422.
+ */
+function runnableDocument(entry: BuilderDocumentSummary): BuilderDocument | null {
+  if (entry.status !== 'published') return null
+  return thumbnails.value.get(entry.id) ?? null
+}
+
+/**
+ * Hand the console this workflow and leave - the same handoff, and the same
+ * three fields, that `BuilderView.runPublished` and the publish dialog write.
+ */
+function runDocument(entry: BuilderDocumentSummary, document: BuilderDocument): void {
+  writeRunHandoff(
+    { workflowId: entry.id, inputField: String(document.input_field), name: entry.name },
+    identity.value,
+  )
+  emit('run')
+}
 
 /* ── the fixed workflow ───────────────────────────────────────────────────── */
 
@@ -318,6 +386,23 @@ onBeforeUnmount(() => window.clearInterval(ticker))
 
     <main class="home-main">
       <div class="home-page">
+        <!--
+          WHAT THIS IS, before what is in it (ROUND-2 X2, §5 ruling 2).
+
+          The sentence is not new and it is not written here: `PRODUCT_SENTENCE`
+          is the sign-in wall's own lede, and until now the wall was the only
+          place it appeared - so a person who had an account never read the one
+          line that says what the product does. AUDIT-R2 H1 measured that as the
+          highest-value change in the document and the cheapest: it is a move,
+          not a write.
+
+          It sits under the header's brand rather than inside it. The header is
+          the shell's, shared with every other surface; this line is about this
+          page, and a lockup that grew a subtitle on one route only would be a
+          second lockup.
+        -->
+        <p class="home-lede" data-testid="product-sentence">{{ PRODUCT_SENTENCE }}</p>
+
         <p v-if="checkingPointer" class="home-resuming" role="status">
           <Loader :size="14" aria-hidden="true" />
           Checking a run you left open…
@@ -332,8 +417,21 @@ onBeforeUnmount(() => window.clearInterval(ticker))
         <section v-if="lastRunCard" class="home-last-run" aria-labelledby="home-last-run-title">
           <div>
             <span class="home-kicker">LAST RUN</span>
-            <h2 id="home-last-run-title">{{ lastRunCard.display.label }}</h2>
+            <!--
+              THE WORKFLOW, not the status (item 3). The heading was
+              `{{ display.label }}`, so the card read `LAST RUN / Finished /
+              Open it` - three lines that say a run happened and never what it
+              was about. The state keeps its own line below, because "Finished"
+              is the other half of what this card says.
+            -->
+            <h2 id="home-last-run-title">{{ lastRunCard.name }}</h2>
+            <p class="home-last-run-state">{{ lastRunCard.display.label }}</p>
           </div>
+          <!--
+            `Open it` stays FIRST. `console-identity.spec.ts` asks for it by
+            name and `home.spec.ts` takes the strip's first button, and it is
+            the primary action here either way.
+          -->
           <button class="button button-secondary" type="button" @click="emit('run')">
             <Play :size="14" aria-hidden="true" /> Open it
           </button>
@@ -350,6 +448,23 @@ onBeforeUnmount(() => window.clearInterval(ticker))
               <span class="home-kicker">READY TO RUN</span>
               <h2 id="home-ready-title">Built in</h2>
             </div>
+            <!--
+              The way back to a run from yesterday (item 3, ROUND-2 ruling 3,
+              AUDIT-R2 H2). It sits in THIS section rather than beside the LAST
+              RUN card because the card only exists while a pointer does - and
+              the pointer is this browser's, cleared by a sign-out and by a
+              second person - while the list on the console is the account's and
+              is always there. A route that appears and disappears is not a
+              route a reader can rely on.
+            -->
+            <button
+              class="button button-quiet"
+              type="button"
+              data-testid="home-run-history"
+              @click="openRunHistory()"
+            >
+              <History :size="14" aria-hidden="true" /> Run history
+            </button>
           </header>
 
           <ul class="home-grid">
@@ -367,6 +482,13 @@ onBeforeUnmount(() => window.clearInterval(ticker))
                   <span class="home-pill is-run-only">run only</span>
                   <span class="home-card-count">{{ validatorGraph.nodes.length }} nodes</span>
                   <span class="home-card-count">{{ validatorGraph.edges.length }} edges</span>
+                </span>
+                <!-- X2: every card names its action. A span rather than a
+                     button, because the card IS the button - the same shape the
+                     template cards use. -->
+                <span class="home-card-action">
+                  Run
+                  <ArrowRight :size="13" aria-hidden="true" />
                 </span>
               </button>
             </li>
@@ -395,11 +517,22 @@ onBeforeUnmount(() => window.clearInterval(ticker))
             Nothing saved yet. Pick a shape below and it is yours the moment you save it.
           </p>
 
+          <!--
+            TWO ACTIONS ON ONE CARD, which is why this cell is shaped the way it
+            is (item 3). A saved workflow can be edited and, once it is
+            published, run - and two actions cannot both be a span inside one
+            button the way the single-action cards do it. So the card keeps the
+            whole cell as its own click target and its own action name, and the
+            second action is a REAL button beside it, layered over the card's
+            bottom-right corner. Nested buttons are invalid HTML; siblings are
+            not, and this is the one card that needs two.
+          -->
           <ul v-else class="home-grid" data-testid="home-library">
-            <li v-for="entry in orderedLibrary" :key="entry.id">
+            <li v-for="entry in orderedLibrary" :key="entry.id" class="home-cell">
               <button
                 class="home-card"
                 type="button"
+                :class="{ 'is-runnable': runnableDocument(entry) }"
                 :data-testid="`home-document-${entry.id}`"
                 @click="emit('openDocument', entry.id as DocumentId)"
               >
@@ -419,6 +552,22 @@ onBeforeUnmount(() => window.clearInterval(ticker))
                     <Clock3 :size="12" aria-hidden="true" />{{ when(entry.updated_at) }}
                   </span>
                 </span>
+                <span class="home-card-action">
+                  Open in Build
+                  <ArrowRight :size="13" aria-hidden="true" />
+                </span>
+              </button>
+              <button
+                v-if="runnableDocument(entry)"
+                class="home-card-run"
+                type="button"
+                :data-testid="`home-run-${entry.id}`"
+                :aria-label="`Run ${entry.name}`"
+                :title="`Run ${entry.name}`"
+                @click="runDocument(entry, runnableDocument(entry)!)"
+              >
+                <Play :size="13" aria-hidden="true" />
+                Run
               </button>
             </li>
           </ul>
@@ -426,9 +575,17 @@ onBeforeUnmount(() => window.clearInterval(ticker))
 
         <section class="home-section" aria-labelledby="home-templates-title">
           <header class="home-heading">
+            <!--
+              The gallery's three strings, verbatim (ROUND-2 §5 ruling 4). The
+              home's template shelf and the builder's ARE the same shelf, and
+              the audit's C3 table named "two copies of the same section with
+              different words" as the reason a reader cannot tell the two pages
+              apart.
+            -->
             <div>
-              <span class="home-kicker">START FROM</span>
-              <h2 id="home-templates-title">A shape that already works</h2>
+              <span class="home-kicker">TEMPLATES</span>
+              <h2 id="home-templates-title">Start from a working example</h2>
+              <p class="home-section-lede">Click one to copy it onto the canvas as a new workflow.</p>
             </div>
           </header>
 
@@ -448,6 +605,12 @@ onBeforeUnmount(() => window.clearInterval(ticker))
                   <span class="home-card-count">
                     <GitBranch :size="12" aria-hidden="true" />{{ template.document.nodes.length }} nodes
                   </span>
+                </span>
+                <!-- X2: every card names its action. A span, because the card
+                     is the button - see TemplateGallery for the whole reason. -->
+                <span class="home-card-action">
+                  Use this template
+                  <ArrowRight :size="13" aria-hidden="true" />
                 </span>
               </button>
             </li>

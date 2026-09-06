@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
+  ArrowRight,
   Clock3,
   Copy,
   Download,
@@ -211,7 +212,7 @@ async function loadLibrary(): Promise<void> {
     libraryProblem.value = ''
   } catch (error) {
     libraryProblem.value =
-      error instanceof Error ? error.message : 'your saved graphs could not be loaded.'
+      error instanceof Error ? error.message : 'your saved workflows could not be loaded.'
   } finally {
     libraryLoading.value = false
   }
@@ -265,7 +266,7 @@ async function unpublishRefused(): Promise<void> {
     )
   } catch (error) {
     deleteProblem.value =
-      error instanceof Error ? error.message : 'the graph could not be unpublished.'
+      error instanceof Error ? error.message : 'the workflow could not be unpublished.'
   } finally {
     unpublishing.value = false
   }
@@ -295,7 +296,7 @@ async function confirmDelete(): Promise<void> {
     cancelDelete()
   } catch (error) {
     deleteProblem.value =
-      error instanceof Error ? error.message : 'the graph could not be deleted.'
+      error instanceof Error ? error.message : 'the workflow could not be deleted.'
     deleteRefused.value = error instanceof BuilderConflictError
   } finally {
     deleteInFlight.value = false
@@ -367,20 +368,20 @@ const orderedLibrary = computed(() =>
     <section class="gallery-library" aria-labelledby="gallery-library-title">
       <header class="gallery-heading">
         <div>
-          <span class="gallery-kicker">YOUR GRAPHS</span>
+          <span class="gallery-kicker">YOUR WORKFLOWS</span>
           <h2 id="gallery-library-title">Saved here</h2>
         </div>
       </header>
 
       <p v-if="libraryLoading" class="gallery-empty" role="status">
-        <Loader :size="14" aria-hidden="true" /> Reading your saved graphs…
+        <Loader :size="14" aria-hidden="true" /> Reading your saved workflows…
       </p>
       <p v-else-if="libraryProblem" class="gallery-empty is-problem" role="alert">
         <TriangleAlert :size="14" aria-hidden="true" /> {{ libraryProblem }}
       </p>
       <p v-else-if="library.length === 0" class="gallery-empty">
         <FilePlus2 :size="14" aria-hidden="true" />
-        No saved graphs yet. Pick a shape below and it is yours the moment you save it.
+        Nothing saved yet. Pick a template below and it is yours the moment you save it.
       </p>
 
       <ul v-else class="library-list">
@@ -433,6 +434,32 @@ const orderedLibrary = computed(() =>
               author is then looking at.
             -->
             <div class="library-actions">
+              <!--
+                THE ROW'S ACTION, NAMED (X2 ruling 3, RV4's closing note).
+                "Every card names its action" was met on the home (`Run ->`,
+                `Open in Build ->`) and on every template card
+                (`Use this template ->`), and missed here: this row offered
+                FOUR icon-only buttons and no word at all, so the one thing it
+                mostly does - open the workflow - was the only action a reader
+                had to guess. The whole row already opens it; this says so.
+
+                `Open`, not `Open in Build`: the home says where it is sending
+                you because it is somewhere else, and this list IS Build.
+
+                It emits the same `open` the row does - one handler, not a
+                second - and the four icons stay, because D-15-15's reason for
+                them holds unchanged.
+              -->
+              <button
+                class="library-open-action"
+                type="button"
+                :aria-label="`Open ${entry.name}`"
+                data-testid="library-open"
+                @click="emit('open', entry.id)"
+              >
+                Open
+                <ArrowRight :size="13" aria-hidden="true" />
+              </button>
               <button
                 class="icon-button"
                 type="button"
@@ -557,9 +584,27 @@ const orderedLibrary = computed(() =>
 
     <section aria-labelledby="gallery-templates-title">
       <header class="gallery-heading">
+        <!--
+          WHAT IT CONTAINS, AND WHAT A CLICK DOES (ROUND-2 §5 ruling 4).
+
+          It read `START FROM / A shape that already works`, which the audit
+          called a good sentence and a bad label: it names no category, and it
+          is the heading the owner's question - "Gallery, what does it contain"
+          - is literally about. Nothing anywhere said that a click COPIES the
+          card onto the canvas as a new, unsaved workflow, which is what it
+          does, so the one thing a reader needed to know before pressing was the
+          one thing the screen never said.
+
+          The good sentence survives as the heading; `TEMPLATES` is the label.
+          The home's template section carries the same three strings verbatim -
+          they are two views of one shelf, and the audit's C3 comparison named
+          "two copies of the same section with different words" as the reason a
+          reader cannot tell the two pages apart.
+        -->
         <div>
-          <span class="gallery-kicker">START FROM</span>
-          <h2 id="gallery-templates-title">A shape that already works</h2>
+          <span class="gallery-kicker">TEMPLATES</span>
+          <h2 id="gallery-templates-title">Start from a working example</h2>
+          <p class="gallery-lede">Click one to copy it onto the canvas as a new workflow.</p>
         </div>
         <div class="gallery-heading-aside">
           <p v-if="pricingProblem" class="gallery-notice" role="status">
@@ -656,6 +701,22 @@ const orderedLibrary = computed(() =>
                 </dd>
               </div>
             </dl>
+
+            <!--
+              WHAT THE CLICK DOES, on the card itself (ROUND-2 X2's rule that
+              every card names its action).
+
+              A `<span>`, not a `<button>`: the whole card IS the button, and a
+              button inside a button is invalid HTML that no browser fixes the
+              way you meant. So this is a label ON the affordance rather than a
+              second affordance - it names the action, the card takes the press,
+              and it reads as the last words of the card's accessible name,
+              which is exactly where "Use this template" belongs.
+            -->
+            <span class="template-action">
+              Use this template
+              <ArrowRight :size="13" aria-hidden="true" />
+            </span>
           </button>
         </li>
       </ul>
@@ -724,6 +785,11 @@ const orderedLibrary = computed(() =>
                   </dd>
                 </div>
               </dl>
+
+              <span class="template-action">
+                Use this template
+                <ArrowRight :size="13" aria-hidden="true" />
+              </span>
             </button>
           </li>
         </ul>
@@ -752,8 +818,13 @@ const orderedLibrary = computed(() =>
   margin-bottom: 14px;
 }
 
-.gallery-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.gallery-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .gallery-heading h2 { margin: 4px 0 0; font-size: 17px; }
+
+/* The sentence that says what a click does. Under the heading rather than on
+   each card: it is true of every card, and 9 copies of one sentence is 9 places
+   for it to go stale. */
+.gallery-lede { margin: 4px 0 0; max-width: 56ch; color: var(--text-muted); font-size: var(--fs-12); }
 .gallery-notice { display: inline-flex; gap: 6px; align-items: center; margin: 0; color: var(--warn-text); font-size: var(--fs-11); }
 .gallery-heading-aside { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; }
 .gallery-import { min-height: 32px; padding: 0 12px; font-size: var(--fs-12); }
@@ -792,6 +863,22 @@ const orderedLibrary = computed(() =>
 }
 
 .template-card:hover { background: var(--surface-raised); border-color: var(--border-hover); }
+
+/* The card's own action. `margin-top: auto` pins it to the bottom of a
+   `flex-direction: column` card, so the row lines up across cards of different
+   heights - the four blurbs are not the same length and a floating action reads
+   as four different controls. */
+.template-action {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 4px;
+  color: var(--on-accent-cyan);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+}
+
+.template-card:hover .template-action { color: var(--text-title); }
 
 .template-spine {
   padding: 6px 0;
@@ -966,11 +1053,11 @@ const orderedLibrary = computed(() =>
 
 .status-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); }
 .status-pill.is-draft { color: var(--text-muted); background: var(--surface-raised); }
-.status-pill.is-published { color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
+.status-pill.is-published { color: var(--on-accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
 /* Same weight and shape as the status pill beside it - it is a status too,
    about a different version. Cyan rather than mint so "live, and it is not
    what you are editing" reads as distinct from "this head is published". */
-.live-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
+.live-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); color: var(--on-accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
 
 /* The row's four actions (D-15-15). `auto` in the row's own grid, so the name
    keeps every pixel the actions do not need.
@@ -983,6 +1070,26 @@ const orderedLibrary = computed(() =>
    second thing to keep in step: a separator, a real gap, and the error colour
    AT REST rather than only on hover. */
 .library-actions { display: inline-flex; gap: 2px; align-items: center; }
+/* The row's named action, in the same colour and weight `.template-action`
+   uses on every template card, so the two lists' actions read as one kind of
+   thing. `margin-right` puts a step between a word and the four icons rather
+   than letting it read as a fifth icon with a label. */
+.library-open-action {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  margin-right: var(--space-2);
+  padding: 0 var(--space-2);
+  color: var(--on-accent-cyan);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.library-open-action:hover { background: var(--surface-raised); }
 .library-actions-separator {
   width: 1px;
   align-self: stretch;

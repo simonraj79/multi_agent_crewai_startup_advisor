@@ -728,7 +728,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
     :data-mode="mode ?? 'design'"
     role="application"
     tabindex="0"
-    :aria-label="label ? `Build canvas for ${label}` : 'Build canvas'"
+    :aria-label="label ? `Workflow canvas for ${label}` : 'Workflow canvas'"
     @pointerdown="onPointerDown"
     @pointerup="onPointerUp"
     @pointercancel="onPointerUp"

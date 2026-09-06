@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import type { Edge, Node } from '@vue-flow/core'
 import { MOCK_GRAPH } from '../data/mockGraph'
+import { DOCUMENT_ID_PATTERN } from '../types/builder'
 import { scopedKey } from '../data/identityStorage'
 import type { StorageIdentity } from '../data/identityStorage'
 import { studioApi, type ConnectionStatus, type GatesMode, type LogFormat, type StudioApiLike, type TransportMode } from '../services/studioApi'
@@ -154,6 +155,12 @@ const DEFAULT_WORKFLOW_ID = 'idea-validator'
 /** What both built-in workflows call their request input. `BUILTIN_WORKFLOW_INPUT_FIELDS`. */
 const DEFAULT_INPUT_FIELD = 'idea'
 /**
+ * The example the built-in validator opens with, and the ONE workflow it is
+ * about (RV4 follow-up 5). Named rather than inlined so the condition that
+ * guards it is readable at the site that seeds the box.
+ */
+export const VALIDATOR_EXAMPLE_IDEA = 'An AI tool that turns Figma files into production React'
+/**
  * The refresh-recovery pointer and the session id it was launched under. Both
  * are keyed to the signed-in user when there is one (`u:<id>:` in front;
  * `identityStorage.ts`, D-01-5). Exported so `tests/identityStorage.spec.ts`
@@ -168,6 +175,136 @@ export const ACTIVE_RUN_STORAGE_KEY = 'validator-active-run'
  * the loss is visible in the graph instead of silently disappearing.
  */
 export const QUARANTINE_NODE_ID = 'unattributed'
+
+/**
+ * Who this console is about, read off the run's OWN descriptor (item 55, R1).
+ *
+ * Every identity surface - the breadcrumb, the tab title, the canvas kicker and
+ * heading, the WORKFLOW well, the input label and the report's kicker - used to
+ * key on the `builder-run-handoff` record, which ONLY the publish dialog's
+ * "Run it" writes. A run reached any other way (the test panel, the Run switch,
+ * a restored pointer) therefore had no handoff and fell through to the
+ * validator's own wording: RV2 measured a finished `News to social post` run
+ * drawn as `RUN - BUILT IN / Evidence pipeline / Idea Validator / IDEA TO
+ * VALIDATE` on 2026-09-06. The handoff is a navigation record; the descriptor
+ * is the workflow, and the workflow is what the reader is looking at.
+ *
+ * MEASURED, not inferred, against `GET /api/workflows/{id}/graph` on the
+ * synthetic backend at :8111 on 2026-09-06 (`docs/ux-shell/evidence/R1/`):
+ *
+ *   builder    id "ug_a96d869d"   name "News to social post"
+ *              start_nodes ["subject"]
+ *              node subject -> { kind: "start", label: "Subject" }
+ *   validator  id "idea-validator" name "Idea Validator"
+ *              start_nodes ["scope_idea"]
+ *              node scope_idea -> { kind: "agent", label: "Scoper" }
+ *              kinds present: agent, gate, output, quarantine, router - NO start
+ *
+ * So two facts carry the whole of this, and both are the server's:
+ *
+ *   1. A builder graph registers under its own DOCUMENT id
+ *      (`builder/descriptor.py::builder_workflow_id` returns `document.id`) and
+ *      `BUILDER_DOCUMENT_ID_PATTERN` is `^ug_[0-9a-f]{8}$`, which neither
+ *      built-in id can match. That is the whole test for "somebody drew this",
+ *      and it is also the document id the Build switch needs (R3).
+ *   2. An AUTHORED input node is the only thing that projects to
+ *      `kind: "start"` (`DESCRIPTOR_KINDS` in the same file), and its `label`
+ *      is the word the author typed on the card. That is the input label.
+ *
+ * WHAT THE DESCRIPTOR DOES NOT CARRY IS THE INPUT FIELD KEY. `GraphDescriptor`
+ * is `extra="forbid"` over id / name / version / start_nodes / nodes / edges
+ * (`service/models.py:116`) and every builder node came back with
+ * `metadata: {}`, so `inputs.subject` is nowhere in this document. The key is
+ * passed in instead, from the run's own launch contract - the handoff at launch
+ * or `StoredRunContext.inputField` on a restore - which is the same value the
+ * POST used and therefore cannot disagree with the run on screen. It is only a
+ * FALLBACK for the label; the author's own node label wins.
+ *
+ * `workflowId` rather than `descriptor.id` decides `authored`, because the
+ * descriptor is `MOCK_GRAPH` until the first read resolves and the workflow id
+ * is known synchronously at construction. `served` is the guard that stops a
+ * not-yet-loaded (or refused) descriptor lending the validator's NAME to
+ * somebody else's graph.
+ */
+export interface WorkflowIdentity {
+  /** Somebody drew this workflow; it is not one of the two built-ins. */
+  authored: boolean
+  /** The workflow's name, or '' while the descriptor for it has not arrived. */
+  name: string
+  /** The canvas kicker: which of the two modes, and whose workflow it is. */
+  kicker: string
+  /** The canvas heading's own line, under the kicker. */
+  title: string
+  /** The label over the input box, as the author named the input. */
+  inputLabel: string
+}
+
+/** The one place the built-in validator's own second line is spelled. */
+const VALIDATOR_SUBTITLE = 'Evidence pipeline'
+/** The label the built-in validator has always given its input box. */
+const VALIDATOR_INPUT_LABEL = 'IDEA TO VALIDATE'
+
+export function workflowIdentity(
+  descriptor: GraphDescriptor,
+  workflowId: string,
+  inputField: string,
+  /**
+   * A name to show while the descriptor for this workflow has not arrived: the
+   * handoff's copy, which is the one thing it is genuinely for. Never allowed
+   * to override the served name.
+   */
+  provisionalName = '',
+): WorkflowIdentity {
+  const authored = DOCUMENT_ID_PATTERN.test(workflowId)
+  const served = descriptor.id === workflowId ? descriptor : null
+  // The third fallback is deliberately EMPTY for an authored graph rather than
+  // `descriptor.name`: `MOCK_GRAPH` is the validator, and a tick of "Idea
+  // Validator" over somebody else's graph is the defect this function exists
+  // to remove, not a nicety. A blank crumb for one frame is honest.
+  const name = served?.name || provisionalName || (authored ? '' : descriptor.name)
+
+  // The author's own input card, found through `start_nodes` so a stray node of
+  // kind `start` elsewhere in a graph could never be mistaken for the input.
+  const inputNode = served?.start_nodes
+    .map((id) => served.nodes.find((node) => node.id === id))
+    .find((node) => node?.kind === 'start')
+
+  return {
+    authored,
+    name,
+    kicker: authored ? 'RUN — YOUR WORKFLOW' : 'RUN — BUILT IN',
+    title: authored
+      ? name
+      : workflowId === DEFAULT_WORKFLOW_ID
+        ? VALIDATOR_SUBTITLE
+        : served?.name || name,
+    /*
+     * THE FALLBACK IS THE FIELD'S OWN NAME, AND NOTHING ELSE (RV4 follow-up 4).
+     *
+     * It read `${field} TO RUN`, echoing the validator's `IDEA TO VALIDATE`
+     * shape. Two costs, and the second is the one that was measured. It is a
+     * phrase nobody wrote: the author typed `subject` on the input card and the
+     * label said `SUBJECT TO RUN`. And it is reached for exactly as long as the
+     * descriptor takes to arrive, so the label CHANGED under the reader -
+     * sampled on the publish dialog's `Run it now` route, `SUBJECT TO RUN` at
+     * +71 ms and `SUBJECT` at +98 ms, a race an E2E snapshot can land on either
+     * side of.
+     *
+     * The field name alone is the same word the settled label shows whenever the
+     * author named the card after the field, which is the common case, so the
+     * flash disappears rather than being made quieter. Where they differ the
+     * label still SETTLES to the author's own word - the descriptor still wins -
+     * and what shows meanwhile is a name off the run's own launch contract
+     * rather than an invented sentence.
+     */
+    inputLabel: inputNode?.label
+      ? inputNode.label.toUpperCase()
+      : authored
+        ? inputField.replaceAll('_', ' ').toUpperCase()
+        : VALIDATOR_INPUT_LABEL,
+  }
+}
+
 
 /**
  * How long a traversal keeps marching after its `edge_taken` frame. Every edge
@@ -306,7 +443,29 @@ export function useValidatorRun(
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
   const workflowId = ref(storedAtLoad?.workflowId ?? options.workflowId ?? DEFAULT_WORKFLOW_ID)
   const inputField = ref(storedAtLoad?.inputField ?? options.inputField ?? DEFAULT_INPUT_FIELD)
-  const idea = ref('An AI tool that turns Figma files into production React')
+  /**
+   * THE EXAMPLE IDEA BELONGS TO THE VALIDATOR, AND TO NOTHING ELSE
+   * (RV4 follow-up 5).
+   *
+   * It was seeded unconditionally, so an idle console for an authored workflow
+   * opened with a box labelled `SUBJECT` holding "An AI tool that turns Figma
+   * files into production React" - a sentence about the built-in validator's
+   * subject, over somebody else's workflow, with Run pointed at it. Measured on
+   * a fresh console for a published `News to social post`. R2 governs the value
+   * after a run, so the row could not see this; it is the same class of
+   * confusion R1 and R2 exist to remove.
+   *
+   * The predicate is the WORKFLOW, not the input field. A built-in workflow the
+   * product ships may fairly show an example of the thing it is for; anything
+   * else - an authored graph, and `brief-flow` too - starts empty with its own
+   * placeholder, because the product has no idea what that workflow is about
+   * and guessing reads as a value the author left there.
+   *
+   * An empty box means `canLaunch` is false on arrival, which is correct and
+   * already explained: the counter under the box states the minimum and says
+   * why the button is dead (item 11).
+   */
+  const idea = ref(workflowId.value === DEFAULT_WORKFLOW_ID ? VALIDATOR_EXAMPLE_IDEA : '')
   /**
    * Who answers the two gates. `human` pauses at both; `auto` runs the whole
    * pipeline unattended.
@@ -672,15 +831,32 @@ export function useValidatorRun(
   )
 
   /**
-   * The single place a run status is written. A run that has reached a terminal
-   * state must not be restored again on the next page load, so the saved
-   * pointer is dropped the moment it lands there.
+   * The single place a run status is written.
+   *
+   * IT NO LONGER DROPS THE POINTER (item 58, ROUND-2 R4). It did, the instant a
+   * run reached a terminal state, and the consequence is the one item 58
+   * measures: a synthetic builder run is over in ~115 ms and the pointer lived
+   * 30-40 ms, so a FINISHED RUN COULD NOT BE REOPENED FROM ANYWHERE - not from
+   * the home, not by a reload, not by a URL. `RunHistory` offers a download and
+   * no route carries a run id, so the report, the verdict and the whole trace
+   * were reachable for as long as nobody navigated.
+   *
+   * Three things replace or remove it now, all of them deliberate acts rather
+   * than a side effect of a run ending: the next `launch` overwrites it,
+   * `forgetRun` is called when the operator asks to leave this workflow, and
+   * `identityStorage.forgetIdentity` sweeps it on sign-out. `restoreRun` still
+   * drops a pointer the SERVER can no longer serve, which is a different fact
+   * about a different problem.
+   *
+   * The home is what keeps this from becoming a console that reopens a stale
+   * result forever - the reason the old line gave for existing. `D2` reads the
+   * pointer's status: `live` hands over to the console, `terminal` shows a
+   * "Last run" card and stays put. So the run is offered rather than imposed.
    */
   function setStatus(next: RunStatus): void {
     const wasTerminal = TERMINAL_STATUSES.includes(status.value)
     status.value = next
     if (!TERMINAL_STATUSES.includes(next)) return
-    clearStoredRun(identity())
     // Nothing further will stream, so no traversal should still be marching.
     clearEdgeAnimations()
     // The terminal frame settles the console: the recede lifts (`isReceded`
@@ -722,7 +898,7 @@ export function useValidatorRun(
       const sentence = error instanceof Error ? error.message : ''
       descriptor.value = emptyGraph(workflowId.value)
       resetNodes()
-      graphProblem.value = sentence || api.probeRefusal || 'The graph could not be loaded.'
+      graphProblem.value = sentence || api.probeRefusal || 'The workflow could not be loaded.'
     }
 
     if (!storedRun) return
@@ -788,14 +964,17 @@ export function useValidatorRun(
     try {
       const snapshot = await api.getRun(context.runId)
       if (TERMINAL_STATUSES.includes(snapshot.status)) {
-        // Refresh recovery exists for a run that is still in flight. A finished
-        // one is history: drop the pointer so the next load starts clean rather
-        // than re-opening the same stale result forever.
+        // A FINISHED RUN IS REOPENED, AND ITS POINTER IS KEPT (item 58, R4).
         //
-        // The report is the exception. It is what the operator came back for,
-        // and the already-cleared pointer bounds how long it can linger - this
-        // shows the conclusion once, not forever.
-        clearStoredRun(identity())
+        // This branch used to drop the pointer here as well, on the argument
+        // that a finished run is history and the next load should start clean.
+        // What that produced is the defect: the console was the ONLY place a
+        // run's report, verdict and trace existed, and the moment it reached a
+        // terminal state they became unreachable from anywhere. The home now
+        // decides instead - it reads the pointer's status and offers a "Last
+        // run" card for a terminal one rather than handing over - so "clean
+        // start" is a choice the reader makes, one click, and this is the
+        // screen that choice arrives at.
         resetRun()
         runId.value = context.runId
         // Replay the frames, do not merely take the result.
@@ -819,15 +998,14 @@ export function useValidatorRun(
           // still the thing the operator came back for.
         }
         captureResult(snapshot.result)
-        // Re-open ONLY if there is something to show. A finished run whose
-        // report has aged out leaves a dead graph under a "completed" badge and
-        // nothing to read, which is worse than the clean console the operator
-        // would otherwise get - so in that case the original contract stands
-        // and the run is dropped as history.
-        if (!report.value) {
-          resetRun()
-          return
-        }
+        // Re-opened whether or not there is a REPORT. It used to reset here on
+        // an empty one, which read as "there is nothing to show" and was wrong
+        // twice: a cancelled run has no report and a trace worth reading, and
+        // the home now names this run on a card before the reader clicks - so
+        // landing on a blank console would be the card lying. What is shown
+        // when the body has aged out is the run's status, its usage and every
+        // frame that survived, which is what the operator came back for
+        // minus the part the server no longer has.
         Object.assign(usage, snapshot.usage)
         setStatus(snapshot.status)
         return
@@ -1093,11 +1271,32 @@ export function useValidatorRun(
    * Only the opening frame carries `inputs` - the terminal one carries
    * `result` - and only a non-empty string is taken, so a malformed frame
    * leaves whatever the operator has typed alone.
+   *
+   * IT READS THE GRAPH'S OWN INPUT KEY, NOT THE LITERAL `idea` (item 56,
+   * ROUND-2 R2). The key was hardcoded, which is item 11's own defect met
+   * again one graph over: a `News to social post` run is launched under
+   * `inputs.subject`, so `inputs.idea` was `undefined`, nothing was recovered,
+   * and the box showed the Figma default over a run about something else -
+   * with Relaunch pointed at it. Measured on 2026-09-06 before the fix: a
+   * finished `subject` run reloaded to "An AI tool that turns Figma files into
+   * production React".
+   *
+   * `inputField` is the right key and cannot disagree with the run on screen,
+   * because it is the same value the POST used: `launch` writes it into
+   * `StoredRunContext` beside the run id, and `initialize` takes BOTH back
+   * together or neither. A context written before that field existed reads
+   * `idea` through `DEFAULT_INPUT_FIELD`, which is what every such run was
+   * actually launched with.
+   *
+   * There is deliberately NO fallback to `idea` for an authored graph. A
+   * builder document may carry a state key called `idea` for its own reasons,
+   * and putting that in the box under a label saying `SUBJECT` would be a
+   * worse lie than an empty recovery.
    */
   function recoverIdea(frame: FrameData): void {
     const inputs = frame.details.inputs
     if (typeof inputs !== 'object' || inputs === null) return
-    const recovered = (inputs as Record<string, unknown>).idea
+    const recovered = (inputs as Record<string, unknown>)[inputField.value]
     if (typeof recovered !== 'string' || !recovered.trim()) return
     idea.value = recovered
   }
@@ -1616,6 +1815,20 @@ export function useValidatorRun(
     lastError.value = ''
   }
 
+  /**
+   * Put this run down deliberately (item 58, R4).
+   *
+   * The pointer survives a run ending now, so the one thing that used to clear
+   * it by accident has to be done on purpose. The caller is the console's
+   * "back to the built-in validator" control: it reloads the page, and a
+   * surviving pointer at a builder workflow would have `initialize` restore
+   * that run and repoint the console straight back at the graph the operator
+   * just asked to leave.
+   */
+  function forgetRun(): void {
+    clearStoredRun(identity())
+  }
+
   function resetRun(): void {
     unsubscribe?.()
     unsubscribe = undefined
@@ -1709,6 +1922,7 @@ export function useValidatorRun(
     primaryLabel,
     initialize,
     launch,
+    forgetRun,
     submitGate,
     cancel,
     resumeFrom,

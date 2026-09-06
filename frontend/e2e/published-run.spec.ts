@@ -76,7 +76,7 @@ test.describe('a published graph in the run console', () => {
     // "Run it" is the control the dialog offers, and it is the path a person
     // takes: it writes the handoff and navigates. Taking it rather than
     // building a URL is what makes this a test of the product.
-    await page.getByRole('button', { name: 'Run it' }).click()
+    await page.getByRole('button', { name: 'Run it now' }).click()
     await expect(page.locator('.handoff-banner')).toBeVisible({ timeout: 20_000 })
     await expect(page.locator('.workflow-node')).toHaveCount(TEMPLATE.nodes)
 
@@ -132,7 +132,7 @@ test.describe('a published graph in the run console', () => {
   }) => {
     test.setTimeout(240_000)
     await publishTemplate(page)
-    await page.getByRole('button', { name: 'Run it' }).click()
+    await page.getByRole('button', { name: 'Run it now' }).click()
     await expect(page.locator('.handoff-banner')).toBeVisible({ timeout: 20_000 })
 
     const review = page.getByRole('button', { name: 'Review', exact: true })

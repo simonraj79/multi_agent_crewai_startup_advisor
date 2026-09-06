@@ -175,7 +175,7 @@ function tooltipFor(kind: NodeKind): string {
   if (!atBillableCeiling.value) return NODE_KINDS[kind].blurb
   // The bound is named, because "you cannot add another" without the name of
   // the rule is an editor asserting authority it will not explain.
-  return `max_billable_nodes is ${billableMax.value}; this graph already has ${billableUsed.value}.`
+  return `max_billable_nodes is ${billableMax.value}; this workflow already has ${billableUsed.value}.`
 }
 
 /**
@@ -284,7 +284,7 @@ function place(kind: NodeKind): void {
 </script>
 
 <template>
-  <aside class="builder-palette" :class="{ 'is-read-only': readOnly }" aria-label="Node palette and saved graphs">
+  <aside class="builder-palette" :class="{ 'is-read-only': readOnly }" aria-label="Node palette and saved workflows">
     <header class="builder-palette-head">
       <span class="builder-palette-kicker">PALETTE</span>
       <h2>Kinds</h2>
@@ -441,9 +441,9 @@ function place(kind: NodeKind): void {
     </div>
 
     <header class="builder-palette-head builder-palette-head-library">
-      <span class="builder-palette-kicker">LIBRARY</span>
+      <span class="builder-palette-kicker">YOUR WORKFLOWS</span>
       <div class="builder-library-headline">
-        <h2>Saved graphs</h2>
+        <h2>Saved here</h2>
         <!--
         HOW MANY THERE ARE (D-15-4, round 2). The list scrolls, and 87px of
         it are on screen at 1440x900 - so the second row's card was cut at
@@ -464,7 +464,7 @@ function place(kind: NodeKind): void {
       </div>
     </header>
 
-    <p v-if="library.length === 0" class="builder-palette-empty">No saved graphs yet</p>
+    <p v-if="library.length === 0" class="builder-palette-empty">Nothing saved yet</p>
 
     <ul v-else class="builder-library">
       <li v-for="entry in library" :key="entry.id">

@@ -94,7 +94,7 @@ const cycleBound = computed(() => props.vocabulary.bounds.max_cycle_iterations)
       :node-id="id"
       :used="messageDraft.length"
       :max="vocabulary.bounds.max_gate_message_chars"
-      help="What the operator reads while the run is paused. The only string in this document written for them rather than for you."
+      help="What the operator reads while the run is paused. The only string in this workflow written for them rather than for you."
       v-slot="row"
     >
       <textarea

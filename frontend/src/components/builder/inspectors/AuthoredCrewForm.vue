@@ -259,7 +259,7 @@ const advancedForced = computed(() => {
         { value: 'sequential', word: 'sequential' },
         { value: 'hierarchical', word: 'hierarchical' },
       ]"
-      help="Sequential runs each member's task in the order below. Hierarchical gives the crew a manager that decides who does what, and CrewAI refuses to construct one without a manager - which on a graph means after every upstream node has billed."
+      help="Sequential runs each member's task in the order below. Hierarchical gives the crew a manager that decides who does what, and CrewAI refuses to construct one without a manager - which on a workflow means after every upstream node has billed."
       @commit="commitProcess"
     />
 
@@ -454,7 +454,7 @@ const advancedForced = computed(() => {
         :model-value="config.max_iter"
         :min="1"
         :max="bounds.max_agent_iter"
-        help="Accepted by the schema and ignored at run time - run_crew runs the crew whole. It round-trips so a save does not change the document, and it is still what the budget prices this node's calls at."
+        help="Accepted by the schema and ignored at run time - run_crew runs the crew whole. It round-trips so a save does not change the workflow, and it is still what the budget prices this node's calls at."
         @commit="commit({ max_iter: $event ?? 1 }, 'Set iteration ceiling')"
       />
 

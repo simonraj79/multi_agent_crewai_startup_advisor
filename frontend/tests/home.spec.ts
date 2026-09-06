@@ -1,9 +1,10 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomeView from '../src/views/HomeView.vue'
-import { PRODUCT_NAME } from '../src/data/brand'
+import { PRODUCT_NAME, PRODUCT_SENTENCE } from '../src/data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../src/data/builderTemplates'
 import { HANDOFF_KEY, writeRunHandoff } from '../src/data/builderRunHandoff'
+import { takeRevealHistory } from '../src/components/RunHistory.vue'
 import { scopedKey } from '../src/data/identityStorage'
 import { ACTIVE_RUN_STORAGE_KEY } from '../src/composables/useValidatorRun'
 import { studioApi } from '../src/services/studioApi'
@@ -173,6 +174,51 @@ describe('the home lists every workflow this account can open', () => {
     expect(document.title).toBe(PRODUCT_NAME)
   })
 
+  /* ── ROUND-2 X1 and X2: what this page IS, and what its cards do ─────────
+   *
+   * Three assertions over three findings the audit measured on `8d17209`, and
+   * each fails on the state it was written for rather than on a paraphrase:
+   * H1 (no product sentence anywhere on the signed-in home), N1 (the same
+   * object called `graph` here and `workflow` one route away) and ruling 4 (a
+   * template card whose click had an unstated effect).
+   */
+
+  it('says what the product is, under the brand, from the one constant', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    expect(wrapper.get('[data-testid="product-sentence"]').text()).toBe(PRODUCT_SENTENCE)
+  })
+
+  it('names the template shelf and says what a click does', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    const text = wrapper.text()
+    expect(text).toContain('TEMPLATES')
+    expect(text).toContain('Start from a working example')
+    expect(text).toContain('Click one to copy it onto the canvas as a new workflow.')
+    // The words it replaced. `A shape that already works` is a good sentence
+    // and was a bad label: it names no category, which is the whole of N4.
+    expect(text).not.toContain('START FROM')
+    expect(text).not.toContain('A shape that already works')
+  })
+
+  it('gives every template card the action its click performs', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    const actions = wrapper.findAll('[data-testid="home-templates"] .home-card-action')
+    expect(actions).toHaveLength(9)
+    for (const action of actions) expect(action.text()).toContain('Use this template')
+  })
+
+  it('calls the thing a person makes a workflow, and never a graph', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    expect(wrapper.text()).toContain('YOUR WORKFLOWS')
+    // Case-insensitive and word-anchored: `GraphThumbnail`'s class names are
+    // not on screen, and the point is the noun a reader sees.
+    expect(wrapper.text()).not.toMatch(/\bgraphs?\b/i)
+  })
+
   it('says so, and stays a list, when the saved graphs cannot be read', async () => {
     vi.stubGlobal(
       'fetch',
@@ -296,5 +342,109 @@ describe('the home hands the console back what it was doing (D2)', () => {
     const wrapper = mountHome(false)
     await settle(12)
     expect(wrapper.emitted('resume')).toBeUndefined()
+  })
+})
+
+/*
+ * EVERY CARD NAMES ITS ACTION, AND THE HOME MENTIONS RUNS - item 3, ROUND-2 X2,
+ * AUDIT-R2 H2 and the Q1/Q5 failures behind it.
+ *
+ * Measured on `8d17209`: a card was a mystery target you learned by clicking,
+ * the LAST RUN strip read `LAST RUN / Finished / Open it` - three lines that
+ * say a run happened and never what it was about - and after two finished runs
+ * the page mentioned runs nowhere else at all.
+ */
+describe('the home names what each card does, and how to get back to a run', () => {
+  /** A pointer for a specific workflow, which the plain helper does not take. */
+  function storePointerFor(workflowId: string, runId = 'run-1'): void {
+    window.localStorage.setItem(
+      scopedKey(ACTIVE_RUN_STORAGE_KEY, null),
+      JSON.stringify({ version: 1, runId, sessionId: 'sess-1', workflowId }),
+    )
+  }
+
+  it('names the workflow on the last-run card, and keeps the state beside it', async () => {
+    storePointerFor('idea-validator')
+    runStatus = 'completed'
+    const wrapper = mountHome()
+    await settle(12)
+
+    const card = wrapper.get('.home-last-run')
+    expect(card.get('h2').text()).toBe(MOCK_GRAPH.name)
+    // Not instead of: `Finished` is the other half of what this card says.
+    expect(card.text()).toContain('Finished')
+  })
+
+  it('names a SAVED workflow on that card, from the library it already fetched', async () => {
+    storePointerFor(SAVED[0].id)
+    runStatus = 'completed'
+    const wrapper = mountHome()
+    await settle(14)
+
+    expect(wrapper.get('.home-last-run h2').text()).toBe(SAVED[0].name)
+    // No extra request: the name came off `GET /api/builder/workflows`, which
+    // this page reads for the list anyway.
+    expect(asked.filter((url) => url.includes(`/api/runs/`))).toHaveLength(1)
+  })
+
+  it('falls back to a heading that is true when the workflow cannot be named', async () => {
+    storePointerFor('ug_deleted0')
+    runStatus = 'completed'
+    const wrapper = mountHome()
+    await settle(14)
+
+    expect(wrapper.get('.home-last-run h2').text()).toBe('Your last run')
+    expect(wrapper.get('.home-last-run').text()).toContain('Finished')
+  })
+
+  it('gives the built-in card and every saved card the action its click performs', async () => {
+    const wrapper = mountHome(false)
+    await settle(12)
+
+    expect(wrapper.get('[data-testid="home-validator"] .home-card-action').text())
+      .toContain('Run')
+    const saved = wrapper.findAll('[data-testid="home-library"] .home-card-action')
+    expect(saved).toHaveLength(SAVED.length)
+    for (const action of saved) expect(action.text()).toContain('Open in Build')
+  })
+
+  it('offers Run on a PUBLISHED saved workflow and on no other', async () => {
+    const wrapper = mountHome(false)
+    await settle(14)
+
+    // SAVED[0] is published; SAVED[1] is a draft, and a run resolves a
+    // REGISTERED version, so a Run there would answer 404.
+    expect(wrapper.find(`[data-testid="home-run-${SAVED[0].id}"]`).exists()).toBe(true)
+    expect(wrapper.find(`[data-testid="home-run-${SAVED[1].id}"]`).exists()).toBe(false)
+  })
+
+  it('writes the same handoff the builder writes, with the graph\u2019s own input key', async () => {
+    const wrapper = mountHome(false)
+    await settle(14)
+
+    await wrapper.get(`[data-testid="home-run-${SAVED[0].id}"]`).trigger('click')
+
+    const raw = window.sessionStorage.getItem(scopedKey(HANDOFF_KEY, null))
+    expect(raw, 'pressing Run wrote no handoff').not.toBeNull()
+    const handoff = JSON.parse(raw as string) as Record<string, string>
+    expect(handoff.workflowId).toBe(SAVED[0].id)
+    expect(handoff.name).toBe(SAVED[0].name)
+    // Not the literal `idea`: the key is the document's own, which is why the
+    // action waits for the document rather than firing off the summary.
+    expect(handoff.inputField).toBe(emptyDocument().input_field)
+    expect(wrapper.emitted('run')).toHaveLength(1)
+  })
+
+  it('has a Run history link that asks the console to show the list, once', async () => {
+    const wrapper = mountHome(false)
+    await settle(12)
+
+    await wrapper.get('[data-testid="home-run-history"]').trigger('click')
+    expect(wrapper.emitted('run')).toHaveLength(1)
+
+    // One shot, so a reload of `#/run` does not scroll a reader away from a run
+    // they are watching. `RunHistory.vue` owns both halves of the note.
+    expect(takeRevealHistory()).toBe(true)
+    expect(takeRevealHistory()).toBe(false)
   })
 })

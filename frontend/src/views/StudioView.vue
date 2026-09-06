@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, watchEffect } from 'vue'
 import { Background } from '@vue-flow/background'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Activity, ChevronLeft, ChevronRight, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
@@ -10,18 +10,19 @@ import CrewProgress from '../components/CrewProgress.vue'
 import DialogueRail from '../components/DialogueRail.vue'
 import GateCard from '../components/GateCard.vue'
 import ReportPanel from '../components/ReportPanel.vue'
-import RunHistory from '../components/RunHistory.vue'
+import RunHistory, { takeRevealHistory } from '../components/RunHistory.vue'
 import StatusPanel from '../components/StatusPanel.vue'
 import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
 import { useCanvasTool } from '../composables/useCanvasTool'
-import { useValidatorRun } from '../composables/useValidatorRun'
+import { useValidatorRun, workflowIdentity } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
 import { pageTitle } from '../data/brand'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 import type { SignedInUser } from '../composables/useAuthGate'
 import type { RunStatus } from '../types/studio'
+import type { DocumentId } from '../types/builder'
 
 /**
  * The run console, moved out of `App.vue` unchanged.
@@ -45,7 +46,17 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** The breadcrumb's first crumb: back to the list of every workflow. */
   home: []
-  build: []
+  /**
+   * Draw this workflow: the mode switch's other half.
+   *
+   * It CARRIES THE DOCUMENT now (item 57, ROUND-2 R3). It used to be a bare
+   * `build: []` and `App.vue` answered it with `documentId: null`, so pressing
+   * Build while running a graph somebody drew landed on the gallery rather
+   * than on that graph - the switch is the mode pair of one workflow, and one
+   * of its two halves forgot which workflow. `null` is still the honest answer
+   * for the built-in validator, which has no builder document behind it.
+   */
+  build: [documentId: DocumentId | null]
   signOut: []
 }>()
 
@@ -90,41 +101,14 @@ const flow = useVueFlow('studio-flow')
  */
 const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 0.9 }
 
-/**
- * The workflow this console is pointed at, by name.
- *
- * `descriptor.name` is the graph it is ACTUALLY drawing, and after a builder
- * handoff that is the author's own workflow; the handoff carries the name so
- * the breadcrumb is right before the descriptor has arrived. This is the second
- * crumb, and it is what `document.title` reads.
- */
-const workflowName = computed(() => handoff.value?.name || descriptor.value.name)
-
-/**
- * What the canvas heading says.
- *
- * THE KICKER IS THE MODE, NOT THE GRAPH (`docs/ux-shell/DEFINITION-OF-DONE.md`
- * U4). It read `FIXED VALIDATOR GRAPH` / `PUBLISHED GRAPH`, which is three
- * vocabularies in two strings - `fixed`, `published` and `graph` - for a
- * distinction the reader has already been told twice by the time they reach it:
- * the breadcrumb above names the workflow and the handoff strip names the
- * publication. What the heading has to say that nothing else does is which of
- * the two modes of that workflow is on screen, and the pair is Build and Run.
- * The second clause keeps the one fact the old strings carried that is not said
- * elsewhere - whether this is the built-in workflow or one somebody drew - in
- * the same words the home page uses for it.
- *
- * `canvasTitle` still falls back to the validator's own wording verbatim, which
- * is the only thing this console could draw before the builder existed.
- */
-const canvasKicker = computed(() => (handoff.value ? 'RUN — YOUR WORKFLOW' : 'RUN — BUILT IN'))
-const canvasTitle = computed(() =>
-  handoff.value ? handoff.value.name || descriptor.value.name : 'Evidence pipeline',
-)
-
 
 const {
   descriptor,
+  // The workflow this console is pointed at, and the `inputs` key its launch
+  // must carry. Both are the composable's own state - seeded from the handoff
+  // or from the stored run context - and both feed `workflowIdentity` above.
+  workflowId,
+  inputField,
   idea,
   gatesMode,
   status,
@@ -166,6 +150,9 @@ const {
   castFor,
   initialize,
   launch,
+  // The run pointer survives a run ending now (item 58, R4), so leaving this
+  // workflow has to put it down deliberately - see `backToValidator`.
+  forgetRun,
   submitGate,
   cancel,
   resumeFrom,
@@ -181,17 +168,60 @@ const {
 })
 
 /**
+ * WHO THIS CONSOLE IS ABOUT — one computed, off the run's own descriptor
+ * (item 55, ROUND-2 R1).
+ *
+ * There were three computeds here and all three keyed on `handoff`, which only
+ * the publish dialog's "Run it" writes. The kicker, the canvas heading, the
+ * breadcrumb, the tab title, the WORKFLOW well, the input label and the
+ * report's kicker therefore all reverted to the validator's wording for a
+ * builder run reached by the test panel, by the Run switch or by a restored
+ * pointer — RV2 measured exactly that on 2026-09-06, and this pass reproduced
+ * it before changing anything (`evidence/R1/before-*.png`).
+ *
+ * `workflowIdentity` is pure and lives beside the composable that owns the
+ * descriptor; its docstring carries the measured JSON both rules rest on. The
+ * handoff's `name` is passed as the PROVISIONAL name and nothing else, which is
+ * the one thing it is genuinely for: it is right before the graph read
+ * resolves, and it is never allowed to override what the server served.
+ *
+ * BELOW the destructure, like the `watchEffect` under it and for the same
+ * reason — `descriptor`, `workflowId` and `inputField` are bound there.
+ */
+const identity = computed(() =>
+  workflowIdentity(descriptor.value, workflowId.value, inputField.value, handoff.value?.name ?? ''),
+)
+const workflowName = computed(() => identity.value.name)
+/**
+ * Which document the Build half of the switch opens.
+ *
+ * The workflow id and the document id are ONE string for a builder graph:
+ * `builder/descriptor.py::builder_workflow_id` returns `document.id`, and the
+ * descriptor served for a published graph carries it as its own `id` (measured
+ * 2026-09-06: `GET /api/workflows/ug_a96d869d/graph` -> `"id": "ug_a96d869d"`).
+ * So nothing has to be looked up, and nothing has to be carried in the handoff.
+ */
+const buildTarget = computed<DocumentId | null>(() =>
+  identity.value.authored ? (workflowId.value as DocumentId) : null,
+)
+const canvasKicker = computed(() => identity.value.kicker)
+const canvasTitle = computed(() => identity.value.title)
+
+/**
  * The tab's name follows the route (U4). One workflow per tab, so the workflow
  * is what names it; `pageTitle` owns the separator and the product half, and
  * `PRODUCT_NAME` is spelled in `data/brand.ts` and nowhere else.
  *
- * BELOW the destructure and not beside `workflowName`, because a `watchEffect`
- * runs its body immediately: reading `descriptor` from above the `const` that
- * binds it is a temporal dead zone, which is a blank page at runtime rather
- * than a type error. The two computeds above are lazy and so may sit there.
+ * BELOW the destructure, because a `watchEffect` runs its body immediately:
+ * reading `descriptor` from above the `const` that binds it is a temporal
+ * dead zone, which is a blank page at runtime rather than a type error. The
+ * computeds above are lazy and so may sit here.
  */
 watchEffect(() => {
-  document.title = pageTitle(workflowName.value)
+  // `|| null` rather than the empty string: `pageTitle` reads a blank name as
+  // "no workflow" and gives the product name alone, which is the right tab for
+  // the one frame before a restored builder run has its descriptor.
+  document.title = pageTitle(workflowName.value || null)
 })
 
 /**
@@ -300,6 +330,30 @@ watch(activeView, (view) => {
   if (view === 'activity') chatCollapsed.value = false
 })
 
+/**
+ * The home's `Run history` link, arriving (item 3, ROUND-2 ruling 3).
+ *
+ * The list is always rendered - it is the last block of the control rail - so
+ * "reveal" is two facts and not a new panel: the rail must be OPEN, and the
+ * list must be where the reader is looking. Below 640px the rail is an overlay
+ * and starts collapsed, which is exactly the width at which a person who
+ * pressed `Run history` would otherwise land on a console with no list on it.
+ *
+ * ONE SHOT. `takeRevealHistory` removes the note as it reads it, so a reload of
+ * `#/run` does not scroll the reader away from a run they are watching. The
+ * scroll is guarded on the method existing, because jsdom implements no layout
+ * and does not define it.
+ */
+onMounted(async () => {
+  if (!takeRevealHistory()) return
+  controlsCollapsed.value = false
+  await nextTick()
+  const heading = document.getElementById('run-history')
+  if (heading && typeof heading.scrollIntoView === 'function') {
+    heading.scrollIntoView({ block: 'nearest' })
+  }
+})
+
 /*
  * What tells the history list to refetch.
  *
@@ -361,8 +415,48 @@ const handoffBannerShown = computed(
   () => handoff.value !== null && !TERMINAL_RUN_STATUSES.includes(status.value),
 )
 
+/**
+ * THE HANDOFF IS CONSUMED THE MOMENT ITS RUN IS CREATED (RV4 follow-up 1).
+ *
+ * It is a navigation record - "the builder is sending you to this workflow" -
+ * and it was outliving the navigation. `homeResumesConsole` reads a present
+ * handoff as "resume", so after finishing a run reached by `Run it now` or by
+ * the Run switch, `#/` handed straight back to the console and R4's own Last-run
+ * card was unreachable. Measured, two arms, one variable
+ * (`docs/ux-shell/evidence/r2/R4/home-handoff-arms.json`): with the record
+ * present `#/` became `#/run` and no card rendered; with it cleared the card was
+ * there. The suite could not see it - `console-identity.spec.ts`'s home arm
+ * launches from `#/run`, so it never has a handoff at all.
+ *
+ * Clearing it here is safe because everything that read it has a better source
+ * once a run exists: `workflowIdentity` reads the run's own DESCRIPTOR (R1), and
+ * a reload restores `workflowId` and `inputField` from `StoredRunContext`, which
+ * is the same pair the POST used. What the handoff is still for is the state
+ * BEFORE a launch, and that state is untouched: an author who arrives and does
+ * not press Run keeps the record, keeps the banner and keeps the workflow.
+ *
+ * `handoff` the REF is deliberately not nulled, so the banner behaves exactly as
+ * it did - up while the launch is a live prospect, down at the terminal frame.
+ * Only the durable record goes.
+ *
+ * The run id is compared rather than merely tested, because `launch` is also
+ * Run again: a refused launch (`canLaunch` false, or a 4xx) leaves the id
+ * unchanged and must leave the handoff alone with it.
+ */
+async function launchRun(): Promise<void> {
+  const before = runId.value
+  await launch()
+  if (runId.value !== '' && runId.value !== before) clearRunHandoff(props.user?.id ?? null)
+}
+
 function backToValidator(): void {
   clearRunHandoff(props.user?.id ?? null)
+  // AND THE RUN POINTER, which is new and is not tidiness (item 58, R4). This
+  // function reloads the page, and a pointer that now survives a finished run
+  // would have `initialize` restore that run and repoint the console straight
+  // back at the workflow the operator just asked to leave - the control would
+  // look broken, and the cause would be two files away.
+  forgetRun()
   handoff.value = null
   window.location.reload()
 }
@@ -445,17 +539,54 @@ function backToValidator(): void {
           none: the next reader would have taken the cut list at its word.
         -->
         <div class="segmented workspace-switch" role="group" aria-label="Workspace">
-          <button type="button" :aria-pressed="false" @click="emit('build')">
-            <PenTool :size="14" aria-hidden="true" /> Build
+          <!--
+            Build goes to THIS workflow's canvas when there is one (item 57).
+            `identity.authored` is the descriptor's own answer to "somebody drew
+            this", and a builder graph registers under its DOCUMENT id, so the
+            workflow id IS the `#/build/<id>` this lands on. The built-in
+            validator has no document, so it keeps the gallery.
+          -->
+          <!--
+            `aria-label` ALWAYS, not only when the word is hidden. Below 860px
+            this pair collapses to this half alone and the word goes with it
+            (R10, below), so the accessible name has to come from somewhere the
+            media query cannot reach - and a label that appears at one width and
+            not another is a control that is announced differently on a phone.
+            It says the same thing the visible word does, so nothing changes
+            above the breakpoint.
+          -->
+          <button
+            type="button"
+            :aria-pressed="false"
+            aria-label="Build"
+            title="Open this workflow in Build"
+            data-testid="build-switch"
+            @click="emit('build', buildTarget)"
+          >
+            <PenTool :size="14" aria-hidden="true" />
+            <span class="switch-word">Build</span>
           </button>
           <button type="button" :aria-pressed="true">
-            <Play :size="14" aria-hidden="true" /> Run
+            <Play :size="14" aria-hidden="true" />
+            <span class="switch-word">Run</span>
           </button>
         </div>
 
-        <span class="live-status" :class="`is-${connection}`" aria-live="polite">
+        <!--
+          The word is in a span so the 390 block below can take it out of the
+          LAYOUT without taking it out of the page: `.sr-only` there, not
+          `display: none`, because this element is `aria-live` and a live region
+          that renders nothing announces nothing. `title` puts it back within
+          reach of a pointer, and the dot keeps its colour either way.
+        -->
+        <span
+          class="live-status"
+          :class="`is-${connection}`"
+          aria-live="polite"
+          :title="connectionLabel"
+        >
           <Radio :size="13" aria-hidden="true" />
-          {{ connectionLabel }}
+          <span class="live-word">{{ connectionLabel }}</span>
         </span>
 
         <div v-if="user" class="account-chip">
@@ -549,7 +680,19 @@ function backToValidator(): void {
               effect, which is still the common case.
             -->
             <span class="canvas-kicker">{{ canvasKicker }}</span>
-            <h2 id="graph-title">{{ canvasTitle }}</h2>
+            <!--
+              THE GRAPH VERSION IS IN A `title` NOW, not on the line (AUDIT-R2
+              N6, item 9's ruling extended). It rendered as a bare
+              `9c6ca8a6fefbfffd` beside the run's status, on the surface a
+              first-time visitor reads first, and it is a sixteen-character
+              ETag body with no reader on this screen. It is still READABLE in
+              two places: hovering the workflow's name, and the rail's own
+              `Details` disclosure, which is where the rest of the
+              instrumentation went. `title` on the heading rather than on the
+              whole heading block, because the version is a fact about THIS
+              workflow and the name is the thing it is about.
+            -->
+            <h2 id="graph-title" :title="`Version ${descriptor.version}`">{{ canvasTitle }}</h2>
           </div>
           <div class="canvas-meta">
             <!--
@@ -559,7 +702,6 @@ function backToValidator(): void {
               for and this surface had never been routed through it.
             -->
             <span><Activity :size="13" aria-hidden="true" />{{ runStatusDisplay(status).label }}</span>
-            <code>{{ descriptor.version }}</code>
           </div>
         </div>
 
@@ -611,7 +753,7 @@ function backToValidator(): void {
           :pan-on-drag="panOnDrag"
           :fit-view-on-init="true"
           :fit-view-options="FIT_VIEW_OPTIONS"
-          :aria-label="`${canvasTitle} workflow graph`"
+          :aria-label="`${canvasTitle} workflow canvas`"
         >
           <template #node-workflow="nodeProps">
             <!--
@@ -649,10 +791,17 @@ function backToValidator(): void {
           />
         </VueFlow>
 
+        <!--
+          The report's kicker read `VALIDATION REPORT` over every run, including
+          one from a graph that validates nothing (item 55's fourth surface).
+          It takes the workflow's own name now; the built-in keeps its wording
+          because `ReportPanel`'s default is the one it always had.
+        -->
         <ReportPanel
           :report="report"
           :verdict="verdictSummary"
           :open="reportOpen"
+          :workflow-name="identity.authored ? workflowName : undefined"
           @close="reportOpen = false"
         />
 
@@ -663,7 +812,7 @@ function backToValidator(): void {
           @click="reportOpen = true"
         >
           <FileText :size="14" aria-hidden="true" />
-          View validation report
+          {{ identity.authored ? 'View run report' : 'View validation report' }}
         </button>
       </section>
 
@@ -693,7 +842,7 @@ function backToValidator(): void {
                narrow a ref inside the template the way a direct `v-if` does. -->
           <div v-if="handoffBannerShown && handoff" class="handoff-banner" role="status">
             <span>
-              Running your published graph <strong>{{ handoff.name }}</strong>. It asks for
+              Running your published workflow <strong>{{ handoff.name }}</strong>. It asks for
               <code>{{ handoff.inputField }}</code>.
             </span>
             <button
@@ -740,10 +889,11 @@ function backToValidator(): void {
             :graph-problem="graphProblem"
             :download-status="downloadStatus"
             :download-message="downloadMessage"
-            :workflow-name="handoff ? handoff.name : undefined"
-            :input-label="handoff ? `${handoff.inputField.replaceAll('_', ' ').toUpperCase()} TO RUN` : undefined"
-            :can-return-home="handoff !== null"
-            @launch="launch"
+            :workflow-name="workflowName || undefined"
+            :input-label="identity.inputLabel"
+            :graph-version="descriptor.version"
+            :can-return-home="identity.authored"
+            @launch="launchRun"
             @cancel="cancel"
             @download="downloadLogs"
             @dismiss-error="dismissError"
@@ -801,9 +951,69 @@ function backToValidator(): void {
    control. */
 .handoff-banner .icon-button:disabled { cursor: not-allowed; opacity: 0.42; }
 
+/*
+ * R10, THE CONSOLE'S HALF (ROUND-2 row R10, AUDIT-R2 C1).
+ *
+ * This block used to read `.workspace-switch { display: none }`, with the
+ * comment "first thing to go when the header runs out of room; `#/build` is
+ * still a URL and the builder is still reachable." Measured at 390x844: a
+ * console had NO route to Build at all - `#/build` is a URL only to somebody
+ * who knows to type one, and the audit's C1 counted that as one of the two
+ * halves of a mode switch that does not exist on a phone.
+ *
+ * THE PAIR COLLAPSES TO ITS ONE USEFUL HALF rather than growing a menu. `Run`
+ * is the mode you are already in - a segmented control whose second half is
+ * the current page is redundant at any width and unaffordable at this one -
+ * and `Build` is the route that was missing. Icon-only, because the header had
+ * SEVEN pixels of slack: measured on this tree before the change at 390, the
+ * brand runs 16-58, the breadcrumb 58-261, the transport chip 275-329 and the
+ * account chip 343-383 of 390. A worded button is ~78px and would have taken
+ * that out of the workflow's own name, which U2 spent a ruling keeping.
+ *
+ * The word is `display: none` rather than `visibility: hidden` - the opposite
+ * of the choice `BuilderView`'s Run half makes two files over, and for the
+ * opposite reason: there the two labels must reserve the wider one's width so
+ * the control cannot move under a pointer, and here the whole point is to give
+ * the width back. The accessible name is on `aria-label` above, so it survives
+ * either way.
+ */
+/*
+ * WHERE THE 36px COMES FROM, measured rather than hoped.
+ *
+ * At 390 before this change the header ran brand 16-58, breadcrumb 58-261,
+ * transport chip 275-329, account chip 343-383 of 390 - seven pixels of slack.
+ * Putting the switch back at its icon width alone pushed `.header-context` to
+ * 433 and the account chip clean off the right edge, measured. So two things
+ * give the width back at 390 and only at 390, and neither is the workflow's
+ * own name, which U2 spent a ruling keeping:
+ *
+ *   the gap    14px -> 8px across four items, 18px
+ *   the word   the transport chip keeps its dot and gives up its word to
+ *              `.sr-only` - roughly 34px, and it is the one thing in this
+ *              header that says nothing about which workflow you are looking at
+ *
+ * Measured after: the account chip's right edge is back inside the viewport.
+ * These rules are SCOPED to this component, so the builder's header - which has
+ * its own switch, its own rule and no transport chip - is untouched.
+ */
+@media (max-width: 640px) {
+  .header-context { gap: var(--space-3); }
+  .live-status .live-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 860px) {
-  /* First thing to go when the header runs out of room; `#/build` is still a
-     URL and the builder is still reachable. */
-  .workspace-switch { display: none; }
+  .workspace-switch { grid-template-columns: auto; }
+  /* The current mode. `aria-pressed` is the state, so the selector is the fact
+     rather than a position that a later edit could reorder. */
+  .workspace-switch button[aria-pressed='true'] { display: none; }
+  .workspace-switch button { padding: 0 var(--space-3); }
+  .workspace-switch .switch-word { display: none; }
 }
 </style>

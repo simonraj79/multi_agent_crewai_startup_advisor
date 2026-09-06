@@ -152,7 +152,7 @@ function toggleMember(param: BuilderToolParam, member: string, on: boolean): voi
       field="tool_id"
       :node-id="node.id"
       mono
-      help="Which catalogue tool this node attaches. An opaque id the server looks up in a closed set - never a module path, which is why a document cannot execute code."
+      help="Which catalogue tool this node attaches. An opaque id the server looks up in a closed set - never a module path, which is why a workflow cannot execute code."
       v-slot="row"
     >
       <select
@@ -282,7 +282,7 @@ function toggleMember(param: BuilderToolParam, member: string, on: boolean): voi
       :help="
         entry?.credential_optional
           ? 'This tool runs without a key at a lower rate limit. Adding one raises it.'
-          : 'Which of your own keys this tool runs on. The document carries the id; the key itself is decrypted inside the tool constructor at run time and reaches no frame, no log and no export.'
+          : 'Which of your own keys this tool runs on. The workflow carries the id; the key itself is decrypted inside the tool constructor at run time and reaches no frame, no log and no export.'
       "
       v-slot="row"
     >

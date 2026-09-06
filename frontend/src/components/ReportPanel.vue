@@ -44,17 +44,43 @@ import {
 } from '../data/verdictDisplay'
 import { renderMarkdown } from '../utils/markdown'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   report: RunResult | null
   verdict: VerdictSummary | null
   open: boolean
-}>()
+  /**
+   * The workflow this run belongs to, when somebody drew it (item 55, R1).
+   *
+   * The kicker read `VALIDATION REPORT` unconditionally, which on a graph that
+   * writes a social post is the built-in validator's wording over somebody
+   * else's work - the same defect as the WORKFLOW well's, one panel along. It
+   * is optional and defaults to the validator's own line, so the built-in
+   * console is unchanged and no caller has to know about this.
+   */
+  workflowName?: string
+}>(), {
+  workflowName: '',
+})
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const panel = ref<HTMLElement | null>(null)
 const copied = ref(false)
 let copyTimer = 0
+
+/**
+ * The kicker over the verdict badge: whose report this is.
+ *
+ * Uppercased here rather than by `text-transform`, so the string a test reads
+ * out of the DOM is the string on screen - `.report-kicker` already carries the
+ * transform and a name that only LOOKED uppercase would be a check that passes
+ * on a stylesheet.
+ */
+const reportKicker = computed(() =>
+  props.workflowName.trim()
+    ? `${props.workflowName.trim().toUpperCase()} — REPORT`
+    : 'VALIDATION REPORT',
+)
 
 const body = computed(() => renderMarkdown(props.report?.markdown_body ?? ''))
 const sources = computed(() => props.report?.sources ?? [])
@@ -170,7 +196,7 @@ async function copyReport(): Promise<void> {
   >
     <header class="report-head">
       <div class="report-title-group">
-        <span class="report-kicker"><FileText :size="13" aria-hidden="true" />VALIDATION REPORT</span>
+        <span class="report-kicker"><FileText :size="13" aria-hidden="true" />{{ reportKicker }}</span>
         <h2 id="report-title">
           <span v-if="verdictWord" class="verdict-badge" :class="verdictTone" :data-code="verdict?.verdict">{{ verdictWord }}</span>
           <span v-else class="verdict-badge is-warn">Finished</span>

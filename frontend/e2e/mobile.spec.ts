@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 /**
  * 390x844 - the capture and inspect viewport (02-canvas.md D9, criterion 13).
@@ -35,6 +35,77 @@ function watchConsole(page: Page): string[] {
   })
   page.on('pageerror', (error) => record(`uncaught: ${error.message}`))
   return unexpected
+}
+
+const PHONE_WORKFLOW_NAME = 'A workflow reached from a phone'
+
+/**
+ * The smallest workflow that both validates and PUBLISHES, saved through the
+ * API (RV4 follow-up 2).
+ *
+ * A run resolves a REGISTERED version, so the route this file's new test is
+ * about does not exist for a gallery draft - and publishing at 390 is a
+ * keyboard shortcut and a dialog on a viewport D9 rules out of authoring. The
+ * shape is `failure-modes.spec.ts`'s, restated rather than imported for the
+ * reason every helper in this suite is restated: importing a spec file
+ * registers its tests a second time.
+ *
+ * The model is named and never called - `SYNTHETIC=1` replaces the crew
+ * factories, so nothing here reaches OpenRouter.
+ */
+async function publishRunnable(request: APIRequestContext, name: string): Promise<string> {
+  const created = await request.post('/api/builder/workflows', {
+    data: {
+      document: {
+        schema: 'builder.flow/v1',
+        name,
+        version: 1,
+        input_field: 'idea',
+        nodes: [
+          {
+            id: 'idea',
+            kind: 'input',
+            label: 'Idea',
+            position: { x: 0, y: 0 },
+            config: { field: 'idea', label: null, max_chars: 2000, required: true },
+          },
+          {
+            id: 'writer',
+            kind: 'agent',
+            label: 'Writer',
+            position: { x: 260, y: 0 },
+            config: {
+              role: 'note taker',
+              goal: 'write the note',
+              backstory: 'years of it',
+              task: { description: 'work from ${state.out__idea}', expected_output: 'a paragraph' },
+              llm: { model: 'google/gemini-3.8-flash' },
+              tier: 'cheap',
+              on_error: 'fail',
+            },
+          },
+          {
+            id: 'report',
+            kind: 'output',
+            label: 'Report',
+            position: { x: 520, y: 0 },
+            config: { body_key: 'markdown_body', source: '${state.out__writer}' },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'idea', source_port: 'out', target: 'writer', target_port: 'in' },
+          { id: 'e2', source: 'writer', source_port: 'out', target: 'report', target_port: 'in' },
+        ],
+        joins: {},
+      },
+      expected_version: null,
+    },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const id = (await created.json()).id as string
+  const published = await request.post(`/api/builder/workflows/${id}/publish`)
+  expect(published.status(), await published.text()).toBe(200)
+  return id
 }
 
 /** The document horizontal overflow, in CSS pixels. Zero, or the page scrolls sideways. */
@@ -183,6 +254,244 @@ test.describe('the builder at 390x844', () => {
     // 390px viewport can read an 11px port label at all.
     await page.mouse.wheel(0, -6000)
     await expect.poll(zoom).toBeCloseTo(2, 2)
+
+    expect(errors).toEqual([])
+  })
+
+  /**
+   * R8 / item C2 (ROUND-2.md AUDIT-R2.md §3, `measure.json` -> C2_documentBar390).
+   *
+   * Measured before `DocumentBar.vue`'s own `@media (max-width: 520px)`
+   * existed: `barScrollWidth: 415` against a 390px viewport, with
+   * `.document-identity` - the element holding the workflow's NAME - at
+   * `w: 0`. The bar overflowed the viewport and lost the one piece of
+   * information it exists to show, in the same measurement.
+   */
+  test('keeps the document bar inside the viewport, with the name given real width', async ({
+    page,
+  }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card').filter({ hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.document-bar')).toBeVisible()
+
+    const bar = page.locator('.document-bar')
+    const overflow = await bar.evaluate((el) => el.scrollWidth - el.clientWidth)
+    expect(overflow, 'the document bar scrolls sideways inside itself').toBeLessThanOrEqual(1)
+    expect(await horizontalOverflow(page), 'the page scrolls sideways at 390px').toBeLessThanOrEqual(1)
+
+    const identityWidth = await page
+      .locator('.document-identity')
+      .evaluate((el) => el.getBoundingClientRect().width)
+    expect(identityWidth, 'the name column has width').toBeGreaterThan(0)
+
+    // Reachable, not merely present: a button under an overflowing sibling can
+    // still report `toBeVisible()` while `elementFromPoint` answers something
+    // else entirely (R5's own lesson, one component over).
+    const publish = page.getByTestId('document-publish')
+    await expect(publish).toBeVisible()
+    const publishBox = (await publish.boundingBox())!
+    const hitsPublish = await page.evaluate(
+      (point) => document.elementFromPoint(point.x, point.y)?.closest('[data-testid="document-publish"]') !== null,
+      { x: publishBox.x + publishBox.width / 2, y: publishBox.y + publishBox.height / 2 },
+    )
+    expect(hitsPublish, 'Publish is reachable at its own centre').toBe(true)
+
+    /*
+     * AND THE IDENTITY ROW IS NOT PRINTED THROUGH (RV4 follow-up 3).
+     *
+     * The two rail toggles are children of `.studio-main`, siblings of
+     * `.graph-workspace`, and `.graph-workspace` is `z-index: 0` - a stacking
+     * context - so the bar's own `z-index: 9` is spent inside it and never
+     * reaches them. They anchored to `var(--chat-width)` / `var(--control-width)`,
+     * which at this width name columns `studio.css` has already turned into a
+     * bottom sheet and a full-width overlay, so they landed in the middle of
+     * the strip: measured, `Expand the inspector` at x18 covering 10 of the
+     * name's 133 columns and `Expand the palette` at x236 covering 28 of the
+     * save chip's 78.
+     *
+     * Scanned across the whole centre LINE rather than sampled at the centre
+     * point, because that is how the defect was found: the chip's own centre
+     * was clear while a third of it was under a button.
+     */
+    for (const target of ['.document-name', '.save-chip']) {
+      const covered = await page.evaluate((selector) => {
+        const el = document.querySelector(selector)
+        if (!el) return -1
+        const rect = el.getBoundingClientRect()
+        const y = Math.round(rect.top + rect.height / 2)
+        let hits = 0
+        for (let x = Math.ceil(rect.left); x < Math.floor(rect.right); x += 1) {
+          const top = document.elementFromPoint(x, y)
+          if (top && top !== el && !el.contains(top)) hits += 1
+        }
+        return hits
+      }, target)
+      expect(covered, `${target} is printed through at 390`).toBe(0)
+    }
+
+    expect(errors).toEqual([])
+  })
+
+  /**
+   * R10 / item C1 (ROUND-2.md row R10).
+   *
+   * `.workspace-switch`'s `Run` half is `display: none` below 860px
+   * (`BuilderView.vue`'s own scoped style), so a builder document at 390 had
+   * no route to the run console at all short of typing `#/run`. `menu-run`
+   * emits the SAME `runWorkspace` event the header button does - this test
+   * proves the door, not a new room behind it.
+   *
+   * AMENDED for RV4 follow-up 2. This template is opened from the gallery and
+   * never published, and R3's rule for an unpublished document is that Run is
+   * REFUSED VISIBLY rather than taken - a run resolves a registered version, so
+   * following it would land on a console that answers 404 for this graph. The
+   * assertion moved from "it navigates" to "it says why it will not", which is
+   * what the header switch has said since R3 and what this door said nothing
+   * about. The navigating half is the test below, on a published workflow.
+   */
+  test('still offers a route to Run mode, through the document menu', async ({ page }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card').filter({ hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.document-bar')).toBeVisible()
+
+    // The header's own switch really is hidden at this width - the premise,
+    // not an aside. If a future fix gives it back directly, this row (and the
+    // menu item it is about) may retire.
+    await expect(page.locator('.workspace-switch')).toBeHidden()
+
+    await page.getByTestId('document-menu-button').click()
+    const runItem = page.getByTestId('menu-run')
+    await expect(runItem).toBeVisible()
+    const runBox = (await runItem.boundingBox())!
+    const hitsRun = await page.evaluate(
+      (point) => document.elementFromPoint(point.x, point.y)?.closest('[data-testid="menu-run"]') !== null,
+      { x: runBox.x + runBox.width / 2, y: runBox.y + runBox.height / 2 },
+    )
+    expect(hitsRun, 'Run is reachable at its own centre').toBe(true)
+
+    await expect(runItem).toHaveAttribute('data-run-state', 'blocked')
+    await expect(runItem).toBeDisabled()
+    await expect(runItem).toHaveText(/Publish to run/)
+
+    expect(errors).toEqual([])
+  })
+
+  /**
+   * RV4 FOLLOW-UP 2 - the menu's Run lands on THIS workflow's console.
+   *
+   * `menu-run` emitted a bare `runWorkspace`, which is the route that predates
+   * R3, so at 390 - where it is the only route there is - pressing Run landed
+   * on the built-in validator. Measured before the fix on a published
+   * `News to social post`: `#/run` with breadcrumb `Idea Validator`, kicker
+   * `RUN - BUILT IN` and the same name in the WORKFLOW well over the button
+   * that spends money. The header switch, on the same document, was correct.
+   *
+   * The breadcrumb is the assertion because it is the one surface that names
+   * the workflow and says where it sits, and it is the one RV4 read.
+   *
+   * Published through the API rather than through the canvas: publishing at 390
+   * is a keyboard shortcut and a dialog on a viewport this file has ruled out
+   * of authoring scope (D9), and the subject here is the ROUTE.
+   */
+  test('the document menu’s Run carries the workflow to the console', async ({ page, request }) => {
+    const errors = watchConsole(page)
+    const id = await publishRunnable(request, PHONE_WORKFLOW_NAME)
+    try {
+      await page.goto(`/#/build/${id}`)
+      await expect(page.locator('.document-bar')).toBeVisible()
+      await expect(page.locator('.workspace-switch')).toBeHidden()
+
+      await page.getByTestId('document-menu-button').click()
+      const runItem = page.getByTestId('menu-run')
+      await expect(runItem).toHaveAttribute('data-run-state', 'ready')
+      await expect(runItem).toHaveText(/^\s*Run\s*$/)
+      await runItem.click()
+
+      await expect(page).toHaveURL(/#\/run/)
+      await expect(page.locator('.breadcrumb-name')).toHaveText(PHONE_WORKFLOW_NAME)
+      await expect(page.locator('.canvas-kicker')).toHaveText('RUN — YOUR WORKFLOW')
+
+      expect(errors).toEqual([])
+    } finally {
+      await request.post(`/api/builder/workflows/${id}/unpublish`).catch(() => undefined)
+      await request.delete(`/api/builder/workflows/${id}`).catch(() => undefined)
+    }
+  })
+})
+
+/**
+ * R10, THE CONSOLE'S HALF (ROUND-2 row R10, AUDIT-R2 C1).
+ *
+ * `.workspace-switch` was `display: none` below 860px on the CONSOLE too - a
+ * second, independent rule in `StudioView.vue`'s own scoped style, which WB
+ * correctly left alone because `StudioView.vue` was being changed for R1-R4 at
+ * the time. So a console at 390 had no route to Build at all: `#/build` is a
+ * URL only to somebody who knows to type one.
+ *
+ * The pair now collapses to its ONE useful half. `Run` is the mode you are
+ * already in; `Build` is the route that was missing. Icon-only, because the
+ * header had seven pixels of slack - measured, and the two things that give the
+ * width back at this width are the context gap and the transport chip's word,
+ * neither of which is the workflow's own name.
+ */
+test.describe('the run console at 390x844', () => {
+  test('offers a route to Build, and the header still fits', async ({ page }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/run')
+    await expect(page.locator('.status-panel')).toBeVisible()
+
+    const build = page.locator('.workspace-switch').getByRole('button', { name: 'Build' })
+    await expect(build).toBeVisible()
+
+    // REACHABLE, not merely rendered: `toBeVisible` asks about an element's own
+    // box and says nothing about what is painted over it, and this control sits
+    // in a 52px bar between a breadcrumb and an account chip.
+    const box = (await build.boundingBox())!
+    const hits = await page.evaluate(
+      (point) =>
+        document
+          .elementFromPoint(point.x, point.y)
+          ?.closest('[data-testid="build-switch"]') !== null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    )
+    expect(hits, 'Build is reachable at its own centre').toBe(true)
+
+    /*
+     * THE HEADER DOES NOT OVERFLOW, asked of every child rather than of the
+     * document. Measured while writing this: giving the switch back at its icon
+     * width alone pushed `.header-context` to 433 of 390 and the account chip
+     * clean off the right edge - and `document.scrollWidth` still answered 390,
+     * because the page does not scroll for a child that is simply outside it.
+     */
+    const header = await page.evaluate(() => {
+      const bar = document.querySelector('.app-header') as HTMLElement
+      const children = [...bar.querySelectorAll(':scope > *, .header-context > *')]
+        .filter((el) => getComputedStyle(el).display !== 'none')
+        .map((el) => ({
+          cls: el.className.toString().slice(0, 30),
+          right: Math.round(el.getBoundingClientRect().right),
+        }))
+      return {
+        height: Math.round(bar.getBoundingClientRect().height),
+        viewport: window.innerWidth,
+        widest: Math.max(...children.map((c) => c.right)),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        offRight: children.filter((c) => c.right > window.innerWidth).map((c) => c.cls),
+      }
+    })
+    expect(header.offRight, 'header children hanging off the right edge').toEqual([])
+    expect(header.widest).toBeLessThanOrEqual(header.viewport)
+    // One row, not two: a wrapped header is the other way this control could
+    // have been "fitted".
+    expect(header.height).toBe(52)
+    expect(header.overflow).toBeLessThanOrEqual(1)
+
+    // And it is WA's handler, not a second one: the same `build` emit the
+    // worded button fires at 1440.
+    await build.click()
+    await expect(page).toHaveURL(/#\/build/)
 
     expect(errors).toEqual([])
   })

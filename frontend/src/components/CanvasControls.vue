@@ -70,7 +70,7 @@ const flow = useVueFlow(props.flowId)
     <template #control-fit-view>
       <ControlButton
         class="vue-flow__controls-fitview"
-        aria-label="Fit the graph to the view"
+        aria-label="Fit the workflow to the view"
         @click="props.fit()"
       >
         <Maximize :size="12" :stroke-width="2.5" aria-hidden="true" />

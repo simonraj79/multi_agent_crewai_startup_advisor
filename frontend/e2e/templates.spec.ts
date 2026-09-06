@@ -271,4 +271,41 @@ test.describe('Templates run from a cold sign-in', () => {
       expect(watch.unexpected).toEqual([])
     })
   }
+
+  /*
+   * The shelf these five live on, in the words a person reads (ROUND-2 §5
+   * ruling 4). NO `@launch` TAG: it presses nothing and spends nothing, which
+   * is worth keeping true of the one test in this file that a deployed origin
+   * could safely run.
+   *
+   * It belongs here rather than only in `shell.spec.ts` because the claim is
+   * about the TEMPLATES - that each of the five patterns above carries the
+   * action its click performs - and this is the file that knows what the five
+   * are. `PATTERNS` is the source, so a template renamed in `builderTemplates.ts`
+   * fails here by name rather than by count.
+   */
+  test('the gallery says what a template is and what clicking one does', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.goto('/#/build')
+    await expect(page.locator('.template-gallery')).toBeVisible({ timeout: 30_000 })
+
+    const gallery = page.locator('.template-gallery')
+    await expect(gallery.locator('.gallery-kicker').last()).toHaveText('TEMPLATES')
+    await expect(gallery).toContainText('Start from a working example')
+    await expect(gallery.locator('.gallery-lede')).toHaveText(
+      'Click one to copy it onto the canvas as a new workflow.',
+    )
+
+    // Every pattern's own card names the action, so a reader who scans one card
+    // learns what a click does without reading the shelf's sentence.
+    for (const pattern of PATTERNS) {
+      await expect(card(page, pattern.title), pattern.id).toContainText('Use this template')
+    }
+
+    // The label it replaced. It was a good sentence and a bad label - it named
+    // no category, which is the whole of AUDIT-R2 N4.
+    await expect(gallery).not.toContainText('A shape that already works')
+
+    expect(watch.unexpected).toEqual([])
+  })
 })

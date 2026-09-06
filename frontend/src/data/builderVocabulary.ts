@@ -194,7 +194,7 @@ function normalise(payload: unknown): BuilderVocabulary | string {
 
   if (raw.schema_id !== BUILDER_SCHEMA_ID) {
     return (
-      `This console writes ${BUILDER_SCHEMA_ID} documents and the API compiles ` +
+      `This console writes ${BUILDER_SCHEMA_ID} workflows and the API compiles ` +
       `${String(raw.schema_id)}, so nothing drawn here could be saved.`
     )
   }
@@ -248,7 +248,7 @@ function normalise(payload: unknown): BuilderVocabulary | string {
   if (unknownKind !== undefined) {
     return (
       `The API offers a "${unknownKind}" node and this console cannot draw one, ` +
-      'so a graph using it could not be opened or saved here.'
+      'so a workflow using it could not be opened or saved here.'
     )
   }
   const knownTiers: readonly string[] = ['cheap', 'escalation']

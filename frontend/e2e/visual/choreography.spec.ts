@@ -1,4 +1,19 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { runStatusDisplay } from '../../src/data/runStatusDisplay'
+
+/**
+ * R7 / item 61.
+ *
+ * `.canvas-meta span` renders `runStatusDisplay(status).label`
+ * (`StudioView.vue`), which has read `Finished` for `completed` since the
+ * run-shell merge - never the word `completed` itself. The two assertions
+ * below used to spell that word into a `/completed/i` regex directly, so a
+ * label rename (this one already happened) moves the UI without moving the
+ * test, and the test goes red for a reason its own failure message cannot
+ * name. Reading the label from the same module the component calls means a
+ * future rename carries this assertion with it instead of orphaning it.
+ */
+const FINISHED_LABEL = runStatusDisplay('completed').label
 
 /**
  * The run choreography, in the one place its questions have an answer.
@@ -192,7 +207,7 @@ test.describe('the idle recede', () => {
     await expect(page.locator('.gate-card h2')).toHaveText('Review verdict', { timeout: 60_000 })
     await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()
 
-    await expect(page.locator('.canvas-meta span').first()).toHaveText(/completed/i, {
+    await expect(page.locator('.canvas-meta span').first()).toHaveText(FINISHED_LABEL, {
       timeout: 60_000,
     })
     // Every card, including the ones that never ran. A finished run is a
@@ -267,7 +282,7 @@ test.describe('the handoff', () => {
     await approveScope(page)
     await expect(page.locator('.gate-card h2')).toHaveText('Review verdict', { timeout: 60_000 })
     await page.locator('.gate-card').getByRole('button', { name: /^Approve/ }).click()
-    await expect(page.locator('.canvas-meta span').first()).toHaveText(/completed/i, {
+    await expect(page.locator('.canvas-meta span').first()).toHaveText(FINISHED_LABEL, {
       timeout: 60_000,
     })
 

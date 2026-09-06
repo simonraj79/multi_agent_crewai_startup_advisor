@@ -45,9 +45,20 @@ describe('run context persistence', () => {
   })
 
   /**
-   * The defect: nothing ever removed the pointer, so a finished run was
-   * restored on every later page load and the operator opened the console to
-   * a stale result.
+   * INVERTED 2026-09-06 (item 58, ROUND-2 R4), and the reasoning of BOTH
+   * contracts is kept because they answer different halves of one question.
+   *
+   * These cases used to assert that a terminal status DROPPED the pointer.
+   * That was written for a real defect - nothing ever removed it, so the
+   * console reopened a stale result on every later load - and it overshot: the
+   * console was the only place a run's report, verdict and trace existed, and
+   * the moment a run ended they became unreachable from anywhere. A synthetic
+   * builder run is over in ~115 ms and the pointer lived 30-40 ms.
+   *
+   * What replaced the old line is not "nothing". The home reads the pointer's
+   * STATUS (D2): `live` hands over to the console, `terminal` shows a "Last
+   * run" card and stays put. So a finished run is offered rather than imposed,
+   * which is the outcome the original defect wanted and this one keeps.
    *
    * All three end frames carry `WORKFLOW_END`, because that is the only event
    * type the backend has for the end of a run: `FlowFinishedEvent` in
@@ -63,7 +74,7 @@ describe('run context persistence', () => {
     ['completed', 'WORKFLOW_END'],
     ['cancelled', 'WORKFLOW_END'],
     ['failed', 'WORKFLOW_END'],
-  ])('clears the saved run when the run ends as %s', async (status, eventType) => {
+  ])('KEEPS the saved run when it ends as %s, so it can be reopened', async (status, eventType) => {
     ;[run, app] = withSetup(() => useValidatorRun(api))
     await run.initialize()
     await run.launch()
@@ -73,11 +84,11 @@ describe('run context persistence', () => {
     api.emit(build('run_state', { event_type: eventType, details: { status } }))
     await flush()
 
-    expect(storedRun()).toBeNull()
+    expect(storedRun()?.runId).toBe(RUN_ID)
     expect(['completed', 'cancelled', 'error']).toContain(run.status.value)
   })
 
-  it('clears the saved run when an error frame ends it', async () => {
+  it('keeps the saved run when an error frame ends it', async () => {
     ;[run, app] = withSetup(() => useValidatorRun(api))
     await run.initialize()
     await run.launch()
@@ -86,6 +97,38 @@ describe('run context persistence', () => {
     api.emit(build('error', { event_type: 'WORKFLOW_END', level: 'ERROR', message: 'boom' }))
     await flush()
 
+    // A failed run is the one an operator most wants to look at again.
+    expect(storedRun()?.runId).toBe(RUN_ID)
+  })
+
+  /** The pointer is REPLACED by the next launch, not accumulated. */
+  it('replaces the pointer on the next launch', async () => {
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+    await run.launch()
+    const build = frameFactory()
+    api.emit(build('run_state', { event_type: 'WORKFLOW_END', details: { status: 'completed' } }))
+    await flush()
+
+    api.runIdToIssue = 'run-the-second'
+    await run.launch()
+    expect(storedRun()?.runId).toBe('run-the-second')
+  })
+
+  /**
+   * And it is put down when the operator ASKS to leave, which is the one thing
+   * the removed line used to do by accident. `StudioView.backToValidator`
+   * reloads the page, so a surviving pointer at a builder workflow would
+   * restore that run and repoint the console straight back at the graph they
+   * just asked to leave.
+   */
+  it('forgets the run on request', async () => {
+    ;[run, app] = withSetup(() => useValidatorRun(api))
+    await run.initialize()
+    await run.launch()
+    expect(storedRun()).not.toBeNull()
+
+    run.forgetRun()
     expect(storedRun()).toBeNull()
   })
 
@@ -113,7 +156,17 @@ describe('run context persistence', () => {
     expect(storedRun()?.runId).toBe(RUN_ID)
   })
 
-  it('drops a saved run that already finished instead of re-opening it', async () => {
+  /**
+   * INVERTED with the cases above (item 58, R4). It read "drops a saved run
+   * that already finished instead of re-opening it", and re-opening it is now
+   * the point: the home offers a "Last run" card and this is the screen that
+   * card arrives at, so landing on a blank console would be the card lying.
+   *
+   * The snapshot here carries NO result, which is deliberate - the old code
+   * reset in exactly that case, and a cancelled run has no report and a trace
+   * worth reading.
+   */
+  it('re-opens a saved run that already finished, and keeps its pointer', async () => {
     seedStoredRun()
     api.snapshot = emptySnapshot(RUN_ID, 'completed')
 
@@ -121,9 +174,10 @@ describe('run context persistence', () => {
     await run.initialize()
     await flush()
 
-    expect(storedRun()).toBeNull()
-    expect(run.runId.value).toBe('')
-    expect(run.status.value).toBe('idle')
+    expect(storedRun()?.runId).toBe(RUN_ID)
+    expect(run.runId.value).toBe(RUN_ID)
+    expect(run.status.value).toBe('completed')
+    // Nothing more will stream for it, so no socket is opened.
     expect(api.subscribeCalls).toEqual([])
   })
 

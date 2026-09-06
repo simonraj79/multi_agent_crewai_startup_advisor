@@ -758,7 +758,7 @@ test.describe('Flow builder', () => {
      * `ConflictDialog` and `ShortcutSheet` are dialogs too, so a bare role
      * lookup goes ambiguous the moment two are mounted - and the accessible NAME
      * is no better here, because this dialog's own heading changes from
-     * "Register this graph..." to "This graph is live" the instant it succeeds,
+     * "Publish this workflow..." to "Your workflow is live" the instant it succeeds,
      * which is precisely the moment the assertions below need to still find it.
      */
     const publish = page.locator('[aria-labelledby="publish-title"]')

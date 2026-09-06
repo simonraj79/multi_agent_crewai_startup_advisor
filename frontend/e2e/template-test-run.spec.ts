@@ -136,54 +136,37 @@ async function openHome(page: Page): Promise<void> {
  * Arm the workspace switch to press ITSELF the moment a run exists, and record
  * which run that was.
  *
- * This is the one piece of machinery in the file, and it is here because the
- * window it has to hit is thirty milliseconds wide. `useValidatorRun.launch`
- * writes the stored run pointer when its POST returns; `setStatus` drops that
- * pointer the instant the run reaches a terminal state, and the pointer is the
- * ONLY thing a console load can restore a run from - `RunHistory` deliberately
- * offers a download rather than a re-open, and no route carries a run id.
- * Measured on this backend on 2026-09-06, five launches: the pointer appears
- * 31-55 ms after the click and is gone 30-40 ms later, because a synthetic
- * News-to-social run is over in about 115 ms.
+ * ## THE MACHINERY THIS REPLACES, and why it is gone (item 58, ROUND-2 R4)
  *
- * A poll from Node cannot land a click in a 30 ms window - the round trip
- * alone is most of it - so the poll runs IN THE PAGE, at 5 ms, and what it does
- * when it fires is press the real `Run` button of the real workspace switch.
- * Nothing is stubbed and no state is written: this is the gesture a person
- * makes when they want to watch a run on the console, performed by a robot
- * because the graph under test finishes faster than a hand can move. Against a
- * graph that takes two seconds a reader does this themselves, and the same
- * assertion holds.
+ * There was a 40-line in-page poll here, and its whole reason was a defect.
+ * `setStatus` dropped the stored run pointer the instant a run reached a
+ * terminal state, and that pointer was the ONLY thing a console load could
+ * restore a run from - `RunHistory` offers a download rather than a re-open,
+ * and no route carries a run id. Measured on this backend, five launches: the
+ * pointer appeared 31-55 ms after the click and was gone 30-40 ms later,
+ * because a synthetic News-to-social run is over in about 115 ms. A click from
+ * Node cannot land in a 30 ms window, so the poll ran in the page at 5 ms and
+ * pressed the switch itself.
  *
- * It was 5 of 5 when it was measured, and it is armed BEFORE the launch click
- * so the ordering cannot drift.
+ * The pointer survives a finished run now, so the window is not 30 ms - it is
+ * open, and this reads as the gesture it always was: finish the run, press
+ * Run. The poll is deleted rather than kept "just in case", because a harness
+ * built around a defect keeps passing after the defect is fixed and stops
+ * anybody noticing that it was.
  */
-async function armHandoverToConsole(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    ;(window as unknown as { __u6HandedOver: string | null }).__u6HandedOver = null
-    const timer = window.setInterval(() => {
-      let raw: string | null = null
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const key = window.localStorage.key(index)
-        if (key?.endsWith('validator-active-run')) raw = window.localStorage.getItem(key)
-      }
-      if (!raw) return
-      window.clearInterval(timer)
-      ;(window as unknown as { __u6HandedOver: string | null }).__u6HandedOver = (
-        JSON.parse(raw) as { runId: string }
-      ).runId
-      const buttons = Array.from(document.querySelectorAll('.workspace-switch button'))
-      const run = buttons.find((button) => button.textContent?.trim() === 'Run')
-      ;(run as HTMLButtonElement | undefined)?.click()
-    }, 5)
-  })
-}
 
-/** The run id the armed switch handed over, once it has fired. */
-async function handedOverRunId(page: Page): Promise<string | null> {
-  return page.evaluate(
-    () => (window as unknown as { __u6HandedOver: string | null }).__u6HandedOver,
-  )
+/** The run the panel started, read off the pointer the console restores from. */
+async function storedRunId(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)
+      if (key?.endsWith('validator-active-run')) {
+        const raw = window.localStorage.getItem(key)
+        if (raw) return (JSON.parse(raw) as { runId: string }).runId
+      }
+    }
+    return null
+  })
 }
 
 test.describe('the News-to-social template, opened from the home', () => {
@@ -293,16 +276,14 @@ test.describe('the News-to-social template, opened from the home', () => {
       await expect(page.locator('[data-testid="test-panel-problem"]')).toHaveCount(0)
 
       /* 5 ── the console shows the run this panel started ----------------- */
-      // A SECOND run, and `armHandoverToConsole`'s docblock says why: the
-      // pointer the console restores from is dropped the instant a run goes
-      // terminal, so the hand-over has to happen while the run is still the
-      // browser's - and the panel's own terminal state, asserted above, is
-      // exactly the moment that stops being true.
-      await armHandoverToConsole(page)
-      await page.locator('[data-testid="test-run"]').click()
+      // No second run and no arming: the pointer this run wrote outlives it
+      // now (item 58, R4), so pressing the switch is enough - which is what
+      // the helper's docblock above explains at length, because the machinery
+      // that used to be needed here is the clearest measurement of the defect.
+      const handedOver = await storedRunId(page)
+      expect(handedOver, 'the panel run left no pointer to hand over').not.toBeNull()
+      await page.locator('[data-testid="run-switch"]').click()
       await expect.poll(() => new URL(page.url()).hash, { timeout: 30_000 }).toBe('#/run')
-      const handedOver = await handedOverRunId(page)
-      expect(handedOver, 'the switch fired without recording a run id').not.toBeNull()
 
       // The console's own chip: the first eight characters on screen, the whole
       // id in the title. Asserted on the title, because that is the value and

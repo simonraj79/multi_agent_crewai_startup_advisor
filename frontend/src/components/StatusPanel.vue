@@ -88,6 +88,18 @@ const props = withDefaults(defineProps<{
   workflowName?: string
   inputLabel?: string
   /**
+   * The graph descriptor's version - the ETag body, `mock-of-…` on the mock
+   * transport (AUDIT-R2 N6).
+   *
+   * It used to render as a bare sixteen-character hash on the CANVAS heading,
+   * beside the run's status, on the first surface a visitor reads. It is
+   * instrumentation, so it is here, inside the same `Details` disclosure as the
+   * stream counters - and it is the value two specs read to prove the console
+   * is not silently in mock mode, which is why it is in the DOM whether the
+   * disclosure is open or shut.
+   */
+  graphVersion?: string
+  /**
    * A published graph is loaded, so there is somewhere to go back TO.
    *
    * A boolean rather than an inference from `workflowName`, which would be the
@@ -99,6 +111,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   workflowName: BUILT_IN_WORKFLOW_NAME,
   inputLabel: 'IDEA TO VALIDATE',
+  graphVersion: '',
   graphProblem: '',
   canReturnHome: false,
 })
@@ -169,7 +182,32 @@ const MID_RUN_VERBS: Readonly<Record<string, string>> = {
   waiting: 'Waiting for you',
   stopping: 'Stopping…',
 }
-const primaryWord = computed(() => MID_RUN_VERBS[props.status] ?? props.primaryLabel)
+
+/**
+ * ONE VERB PER CONCEPT (ROUND-2 ruling 5, AUDIT-R2 N2).
+ *
+ * `Run` is the MODE - it is the word on the workspace switch in the header of
+ * every screen - and this is that mode's primary action, so it is the same
+ * word. `Launch` and `Relaunch` were a second vocabulary for the one thing the
+ * console does, and the builder carried four more run-shaped words of its own.
+ *
+ * MAPPED HERE, NOT IN THE COMPOSABLE, and that is deliberate rather than shy.
+ * `primaryLabel` is `useValidatorRun`'s: it is read as a VALUE by
+ * `runRecovery.spec.ts`, it is the state the `RotateCcw` icon below keys on,
+ * and it is another worker's file this week. What changes is what the button
+ * SAYS, which is this component's job. An unmapped label passes straight
+ * through, so a caller that supplies its own word still gets it.
+ */
+const PRIMARY_WORDS: Readonly<Record<string, string>> = {
+  Launch: 'Run',
+  Relaunch: 'Run again',
+  // The test panel's own button already says `Starting…`; two surfaces over one
+  // pipeline should not name the same second differently.
+  'Launching…': 'Starting…',
+}
+const primaryWord = computed(
+  () => MID_RUN_VERBS[props.status] ?? PRIMARY_WORDS[props.primaryLabel] ?? props.primaryLabel,
+)
 
 /**
  * The same words the header chip uses, from the same function.
@@ -269,15 +307,16 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <!--
-      A real server refused this graph (D-01-2). Until 2026-09-03 the console
-      answered that by drawing the demonstration graph under the refused
-      workflow's name with a green Launch; now the canvas is empty, Launch is
-      disabled, and this says why in the server's own words.
+      A real server refused this workflow (D-01-2). Until 2026-09-03 the
+      console answered that by drawing the demonstration graph under the
+      refused workflow's name with a green Launch; now the canvas is empty,
+      the primary button is disabled, and this says why in the server's own
+      words.
     -->
     <div v-if="graphProblem" class="panel-banner is-error graph-banner" role="alert">
       <TriangleAlert :size="15" aria-hidden="true" />
       <span>
-        <strong>This graph cannot be launched from here.</strong>
+        <strong>This workflow cannot be launched from here.</strong>
         The server answered: {{ graphProblem }}
       </span>
     </div>
@@ -290,12 +329,21 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="panel-section control-section">
+      <!--
+        THE BOX CAN NOW BE EMPTY, SO IT SAYS WHAT GOES IN IT (RV4 follow-up 5).
+        The example idea was seeded for every workflow, including ones somebody
+        else drew; it belongs to the built-in validator and stays there
+        (`useValidatorRun`), which leaves an authored workflow's box empty on
+        arrival. One sentence, in the reader's words rather than the field's:
+        the label above already says which field this is.
+      -->
       <label for="idea" class="control-label panel-kicker">{{ inputLabel }}</label>
       <textarea
         id="idea"
         class="panel-well"
         :value="idea"
         rows="4"
+        placeholder="What should this run start with?"
         :maxlength="MAX_IDEA_CHARS"
         :disabled="isActive"
         aria-describedby="idea-hint"
@@ -361,7 +409,15 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="panel-section control-section compact-section">
-      <span class="control-label panel-kicker">GATES</span>
+      <!--
+        `GATES` was the graph model's word for this, on the one panel a
+        first-time visitor reads before spending money (AUDIT-R2 N5). The
+        BUTTONS keep their words by ruling - `Review` and `Unattended` are what
+        the request field, the gate card and this repository's own prose all
+        call the two modes - and only the kicker changes, to the question the
+        pair actually answers.
+      -->
+      <span class="control-label panel-kicker">WHEN IT NEEDS YOU</span>
       <div class="segmented" role="group" aria-label="Who answers the gates">
         <button
           type="button"
@@ -398,11 +454,64 @@ const logFormat = ref<LogFormat>('ndjson')
       </p>
     </div>
 
+    <!--
+      THE PRIMARY ACTION, FOURTH (item 9, ROUND-2 ruling 9, AUDIT-R2 H6).
+
+      It used to be LAST: input -> WORKFLOW -> GATES -> VIEW -> STATUS (four
+      metric tiles reading zero) -> Launch. Measured on this tree before the
+      change, at 1440x720: the input's top y=87, the button's top y=738 and its
+      bottom y=780 against a 720px viewport - 651px below the input and BELOW
+      THE FOLD on a laptop, so the first thing a new visitor has to find was off
+      screen under four numbers that are all zero until a run exists.
+
+      X2's wording is the order: "the input, the launch and the run status read
+      top-to-bottom". VIEW and STATUS are during-and-after concerns and follow.
+      `.control-actions` KEEPS ITS CLASS and keeps holding the primary and
+      Cancel: eight E2E specs press
+      `.status-panel .control-actions button.button-primary`, including the
+      visual baseline's own launch step. Only the log row moves out, into
+      `.control-logs`, because it is neither.
+
+      THE RAIL IS OUTSIDE `.validator-flow`. `e2e/visual/run-canvas.spec.ts`
+      screenshots that element alone, so none of its three baselines moves.
+    -->
+    <div class="control-actions">
+      <button
+        class="button button-primary"
+        :class="{ 'is-armed': armed }"
+        data-testid="launch-button"
+        type="button"
+        :disabled="!canLaunch"
+        @click="emit('launch')"
+      >
+        <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
+        <Play v-else :size="16" aria-hidden="true" />
+        {{ primaryWord }}
+      </button>
+      <button class="button button-secondary" type="button" :disabled="!isActive || status === 'stopping'" @click="emit('cancel')">
+        <Square :size="14" aria-hidden="true" />
+        {{ status === 'stopping' ? 'Stopping…' : 'Cancel' }}
+      </button>
+    </div>
+
     <div class="panel-section control-section compact-section">
       <span class="control-label panel-kicker">VIEW</span>
       <div class="segmented" role="group" aria-label="Workspace view">
+        <!--
+          `Canvas`, not `Graph` (X1, RV4's last note on the ruled vocabulary).
+          It is the ONE visible word on the console still calling the workflow's
+          surface a graph, and `Canvas` is the ruled name for that surface -
+          the same word the home, the gallery lede and the sign-in sentence all
+          use ("copy it onto the canvas as a new workflow"). `Activity` stays:
+          it names the other half of the pair and no ruling moved it.
+
+          The VALUE is untouched. `activeView` is still `'graph' | 'activity'`,
+          and `.graph-workspace` and `GraphThumbnail` are still spelled that
+          way, because a class name and a prop are not what a reader gets. This
+          is the same boundary `shell.spec.ts` draws for the builder scan.
+        -->
         <button type="button" :aria-pressed="activeView === 'graph'" @click="emit('selectView', 'graph')">
-          <GitBranch :size="14" aria-hidden="true" /> Graph
+          <GitBranch :size="14" aria-hidden="true" /> Canvas
         </button>
         <button type="button" :aria-pressed="activeView === 'activity'" @click="emit('selectView', 'activity')">
           <Activity :size="14" aria-hidden="true" /> Activity
@@ -437,37 +546,48 @@ const logFormat = ref<LogFormat>('ndjson')
           :title="statusWords.hint || undefined"
         ><i aria-hidden="true" />{{ statusWords.label }}</span>
       </div>
-      <dl class="metrics-grid">
-        <div><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
-        <div><dt>Calls</dt><dd>{{ usage.callCount }}</dd></div>
-        <div><dt>Tokens</dt><dd>{{ tokens }}</dd></div>
-        <div><dt>Cost</dt><dd>${{ usage.costUsd.toFixed(4) }}</dd></div>
-      </dl>
-      <div class="stream-line">
-        <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionWord }}</span>
-        <span>seq {{ lastSequence }}</span>
-        <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
-      </div>
+      <!--
+        THE INSTRUMENTATION, BEHIND A DISCLOSURE (item 9, AUDIT-R2 N6).
+
+        `ELAPSED 00:00 / CALLS 0 / TOKENS 0 / COST $0.0000` and
+        `ready · seq 0 · 0 dropped` used to sit between the reader and the
+        button. Four tiles that are zero until a run exists, and a frame
+        sequence number with no reader on this screen, are not the answer to
+        "what can I do next" - and this rail is the first thing a visitor reads.
+
+        `<details>`, so the values stay IN THE DOM while it is shut: seven E2E
+        specs read `.stream-line` and `.metrics-grid` by `innerText`,
+        `textContent` or `page.evaluate`, and all of those answer for a
+        non-rendered element. What they do not do is assert it is on screen.
+
+        THE RUN ID STAYS OUT. It is the one value here somebody quotes -
+        `e2e/studio.spec.ts` asserts it is VISIBLE - and it names the run rather
+        than measuring the stream.
+      -->
+      <details class="rail-details" data-testid="status-details">
+        <summary class="rail-details-summary">Details</summary>
+        <dl class="metrics-grid">
+          <div><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
+          <div><dt>Calls</dt><dd>{{ usage.callCount }}</dd></div>
+          <div><dt>Tokens</dt><dd>{{ tokens }}</dd></div>
+          <div><dt>Cost</dt><dd>${{ usage.costUsd.toFixed(4) }}</dd></div>
+        </dl>
+        <div class="stream-line">
+          <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionWord }}</span>
+          <span>seq {{ lastSequence }}</span>
+          <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
+        </div>
+        <p v-if="graphVersion" class="graph-version-line">
+          Workflow version
+          <code class="graph-version" data-testid="graph-version" :title="graphVersion">{{ graphVersion }}</code>
+        </p>
+      </details>
       <code v-if="runId" class="run-id" :title="runId">{{ runId.slice(0, 8) }}</code>
     </div>
 
-    <div class="control-actions">
-      <button
-        class="button button-primary"
-        :class="{ 'is-armed': armed }"
-        data-testid="launch-button"
-        type="button"
-        :disabled="!canLaunch"
-        @click="emit('launch')"
-      >
-        <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
-        <Play v-else :size="16" aria-hidden="true" />
-        {{ primaryWord }}
-      </button>
-      <button class="button button-secondary" type="button" :disabled="!isActive || status === 'stopping'" @click="emit('cancel')">
-        <Square :size="14" aria-hidden="true" />
-        {{ status === 'stopping' ? 'Stopping…' : 'Cancel' }}
-      </button>
+    <!-- The log export is neither the action nor the status, so it is neither
+         block: last, where it already was. -->
+    <div class="control-logs">
       <div class="download-row">
         <button
           class="button button-quiet"
@@ -592,7 +712,36 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .stream-line i.is-connecting, .stream-line i.is-reconnecting { color: var(--warn-text-strong); }
 .stream-line .has-drops { color: var(--err-text); }
 .run-id { display: inline-block; margin-top: var(--space-3); padding: var(--space-1) var(--space-2); color: var(--text-muted); font: var(--type-meta); background: var(--surface-well); border-radius: var(--r-sm); }
+/* LABELLED, unlike the hash it replaces. On the canvas it was a bare
+   `9c6ca8a6fefbfffd` with nothing saying what it was of; in here it can afford
+   three words, and a value nobody can name is not readable just because it is
+   on screen. */
+.graph-version-line { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: var(--space-3) 0 0; color: var(--text-meta); font: var(--type-meta); }
+.graph-version { padding: var(--space-1) var(--space-2); color: var(--text-muted); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); overflow-wrap: anywhere; }
 .control-actions { display: grid; gap: var(--space-3); padding: var(--space-6); }
+/* The same block treatment as `.control-actions`, one section lower. Two rules
+   rather than one shared class, because the two are not the same thing and a
+   later edit to the action block must not silently move the log row. */
+.control-logs { display: grid; gap: var(--space-3); padding: var(--space-6); }
+
+/*
+ * THE INSTRUMENTATION DISCLOSURE (item 9). Native `<details>`, so the shut
+ * state costs no JavaScript, keeps its content in the DOM for the seven specs
+ * that read it, and is operable from a keyboard with no `aria` of its own.
+ */
+.rail-details { margin-top: var(--space-4); }
+.rail-details-summary {
+  color: var(--text-meta);
+  font: var(--type-meta);
+  cursor: pointer;
+  list-style: none;
+}
+.rail-details-summary::-webkit-details-marker { display: none; }
+.rail-details-summary::before { content: '▸ '; }
+.rail-details[open] > .rail-details-summary::before { content: '▾ '; }
+.rail-details-summary:hover { color: var(--text-body); }
+.rail-details-summary:focus-visible { outline: 2px solid var(--on-accent-cyan); outline-offset: 2px; }
+.rail-details .metrics-grid { margin-top: var(--space-4); }
 /* `.panel-banner` supplies the layout and the colour family; these three keep
    only what differs. The error banner is the one with a control in it, so it
    centres its row and pushes the dismiss to the end. */

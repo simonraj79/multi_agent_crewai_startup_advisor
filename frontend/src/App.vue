@@ -179,12 +179,20 @@ function openTemplate(templateId: string): void {
     @close-document="navigate({ name: 'builder', documentId: null }, { replace: true })"
   />
 
+  <!--
+    The console's Build half carries the document it is running, or `null` for
+    the built-in validator that has none (item 57, ROUND-2 R3). It used to be
+    `documentId: null` unconditionally, so pressing Build while running a graph
+    somebody drew landed on the gallery rather than on that graph. The payload
+    is the event's, so this line does not have to know how the console works
+    out which workflow is on screen.
+  -->
   <StudioView
     v-else
     :user="signedInUser"
     :authenticated="authPhase === 'authenticated'"
     @home="navigate({ name: 'home' })"
-    @build="navigate({ name: 'builder', documentId: null })"
+    @build="navigate({ name: 'builder', documentId: $event })"
     @sign-out="endSession"
   />
 </template>

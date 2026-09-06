@@ -43,10 +43,17 @@ import type { RunStatus } from '../types/studio'
  */
 
 const props = defineProps<{
-  /** The signed-in account, or null when authentication is not configured. */
+  /**
+   * The signed-in account, or null when authentication is not configured.
+   *
+   * There is no `authenticated` prop beside it, unlike `StudioView`'s pair, and
+   * the asymmetry is deliberate: that view guards its own first request on the
+   * phase because it can be reached while the gate is still deciding. This one
+   * cannot - `App.vue` renders the splash and then the wall before it routes at
+   * all - so a second prop here would guard a state that does not exist, and
+   * the next reader would maintain it.
+   */
   user: SignedInUser | null
-  /** True once the session request has resolved to a signed-in account. */
-  authenticated: boolean
   /**
    * Whether this mount is the page's own arrival at `#/`, rather than a later
    * visit from the breadcrumb.
@@ -351,7 +358,7 @@ onBeforeUnmount(() => window.clearInterval(ticker))
 
           <ul class="home-grid">
             <li>
-              <button class="home-card is-fixed" type="button" data-testid="home-validator" @click="emit('run')">
+              <button class="home-card" type="button" data-testid="home-validator" @click="emit('run')">
                 <span class="home-card-name">{{ validatorGraph.name }}</span>
                 <span class="home-card-blurb">
                   Scores an idea against real evidence — market, discussion and buildability —

@@ -6,6 +6,7 @@ import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
 import BuilderView from './components/builder/BuilderView.vue'
 import { useAuthGate } from './composables/useAuthGate'
+import { useStudioTheme } from './composables/useStudioTheme'
 import { useWorkspaceRoute } from './composables/useWorkspaceRoute'
 import type { WorkspaceRoute } from './composables/useWorkspaceRoute'
 
@@ -33,6 +34,25 @@ const {
   startGoogleSignIn,
   endSession,
 } = useAuthGate()
+
+/**
+ * The theme, started here rather than in one view.
+ *
+ * `useStudioTheme` resolves the stored preference (or `prefers-color-scheme`)
+ * and writes `data-theme` on `<html>`, which is the only thing `tokens.css`'s
+ * light palette reads. Until 2026-09-06 its ONLY caller was `BuilderView`, so
+ * the attribute was written when and only when somebody opened the builder:
+ * the run console rendered dark for a reader whose system is light, and it
+ * rendered light after a visit to the builder in the same tab - the same page,
+ * two palettes, decided by where you had been.
+ *
+ * Called with no arguments and its result discarded on purpose. The composable
+ * is a module singleton behind a `started` guard, so this is the START and the
+ * builder's own call goes on returning the same `setTheme`/`toggleTheme` it
+ * always did. There is no toggle on this shell's header yet; that is a
+ * follow-up, and it belongs beside a control rather than in the router.
+ */
+useStudioTheme()
 
 const { route, navigate: setRoute } = useWorkspaceRoute()
 
@@ -118,7 +138,6 @@ function openTemplate(templateId: string): void {
   <HomeView
     v-else-if="route.name === 'home'"
     :user="signedInUser"
-    :authenticated="authPhase === 'authenticated'"
     :resume-on-load="resumeOnLoad"
     @resume="resumeConsole"
     @run="navigate({ name: 'studio' })"

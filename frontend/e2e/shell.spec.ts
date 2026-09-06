@@ -136,11 +136,24 @@ test.describe('the unified shell', () => {
     await expect(validator).toContainText('Idea Validator')
     await expect(validator).toContainText(/run only/i)
 
-    // The saved one, with its status and a picture derived from the document.
-    const library = page.locator('[data-testid="home-library"]')
-    await expect(library).toContainText(SAVED_GRAPH_NAME)
-    await expect(library).toContainText('draft')
-    await expect(library.locator('svg.graph-thumbnail')).toHaveCount(1)
+    /*
+     * The saved one, with its status and a picture derived from the document -
+     * asserted about THIS ROW rather than about the whole library, and that is
+     * a measurement rather than caution. `clearLibrary` cannot delete a
+     * PUBLISHED document (409 by design, decision 24), so a full-suite run
+     * arrives here with whatever `builder.spec.ts` published still in the
+     * store: this file passed alone and failed in the suite on
+     * `toHaveCount(1)` reading 3 (CLAUDE.md item 44's leak, from the other
+     * side). What the row count would prove is the store's tidiness; what this
+     * page has to get right is that a saved workflow appears, named, with its
+     * status and a picture.
+     */
+    const row = page.locator('[data-testid="home-library"] > li', {
+      hasText: SAVED_GRAPH_NAME,
+    })
+    await expect(row).toHaveCount(1)
+    await expect(row).toContainText('draft')
+    await expect(row.locator('svg.graph-thumbnail')).toHaveCount(1)
 
     // All nine, both of the gallery's rows flattened into one list - the
     // gallery collapses two of them, and a list that hides two of nine is not

@@ -96,7 +96,7 @@ async function settle(rounds = 6): Promise<void> {
 
 function mountHome(resumeOnLoad = true) {
   return mount(HomeView, {
-    props: { user: null, authenticated: false, resumeOnLoad },
+    props: { user: null, resumeOnLoad },
   })
 }
 

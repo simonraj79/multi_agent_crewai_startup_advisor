@@ -497,8 +497,21 @@ const logFormat = ref<LogFormat>('ndjson')
     <div class="panel-section control-section compact-section">
       <span class="control-label panel-kicker">VIEW</span>
       <div class="segmented" role="group" aria-label="Workspace view">
+        <!--
+          `Canvas`, not `Graph` (X1, RV4's last note on the ruled vocabulary).
+          It is the ONE visible word on the console still calling the workflow's
+          surface a graph, and `Canvas` is the ruled name for that surface -
+          the same word the home, the gallery lede and the sign-in sentence all
+          use ("copy it onto the canvas as a new workflow"). `Activity` stays:
+          it names the other half of the pair and no ruling moved it.
+
+          The VALUE is untouched. `activeView` is still `'graph' | 'activity'`,
+          and `.graph-workspace` and `GraphThumbnail` are still spelled that
+          way, because a class name and a prop are not what a reader gets. This
+          is the same boundary `shell.spec.ts` draws for the builder scan.
+        -->
         <button type="button" :aria-pressed="activeView === 'graph'" @click="emit('selectView', 'graph')">
-          <GitBranch :size="14" aria-hidden="true" /> Graph
+          <GitBranch :size="14" aria-hidden="true" /> Canvas
         </button>
         <button type="button" :aria-pressed="activeView === 'activity'" @click="emit('selectView', 'activity')">
           <Activity :size="14" aria-hidden="true" /> Activity

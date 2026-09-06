@@ -654,6 +654,18 @@ test.describe('the unified shell', () => {
       'true',
     )
 
+    /*
+     * X1: the VIEW pair names the SURFACE, and the surface is the canvas.
+     * `Graph` was the last visible word on this console calling the workflow's
+     * surface a graph, against a home, a gallery lede and a sign-in sentence
+     * that all say canvas. The prop behind it is still `'graph' | 'activity'`,
+     * which is the same client/DOM boundary the builder scan below draws.
+     */
+    const view = page.locator('.status-panel .segmented[aria-label="Workspace view"]')
+    await expect(view.locator('button').first()).toHaveText(/^\s*Canvas\s*$/)
+    await expect(view.locator('button').nth(1)).toHaveText(/^\s*Activity\s*$/)
+    await expect(view).not.toContainText(/\bgraph\b/i)
+
     expect(watch.unexpected).toEqual([])
   })
 

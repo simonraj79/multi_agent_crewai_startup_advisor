@@ -65,6 +65,25 @@ describe('the primary button says what the mode is called', () => {
     ).toBe('Run again')
   })
 
+  /*
+   * X1: the VIEW pair names the SURFACE, and the ruled name for it is `Canvas`.
+   * `Graph` was the last visible word on this console calling a workflow's
+   * surface a graph, against a home, a gallery lede and a sign-in sentence that
+   * all say canvas. The PROP is untouched - `activeView` is still
+   * `'graph' | 'activity'` - because a prop is not what a reader gets.
+   */
+  it('calls the workflow surface the Canvas, and still emits `graph`', async () => {
+    const panel = mountPanel()
+    const view = panel.get('[aria-label="Workspace view"]')
+    const buttons = view.findAll('button')
+    expect(buttons[0].text()).toBe('Canvas')
+    expect(buttons[1].text()).toBe('Activity')
+    expect(view.text()).not.toMatch(/graph/i)
+
+    await buttons[0].trigger('click')
+    expect(panel.emitted('selectView')).toEqual([['graph']])
+  })
+
   it('says `Starting…` while the run is being asked for, as the test panel does', () => {
     expect(mountPanel({ primaryLabel: 'Launching…' }).get('[data-testid="launch-button"]').text())
       .toBe('Starting…')

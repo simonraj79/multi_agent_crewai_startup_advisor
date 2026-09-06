@@ -1350,6 +1350,49 @@ function runPublished(workflowId: string, inputField: string): void {
   emit('runWorkspace')
 }
 
+/**
+ * The header's Run switch, which used to be a bare navigation (item 57, R2 R3).
+ *
+ * It emitted `runWorkspace` and nothing else, so leaving a builder document by
+ * the switch landed on a console pointed at the BUILT-IN validator - the
+ * breadcrumb had just named the author's workflow and the next screen did not.
+ * The switch is the mode pair of ONE workflow, so it has to carry that
+ * workflow, and there are exactly three states it can be in:
+ *
+ *   published document   write the same handoff "Run it" writes, then go.
+ *                        `runPublished` is reused rather than copied, so the
+ *                        two doors cannot drift.
+ *   unpublished document refuse, visibly. A run resolves a REGISTERED version,
+ *                        so navigating would land on a console that answers
+ *                        404 for this graph - a refusal the author can do
+ *                        nothing about from there. The remedy is one button
+ *                        away and the disabled control names it.
+ *   the gallery          unchanged: `emit('runWorkspace')`, which reaches the
+ *                        console's own built-in workflow. There is no open
+ *                        document to carry, the pair is kept here for a
+ *                        measured reason (`e2e/builder-layout.spec.ts` pins
+ *                        its left edge at `#/build`), and the console is a
+ *                        legitimate place to be going.
+ *
+ * `publishedVersion`, not `status`: a head whose row says `draft` may still
+ * have an OLDER version registered, and that older version is the one a run
+ * resolves. It is the same predicate `useFlowTest` uses for the Run tab, for
+ * the same reason.
+ */
+const runSwitchBlocked = computed(
+  () => started.value && persistence.publishedVersion.value === null,
+)
+
+function runWorkflow(): void {
+  const id = persistence.documentId.value
+  if (!started.value || id === null) {
+    emit('runWorkspace')
+    return
+  }
+  if (persistence.publishedVersion.value === null) return
+  runPublished(id, doc.value.input_field)
+}
+
 /* ── keyboard ──────────────────────────────────────────────────────────── */
 
 useBuilderHotkeys(
@@ -1831,8 +1874,24 @@ watch(
           <button type="button" :aria-pressed="true">
             <PenTool :size="14" aria-hidden="true" /> Build
           </button>
-          <button type="button" :aria-pressed="false" @click="emit('runWorkspace')">
-            <Play :size="14" aria-hidden="true" /> Run
+          <!--
+            THE SWITCH CARRIES THE WORKFLOW (item 57). Its label is the reason
+            it is disabled, in the control rather than in a tooltip, because a
+            reason only a hover can reach is a dead button to everybody who
+            does not hover - and the title then names the button that lifts it.
+          -->
+          <button
+            type="button"
+            :aria-pressed="false"
+            :disabled="runSwitchBlocked"
+            data-testid="run-switch"
+            :title="runSwitchBlocked
+              ? 'Publish this workflow before you can run it — use the Publish button in the bar below'
+              : 'Run this workflow'"
+            @click="runWorkflow"
+          >
+            <Play :size="14" aria-hidden="true" />
+            {{ runSwitchBlocked ? 'Publish to run' : 'Run' }}
           </button>
         </div>
 
@@ -2403,6 +2462,12 @@ watch(
 
 .workspace-switch { grid-template-columns: auto auto; padding: 2px; }
 .workspace-switch button { min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+/* The Run switch while this workflow is unpublished (item 57). The console's
+   own `.segmented button:disabled` rule is scoped `:not(.is-builder)`, so the
+   builder gets none of it; this is that rule's pair, and it is the affordance
+   under the label - a control that reads `Publish to run` and still looks
+   pressable is a worse answer than either half alone. */
+.workspace-switch button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 /* A toast in the header row, in the layout (never over the canvas, R15): an
    icon that says which kind of line it is, room for two lines before an

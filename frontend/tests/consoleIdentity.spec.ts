@@ -250,4 +250,32 @@ describe('the console renders the workflow it is actually running', () => {
       .toBe('Vector databases in September')
     wrapper.unmount()
   })
+
+  /**
+   * The other half of the mode switch (item 57, ROUND-2 R3). Build used to
+   * emit nothing, and `App.vue` answered it with `documentId: null` - so
+   * pressing Build while running a graph somebody drew landed on the gallery
+   * rather than on that graph. The payload is the workflow id, which for a
+   * builder graph IS the document id.
+   */
+  it('sends Build to this workflow’s own canvas', async () => {
+    localStorage.setItem(
+      'u:u1:validator-active-run',
+      JSON.stringify({
+        version: 1, runId: 'run-under-test', sessionId: 'session-abc',
+        workflowId: BUILDER_ID, inputField: 'subject',
+      }),
+    )
+    const wrapper = await mountConsole()
+    await wrapper.get('.workspace-switch button:first-child').trigger('click')
+    expect(wrapper.emitted('build')).toEqual([[BUILDER_ID]])
+    wrapper.unmount()
+  })
+
+  it('sends Build to the gallery when the run is the built-in workflow', async () => {
+    const wrapper = await mountConsole()
+    await wrapper.get('.workspace-switch button:first-child').trigger('click')
+    expect(wrapper.emitted('build')).toEqual([[null]])
+    wrapper.unmount()
+  })
 })

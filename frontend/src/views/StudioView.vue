@@ -22,6 +22,7 @@ import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 import type { SignedInUser } from '../composables/useAuthGate'
 import type { RunStatus } from '../types/studio'
+import type { DocumentId } from '../types/builder'
 
 /**
  * The run console, moved out of `App.vue` unchanged.
@@ -45,7 +46,17 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** The breadcrumb's first crumb: back to the list of every workflow. */
   home: []
-  build: []
+  /**
+   * Draw this workflow: the mode switch's other half.
+   *
+   * It CARRIES THE DOCUMENT now (item 57, ROUND-2 R3). It used to be a bare
+   * `build: []` and `App.vue` answered it with `documentId: null`, so pressing
+   * Build while running a graph somebody drew landed on the gallery rather
+   * than on that graph - the switch is the mode pair of one workflow, and one
+   * of its two halves forgot which workflow. `null` is still the honest answer
+   * for the built-in validator, which has no builder document behind it.
+   */
+  build: [documentId: DocumentId | null]
   signOut: []
 }>()
 
@@ -178,6 +189,18 @@ const identity = computed(() =>
   workflowIdentity(descriptor.value, workflowId.value, inputField.value, handoff.value?.name ?? ''),
 )
 const workflowName = computed(() => identity.value.name)
+/**
+ * Which document the Build half of the switch opens.
+ *
+ * The workflow id and the document id are ONE string for a builder graph:
+ * `builder/descriptor.py::builder_workflow_id` returns `document.id`, and the
+ * descriptor served for a published graph carries it as its own `id` (measured
+ * 2026-09-06: `GET /api/workflows/ug_a96d869d/graph` -> `"id": "ug_a96d869d"`).
+ * So nothing has to be looked up, and nothing has to be carried in the handoff.
+ */
+const buildTarget = computed<DocumentId | null>(() =>
+  identity.value.authored ? (workflowId.value as DocumentId) : null,
+)
 const canvasKicker = computed(() => identity.value.kicker)
 const canvasTitle = computed(() => identity.value.title)
 
@@ -449,7 +472,14 @@ function backToValidator(): void {
           none: the next reader would have taken the cut list at its word.
         -->
         <div class="segmented workspace-switch" role="group" aria-label="Workspace">
-          <button type="button" :aria-pressed="false" @click="emit('build')">
+          <!--
+            Build goes to THIS workflow's canvas when there is one (item 57).
+            `identity.authored` is the descriptor's own answer to "somebody drew
+            this", and a builder graph registers under its DOCUMENT id, so the
+            workflow id IS the `#/build/<id>` this lands on. The built-in
+            validator has no document, so it keeps the gallery.
+          -->
+          <button type="button" :aria-pressed="false" @click="emit('build', buildTarget)">
             <PenTool :size="14" aria-hidden="true" /> Build
           </button>
           <button type="button" :aria-pressed="true">

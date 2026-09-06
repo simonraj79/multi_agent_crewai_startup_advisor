@@ -150,6 +150,9 @@ const {
   castFor,
   initialize,
   launch,
+  // The run pointer survives a run ending now (item 58, R4), so leaving this
+  // workflow has to put it down deliberately - see `backToValidator`.
+  forgetRun,
   submitGate,
   cancel,
   resumeFrom,
@@ -390,6 +393,12 @@ const handoffBannerShown = computed(
 
 function backToValidator(): void {
   clearRunHandoff(props.user?.id ?? null)
+  // AND THE RUN POINTER, which is new and is not tidiness (item 58, R4). This
+  // function reloads the page, and a pointer that now survives a finished run
+  // would have `initialize` restore that run and repoint the console straight
+  // back at the workflow the operator just asked to leave - the control would
+  // look broken, and the cause would be two files away.
+  forgetRun()
   handoff.value = null
   window.location.reload()
 }

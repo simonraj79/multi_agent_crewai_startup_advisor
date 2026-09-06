@@ -86,7 +86,7 @@ describe('a flow nested inside the run', () => {
     expect(localStorage.getItem(ACTIVE_RUN_STORAGE_KEY)).toContain(RUN_ID)
   })
 
-  it('still lets the run itself finish, and clear its pointer', async () => {
+  it('still lets the run itself finish', async () => {
     // The control for the case above: this suite can tell the two apart.
     api.emit(ROOT_STARTED)
     for (const frame of INNER_FRAMES) api.emit(frame)
@@ -95,8 +95,19 @@ describe('a flow nested inside the run', () => {
     await flush(32)
 
     expect(run.status.value).toBe('completed')
-    expect(removeItem).toHaveBeenCalledWith(ACTIVE_RUN_STORAGE_KEY)
-    expect(localStorage.getItem(ACTIVE_RUN_STORAGE_KEY)).toBeNull()
+    /*
+     * RE-POINTED 2026-09-06 (item 58, ROUND-2 R4). This control used to assert
+     * that the root's own WORKFLOW_END CLEARED the pointer, which was a fine
+     * instrument while `setStatus` did that - it distinguished the two cases
+     * with something the nested frames provably do not do. The pointer now
+     * SURVIVES a terminal status, so that instrument reads the same on both
+     * sides and would be a control that controls nothing.
+     *
+     * The status is what this file is actually about, and it still separates
+     * them: `running` above, `completed` here. The pointer's own survival is
+     * asserted in `runRecovery.spec.ts`, which owns it.
+     */
+    expect(localStorage.getItem(ACTIVE_RUN_STORAGE_KEY)).toContain(RUN_ID)
   })
 
   it('does not stop the traversals still marching', async () => {

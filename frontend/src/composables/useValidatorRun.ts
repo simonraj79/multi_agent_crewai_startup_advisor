@@ -784,15 +784,32 @@ export function useValidatorRun(
   )
 
   /**
-   * The single place a run status is written. A run that has reached a terminal
-   * state must not be restored again on the next page load, so the saved
-   * pointer is dropped the moment it lands there.
+   * The single place a run status is written.
+   *
+   * IT NO LONGER DROPS THE POINTER (item 58, ROUND-2 R4). It did, the instant a
+   * run reached a terminal state, and the consequence is the one item 58
+   * measures: a synthetic builder run is over in ~115 ms and the pointer lived
+   * 30-40 ms, so a FINISHED RUN COULD NOT BE REOPENED FROM ANYWHERE - not from
+   * the home, not by a reload, not by a URL. `RunHistory` offers a download and
+   * no route carries a run id, so the report, the verdict and the whole trace
+   * were reachable for as long as nobody navigated.
+   *
+   * Three things replace or remove it now, all of them deliberate acts rather
+   * than a side effect of a run ending: the next `launch` overwrites it,
+   * `forgetRun` is called when the operator asks to leave this workflow, and
+   * `identityStorage.forgetIdentity` sweeps it on sign-out. `restoreRun` still
+   * drops a pointer the SERVER can no longer serve, which is a different fact
+   * about a different problem.
+   *
+   * The home is what keeps this from becoming a console that reopens a stale
+   * result forever - the reason the old line gave for existing. `D2` reads the
+   * pointer's status: `live` hands over to the console, `terminal` shows a
+   * "Last run" card and stays put. So the run is offered rather than imposed.
    */
   function setStatus(next: RunStatus): void {
     const wasTerminal = TERMINAL_STATUSES.includes(status.value)
     status.value = next
     if (!TERMINAL_STATUSES.includes(next)) return
-    clearStoredRun(identity())
     // Nothing further will stream, so no traversal should still be marching.
     clearEdgeAnimations()
     // The terminal frame settles the console: the recede lifts (`isReceded`
@@ -900,14 +917,17 @@ export function useValidatorRun(
     try {
       const snapshot = await api.getRun(context.runId)
       if (TERMINAL_STATUSES.includes(snapshot.status)) {
-        // Refresh recovery exists for a run that is still in flight. A finished
-        // one is history: drop the pointer so the next load starts clean rather
-        // than re-opening the same stale result forever.
+        // A FINISHED RUN IS REOPENED, AND ITS POINTER IS KEPT (item 58, R4).
         //
-        // The report is the exception. It is what the operator came back for,
-        // and the already-cleared pointer bounds how long it can linger - this
-        // shows the conclusion once, not forever.
-        clearStoredRun(identity())
+        // This branch used to drop the pointer here as well, on the argument
+        // that a finished run is history and the next load should start clean.
+        // What that produced is the defect: the console was the ONLY place a
+        // run's report, verdict and trace existed, and the moment it reached a
+        // terminal state they became unreachable from anywhere. The home now
+        // decides instead - it reads the pointer's status and offers a "Last
+        // run" card for a terminal one rather than handing over - so "clean
+        // start" is a choice the reader makes, one click, and this is the
+        // screen that choice arrives at.
         resetRun()
         runId.value = context.runId
         // Replay the frames, do not merely take the result.
@@ -931,15 +951,14 @@ export function useValidatorRun(
           // still the thing the operator came back for.
         }
         captureResult(snapshot.result)
-        // Re-open ONLY if there is something to show. A finished run whose
-        // report has aged out leaves a dead graph under a "completed" badge and
-        // nothing to read, which is worse than the clean console the operator
-        // would otherwise get - so in that case the original contract stands
-        // and the run is dropped as history.
-        if (!report.value) {
-          resetRun()
-          return
-        }
+        // Re-opened whether or not there is a REPORT. It used to reset here on
+        // an empty one, which read as "there is nothing to show" and was wrong
+        // twice: a cancelled run has no report and a trace worth reading, and
+        // the home now names this run on a card before the reader clicks - so
+        // landing on a blank console would be the card lying. What is shown
+        // when the body has aged out is the run's status, its usage and every
+        // frame that survived, which is what the operator came back for
+        // minus the part the server no longer has.
         Object.assign(usage, snapshot.usage)
         setStatus(snapshot.status)
         return
@@ -1749,6 +1768,20 @@ export function useValidatorRun(
     lastError.value = ''
   }
 
+  /**
+   * Put this run down deliberately (item 58, R4).
+   *
+   * The pointer survives a run ending now, so the one thing that used to clear
+   * it by accident has to be done on purpose. The caller is the console's
+   * "back to the built-in validator" control: it reloads the page, and a
+   * surviving pointer at a builder workflow would have `initialize` restore
+   * that run and repoint the console straight back at the graph the operator
+   * just asked to leave.
+   */
+  function forgetRun(): void {
+    clearStoredRun(identity())
+  }
+
   function resetRun(): void {
     unsubscribe?.()
     unsubscribe = undefined
@@ -1842,6 +1875,7 @@ export function useValidatorRun(
     primaryLabel,
     initialize,
     launch,
+    forgetRun,
     submitGate,
     cancel,
     resumeFrom,

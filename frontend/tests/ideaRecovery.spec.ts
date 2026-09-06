@@ -132,6 +132,9 @@ describe('idea recovery across a reload', () => {
   let app: App
 
   const LAUNCHED = 'A scheduling assistant for small veterinary clinics'
+  /** What an authored graph's own input field carries (item 56). */
+  const SUBJECT = 'What the vector-database vendors shipped in September'
+  const DEFAULT_IDEA = 'An AI tool that turns Figma files into production React'
 
   beforeEach(() => {
     localStorage.clear()
@@ -172,5 +175,75 @@ describe('idea recovery across a reload', () => {
 
     expect(run.idea.value).toBe(LAUNCHED)
     expect(run.runId.value).toBe(RUN_ID)
+  })
+
+  /**
+   * THE SAME RELOAD FOR A GRAPH SOMEBODY DREW (item 56, ROUND-2 R2).
+   *
+   * `recoverIdea` read `inputs.idea` by literal, so a run launched under
+   * `inputs.subject` recovered nothing and the box kept the Figma default -
+   * with Relaunch pointed at it. The key comes off the run's own stored
+   * context now, which is the value the POST used.
+   */
+  it('restores the input of a graph somebody drew, read by its own key', async () => {
+    localStorage.setItem(
+      ACTIVE_RUN_KEY,
+      JSON.stringify({
+        version: 1,
+        runId: RUN_ID,
+        sessionId: 'session-abc',
+        workflowId: 'ug_a96d869d',
+        inputField: 'subject',
+      }),
+    )
+    const build = frameFactory()
+    api.storedFrames = [
+      build('run_state', {
+        event_type: 'WORKFLOW_START',
+        node_id: 'workflow',
+        details: { status: 'running', inputs: { subject: SUBJECT } },
+      }),
+    ]
+
+    const [run, mounted] = withSetup(() => useValidatorRun(api))
+    app = mounted
+    await run.initialize()
+    await flush(24)
+
+    expect(run.idea.value).toBe(SUBJECT)
+    expect(run.inputField.value).toBe('subject')
+  })
+
+  /**
+   * And it does NOT take a key the graph does not read. A builder document may
+   * carry its own `idea` state key; putting that in a box labelled `SUBJECT`
+   * would be a worse lie than recovering nothing.
+   */
+  it('ignores an `idea` key on a graph whose input is `subject`', async () => {
+    localStorage.setItem(
+      ACTIVE_RUN_KEY,
+      JSON.stringify({
+        version: 1,
+        runId: RUN_ID,
+        sessionId: 'session-abc',
+        workflowId: 'ug_a96d869d',
+        inputField: 'subject',
+      }),
+    )
+    const build = frameFactory()
+    api.storedFrames = [
+      build('run_state', {
+        event_type: 'WORKFLOW_START',
+        node_id: 'workflow',
+        details: { status: 'running', inputs: { idea: 'not this one' } },
+      }),
+    ]
+
+    const [run, mounted] = withSetup(() => useValidatorRun(api))
+    app = mounted
+    await run.initialize()
+    await flush(24)
+
+    expect(run.idea.value).toBe(DEFAULT_IDEA)
   })
 })

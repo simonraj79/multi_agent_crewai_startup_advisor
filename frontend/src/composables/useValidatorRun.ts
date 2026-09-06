@@ -1205,11 +1205,32 @@ export function useValidatorRun(
    * Only the opening frame carries `inputs` - the terminal one carries
    * `result` - and only a non-empty string is taken, so a malformed frame
    * leaves whatever the operator has typed alone.
+   *
+   * IT READS THE GRAPH'S OWN INPUT KEY, NOT THE LITERAL `idea` (item 56,
+   * ROUND-2 R2). The key was hardcoded, which is item 11's own defect met
+   * again one graph over: a `News to social post` run is launched under
+   * `inputs.subject`, so `inputs.idea` was `undefined`, nothing was recovered,
+   * and the box showed the Figma default over a run about something else -
+   * with Relaunch pointed at it. Measured on 2026-09-06 before the fix: a
+   * finished `subject` run reloaded to "An AI tool that turns Figma files into
+   * production React".
+   *
+   * `inputField` is the right key and cannot disagree with the run on screen,
+   * because it is the same value the POST used: `launch` writes it into
+   * `StoredRunContext` beside the run id, and `initialize` takes BOTH back
+   * together or neither. A context written before that field existed reads
+   * `idea` through `DEFAULT_INPUT_FIELD`, which is what every such run was
+   * actually launched with.
+   *
+   * There is deliberately NO fallback to `idea` for an authored graph. A
+   * builder document may carry a state key called `idea` for its own reasons,
+   * and putting that in the box under a label saying `SUBJECT` would be a
+   * worse lie than an empty recovery.
    */
   function recoverIdea(frame: FrameData): void {
     const inputs = frame.details.inputs
     if (typeof inputs !== 'object' || inputs === null) return
-    const recovered = (inputs as Record<string, unknown>).idea
+    const recovered = (inputs as Record<string, unknown>)[inputField.value]
     if (typeof recovered !== 'string' || !recovered.trim()) return
     idea.value = recovered
   }

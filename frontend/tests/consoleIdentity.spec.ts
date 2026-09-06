@@ -244,6 +244,10 @@ describe('the console renders the workflow it is actually running', () => {
     expect(wrapper.find('label[for="idea"]').text()).toBe('SUBJECT')
     expect(wrapper.find('.workflow-title').text()).toBe('News to social post')
     expect(document.title).toBe('News to social post · Crew Studio')
+    // And the box holds what the run was launched with, read by the graph's own
+    // key rather than by the literal `idea` (item 56, R2).
+    expect((wrapper.find('textarea#idea').element as HTMLTextAreaElement).value)
+      .toBe('Vector databases in September')
     wrapper.unmount()
   })
 })

@@ -388,18 +388,28 @@ function backToValidator(): void {
         their own halves without landing on each other.
       -->
       <!--
-        THE HEADING IS THE WORKFLOW (U4). This slot held the product's OLD name,
-        standing where the page's own heading belongs; now that `BrandLockup`
-        carries `PRODUCT_NAME` in the kicker beside it, leaving a product name
-        here would have named the product twice and the thing on screen never.
-        The old string is not quoted anywhere in this file on purpose -
+        THE HEADING IS THE WORKFLOW (U4), AND IT IS `sr-only` (U2's ruling,
+        2026-09-06). This slot held the product's OLD name, standing where the
+        page's own heading belongs; `BrandLockup` carries `PRODUCT_NAME` in the
+        kicker beside it, so a product name here would have named the product
+        twice and the thing on screen never.
+
+        The workflow's name then appeared TWICE - here and as the breadcrumb's
+        current crumb, which U2 fixes as `Workflows / <workflow name>`. The
+        crumb is the visible one, because it is the one that also says where
+        the name sits; the heading stays in the DOM because a page about one
+        workflow should have that workflow as its `<h1>`, and taking it out
+        would leave this document with no heading at all for anyone reading it
+        by structure.
+
+        The old product name is not quoted anywhere in this file on purpose -
         `tests/brand.spec.ts` greps `src/` for it line by line, comments
-        included, which is the only form of that check nobody can talk their way
-        past.
+        included, which is the only form of that check nobody can talk their
+        way past.
       -->
       <BrandLockup as="link">
         <template #default>
-          <h1>{{ workflowName }}</h1>
+          <h1 class="sr-only">{{ workflowName }}</h1>
         </template>
       </BrandLockup>
 

@@ -1772,14 +1772,20 @@ watch(
         owns that line's TEXT and the worker who owned this block could change
         their own halves without landing on each other.
 
-        THE HEADING IS THE WORKFLOW, and `Flow builder` was the last surface
-        still naming a TOOL rather than the thing on screen (U4). The gallery
-        has no workflow open, so it takes `Build` - the mode - which is the one
-        honest heading for a page that is a list of shapes to start from.
+        THE HEADING IS THE WORKFLOW, and the tool's old name was the last
+        surface still naming a TOOL rather than the thing on screen (U4). The
+        gallery has no workflow open, so it takes `Build` - the mode - which is
+        the one honest heading for a page that is a list of shapes to start
+        from.
+
+        `sr-only`, for the reason `StudioView` states at length: the breadcrumb
+        beside it is the visible name (U2), and one name in two places eighteen
+        inches apart is a stutter rather than a hierarchy. The heading stays in
+        the DOM so the page has one.
       -->
       <BrandLockup as="link">
         <template #default>
-          <h1>{{ started ? doc.name : 'Build' }}</h1>
+          <h1 class="sr-only">{{ started ? doc.name : 'Build' }}</h1>
         </template>
       </BrandLockup>
 

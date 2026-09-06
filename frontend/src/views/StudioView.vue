@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, watchEffect } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
-import { VueFlow } from '@vue-flow/core'
-import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { Activity, ChevronLeft, ChevronRight, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
+import BrandLockup from '../components/BrandLockup.vue'
+import CanvasControls from '../components/CanvasControls.vue'
 import ChatRail from '../components/ChatRail.vue'
 import CrewProgress from '../components/CrewProgress.vue'
 import DialogueRail from '../components/DialogueRail.vue'
@@ -13,6 +14,7 @@ import RunHistory from '../components/RunHistory.vue'
 import StatusPanel from '../components/StatusPanel.vue'
 import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
+import { useCanvasTool } from '../composables/useCanvasTool'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
 import { pageTitle } from '../data/brand'
@@ -58,25 +60,35 @@ const emit = defineEmits<{
 const handoff = ref(readRunHandoff(props.user?.id ?? null))
 
 /**
- * Names for `<Controls>`'s three unnamed buttons.
+ * Select / Hand, `H` / `V`, and the space bar - the same composable the builder
+ * canvas uses, on the same terms (`DEFINITION-OF-DONE.md` U3).
  *
- * `onMounted` and a query, because the labels have to land on elements the
- * library renders and there is no prop for them. Keyed off the library's own
- * class names, which are its public API - they are what every Vue Flow theme
- * targets - and each write is guarded, so a version that renames one leaves the
- * other two named rather than throwing on the render.
+ * It replaces a DOM hack that lived here: three `aria-label`s written onto the
+ * library's own buttons in `onMounted`, because `<Controls>` renders three
+ * `<button>`s around bare `<svg>`s with no title and no text and there is no
+ * prop for a name. `CanvasControls` fills the `control-*` slots instead, which
+ * is the declarative fix that hack's own comment said it wanted; D4 is what
+ * makes it affordable, by regenerating the screenshot baselines once on the
+ * integrated branch rather than treating them as a reason not to name a button.
+ *
+ * `console` rests on Hand, which is what this canvas has always done - it never
+ * passed `pan-on-drag`, so it inherited the library's `true` and a left-drag
+ * panned. Nothing about the first frame of a run changes.
  */
-const CONTROL_NAMES: ReadonlyArray<[string, string]> = [
-  ['.vue-flow__controls-zoomin', 'Zoom in'],
-  ['.vue-flow__controls-zoomout', 'Zoom out'],
-  ['.vue-flow__controls-fitview', 'Fit the graph to the view'],
-]
+const { tool, setTool, panOnDrag, canvasClass } = useCanvasTool('console')
 
-onMounted(() => {
-  for (const [selector, name] of CONTROL_NAMES) {
-    document.querySelector(selector)?.setAttribute('aria-label', name)
-  }
-})
+/** The instance `<VueFlow id>` registers, so Fit and zoom reach this canvas. */
+const flow = useVueFlow('studio-flow')
+
+/**
+ * The console's fit, stated once.
+ *
+ * Bound to `<VueFlow :fit-view-options>` AND handed to the Fit button, because
+ * a button that framed the graph differently from the automatic fit is a button
+ * that undoes what the page did on arrival. It was an inline literal on the
+ * prop alone until the Fit button needed the same numbers.
+ */
+const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 0.9 }
 
 /**
  * The workflow this console is pointed at, by name.
@@ -367,13 +379,29 @@ function backToValidator(): void {
     }"
   >
     <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
-          <h1>Validator Studio</h1>
-        </div>
-      </div>
+      <!--
+        The lockup is a LINK to the workflow list (row U2), and the `<h1>`
+        inside it is the view's own heading, handed to the default slot. The
+        `<template #default>` wrapper looks redundant and is not: it keeps the
+        heading's line at the indentation it has always had, so the worker who
+        owns that line's TEXT and the worker who owned this block could change
+        their own halves without landing on each other.
+      -->
+      <!--
+        THE HEADING IS THE WORKFLOW (U4). This slot held the product's OLD name,
+        standing where the page's own heading belongs; now that `BrandLockup`
+        carries `PRODUCT_NAME` in the kicker beside it, leaving a product name
+        here would have named the product twice and the thing on screen never.
+        The old string is not quoted anywhere in this file on purpose -
+        `tests/brand.spec.ts` greps `src/` for it line by line, comments
+        included, which is the only form of that check nobody can talk their way
+        past.
+      -->
+      <BrandLockup as="link">
+        <template #default>
+          <h1>{{ workflowName }}</h1>
+        </template>
+      </BrandLockup>
 
       <div class="header-context">
         <!--
@@ -547,9 +575,19 @@ function backToValidator(): void {
           :cast-states="castStates"
         />
 
+        <!--
+          `canvasClass` is `is-hand-tool` / `is-select-tool`, and it is on the
+          flow root rather than on a wrapper because `.vue-flow__pane` is a
+          descendant of it and the cursor rules in `studio.css` are the only
+          thing that reads it. `pan-on-drag` was ABSENT here until U3 - the
+          library's default is `true`, which is Hand, which is what the console
+          has always done; the composable's resting value for this surface is
+          that same `true`, so the first frame is unchanged.
+        -->
         <VueFlow
           id="studio-flow"
           class="validator-flow"
+          :class="canvasClass"
           :nodes="graphNodes"
           :edges="graphEdges"
           :min-zoom="0.28"
@@ -559,8 +597,9 @@ function backToValidator(): void {
           :nodes-connectable="false"
           :elements-selectable="false"
           :zoom-on-double-click="false"
+          :pan-on-drag="panOnDrag"
           :fit-view-on-init="true"
-          :fit-view-options="{ padding: 0.12, maxZoom: 0.9 }"
+          :fit-view-options="FIT_VIEW_OPTIONS"
           :aria-label="`${canvasTitle} workflow graph`"
         >
           <template #node-workflow="nodeProps">
@@ -577,19 +616,26 @@ function backToValidator(): void {
           </template>
           <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
           <!--
-            Stock markup, named after the fact - and the DOM pass is the point
-            rather than a shortcut. `<Controls>` renders three `<button>`s
-            around bare `<svg>`s with no title and no text, which a screen
-            reader announces as "button, button, button"; they were the only
-            unnamed interactive elements on this page. Replacing them through
-            the `control-*` slots is the declarative fix and is what
-            `BuilderCanvas` does - but this canvas is under WP-A's committed
-            screenshot baseline, and swapping Vue Flow's icons for Lucide ones
-            moves pixels inside `.validator-flow`. An `aria-label` moves none.
-            The gate exists to prove the card extraction changed nothing; it
-            must not be spent on an accessibility label.
+            The declarative fix the stock markup here was waiting for, and the
+            same component the builder canvas renders (U3).
+
+            The comment this replaces named the reason the buttons were left
+            stock and labelled in `onMounted` instead: this canvas is under a
+            committed screenshot baseline, and swapping Vue Flow's icons for
+            Lucide ones moves pixels inside `.validator-flow` where an
+            `aria-label` moves none. **D4 lifts that reason for this build** -
+            `run-canvas.spec.ts`'s three PNGs and `builder-canvas.spec.ts`'s
+            sixteen are regenerated once, on the integrated branch, by RV1,
+            because the header, the brand and this cluster all move inside the
+            same frames. The gate is being spent deliberately, by the document
+            that owns it, rather than raided.
           -->
-          <Controls position="bottom-left" :show-interactive="false" />
+          <CanvasControls
+            flow-id="studio-flow"
+            :tool="tool"
+            :fit="() => flow.fitView(FIT_VIEW_OPTIONS)"
+            @update:tool="setTool"
+          />
         </VueFlow>
 
         <ReportPanel

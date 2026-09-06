@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { CircleDot } from 'lucide-vue-next'
+import BrandLockup from './components/BrandLockup.vue'
 import SignInPanel from './components/SignInPanel.vue'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
@@ -115,7 +115,12 @@ function openTemplate(templateId: string): void {
     reads as "it logged me out again".
   -->
   <div v-if="authPhase === 'checking'" class="auth-splash" role="status" aria-live="polite">
-    <span class="auth-splash-mark" aria-hidden="true"><CircleDot :size="22" :stroke-width="1.8" /></span>
+    <!--
+      The STATIC lockup, so the one moment the page is otherwise blank still
+      says which product is loading. `.auth-splash` is a centred column, so the
+      lockup stacks above the sentence rather than beside it.
+    -->
+    <BrandLockup as="static" :mark-size="22" />
     <p>Checking your session…</p>
   </div>
 

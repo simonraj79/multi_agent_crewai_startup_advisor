@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CircleAlert,
   CircleCheck,
-  CircleDot,
   GitBranch,
   Info,
   KeyRound,
@@ -16,6 +15,7 @@ import {
   Unplug,
   X,
 } from 'lucide-vue-next'
+import BrandLockup from '../BrandLockup.vue'
 import SignInPanel from '../SignInPanel.vue'
 import AccountChip from './AccountChip.vue'
 import BudgetMeter from './BudgetMeter.vue'
@@ -43,7 +43,7 @@ import { useBuilderPersistence } from '../../composables/useBuilderPersistence'
 import { BUILDER_PROBLEMS, useBuilderProblems } from '../../composables/useBuilderProblems'
 import { BUILDER_BUDGET, useBuilderValidation } from '../../composables/useBuilderValidation'
 import { useStudioTheme } from '../../composables/useStudioTheme'
-import { PRODUCT_NAME, pageTitle } from '../../data/brand'
+import { pageTitle } from '../../data/brand'
 import { ALL_BUILDER_TEMPLATES, BLANK, documentFromTemplate } from '../../data/builderTemplates'
 import { loadModels } from '../../data/models'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
@@ -1764,13 +1764,24 @@ watch(
     }"
   >
     <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
-          <h1>{{ PRODUCT_NAME }}</h1>
-        </div>
-      </div>
+      <!--
+        The lockup is a LINK to the workflow list (row U2), and the `<h1>`
+        inside it is the view's own heading, handed to the default slot. The
+        `<template #default>` wrapper looks redundant and is not: it keeps the
+        heading's line at the indentation it has always had, so the worker who
+        owns that line's TEXT and the worker who owned this block could change
+        their own halves without landing on each other.
+
+        THE HEADING IS THE WORKFLOW, and `Flow builder` was the last surface
+        still naming a TOOL rather than the thing on screen (U4). The gallery
+        has no workflow open, so it takes `Build` - the mode - which is the one
+        honest heading for a page that is a list of shapes to start from.
+      -->
+      <BrandLockup as="link">
+        <template #default>
+          <h1>{{ started ? doc.name : 'Build' }}</h1>
+        </template>
+      </BrandLockup>
 
       <div class="header-context">
         <!--

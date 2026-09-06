@@ -187,10 +187,34 @@ h3 {
 .workflow-name,
 .live-status { display: flex; align-items: center; }
 .brand-lockup { gap: var(--space-4); }
-.brand-mark { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent-cyan); background: var(--brand-wash); border: 1px solid var(--brand-rim); border-radius: var(--r-lg); }
-.brand-lockup > div:last-child { display: flex; align-items: baseline; gap: var(--space-3); }
-.brand-lockup span { color: var(--accent-mint); font: var(--type-kicker); }
+.brand-mark { display: grid; width: 32px; height: 32px; place-items: center; color: var(--on-accent-cyan); background: var(--brand-wash); border: 1px solid var(--brand-rim); border-radius: var(--r-lg); }
+/* Named rather than `> div:last-child`: the lockup is a LINK on both canvases
+   now, and a positional selector inside an anchor whose contents a slot fills
+   is a rule that stops matching the day somebody adds an element after it. */
+.brand-lockup .brand-words { display: flex; align-items: baseline; gap: var(--space-3); }
+/* THE WORDMARK. The kicker slot the literal `M2` used to sit in, which is the
+   right weight for it on a canvas: the page is a workflow, and the workflow's
+   name is the `<h1>` beside this. Uppercase with the house tracking because
+   that is what `--type-kicker` is for - it is a mono label, not a title.
+
+   `nowrap` and `flex: none` because `M2` was two characters and this is
+   eleven: at 390 the console's header put CREW over STUDIO and pushed the
+   workflow's name into a two-line box, which was found by looking at a 390
+   capture rather than by any test. The `<h1>` beside it already ellipsises at
+   that width, so the space this refuses to give up is space that surrenders
+   gracefully next door. */
+.brand-lockup .brand-wordmark { flex: none; color: var(--on-accent-mint); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; white-space: nowrap; }
 .brand-lockup h1 { margin: 0; font: var(--type-display); }
+
+/* THE LOCKUP IS THE WAY HOME (row U2), so it is an anchor and has to look like
+   one without looking like a link in a sentence: no underline, the heading's
+   own ink, and the mark's rim taking the full accent on hover. The rim is the
+   hover cue rather than a second wash because `--brand-wash` has no lighter
+   sibling and inventing one would be a token this row does not need. The
+   focus ring is the global `:focus-visible` above; the radius here is what
+   makes it hug the lockup rather than a rectangle around it. */
+a.brand-lockup { border-radius: var(--r-lg); color: inherit; text-decoration: none; }
+a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
 /* 14px, and it stays 14px. `.header-context` is the builder's header too and
    sixteen full-page baselines have it at this width; SHELL-SCOPE.md §2a
    records it as frozen rather than as a house value. */
@@ -203,18 +227,20 @@ h3 {
 .live-status.is-reconnecting,
 .live-status.is-connecting { color: var(--warn-text-strong); }
 
-/* THE BRAND MARK, READABLE - in the run console only, and the guard is a
-   baseline rather than a preference.
+/* THE BRAND MARK, READABLE - on BOTH canvases now, and the guard that used to
+   scope it to the run console is gone.
 
    `--on-accent-*` is the same colour with enough ink to be read on paper: the
    shared pastels measure 1.02-1.17:1 against the light header, and this pair
-   is the first thing anyone reads. `.brand-mark` and the `M2` span are the
-   BUILDER's header as well, and its sixteen baselines include eight light
-   ones, so the swap is scoped here and SHELL-SCOPE.md §6.5 is the commit that
-   drops the guard. In the dark theme `--on-accent-*` IS the accent, so this
-   rule changes nothing there at all. */
-.studio-shell:not(.is-builder) .brand-mark { color: var(--on-accent-cyan); }
-.studio-shell:not(.is-builder) .brand-lockup span { color: var(--on-accent-mint); }
+   is the first thing anyone reads. The guard existed for one reason and said
+   so - the builder's sixteen full-page baselines include eight light ones, and
+   a colour change there is sixteen red tests - and DEFINITION-OF-DONE.md D4
+   retires it: both baseline sets move in this build anyway, because the header
+   is inside every one of their frames, and RV1 regenerates them once on the
+   integrated branch. Two headers that were the same element in two colours are
+   now one. In the dark theme `--on-accent-*` IS the accent, so nothing moves
+   there at all; the swap itself lives on `.brand-mark` and `.brand-wordmark`
+   above. */
 
 .studio-main {
   position: relative;
@@ -351,13 +377,68 @@ h3 {
 .canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
 
 .validator-flow { width: 100%; height: 100%; }
-.vue-flow__pane { cursor: grab; }
-.vue-flow__pane:active { cursor: grabbing; }
+
+/* THE PANE CURSOR IS THE TOOL, on both canvases (U3).
+
+   It was an unconditional `.vue-flow__pane { cursor: grab }`, written when the
+   console was the only canvas this sheet reached and a left-drag there always
+   panned. With a Select / Hand toggle that rule became a lie in half the
+   states: Select on the console leaves the pane doing nothing at all with a
+   left button, and a hand cursor over a surface that will not move is worse
+   than no affordance.
+
+   `is-hand-tool` / `is-select-tool` come from `useCanvasTool.canvasClass` and
+   sit on the flow root of each canvas. The class follows the EFFECTIVE tool,
+   so holding space turns the cursor to `grab` for as long as it is down - the
+   pointer tells the truth even while the toggle, correctly, does not move.
+
+   `:not(.selection)` on the Select rule is the builder's marquee being left
+   alone: Vue Flow puts `.selection` on the pane itself when a left-drag will
+   band-select and its own theme sets `cursor: pointer` there. Overriding that
+   would be changing a gesture nobody asked about. On the console the class is
+   never present, so `default` is what a pane that does nothing gets. */
+.is-hand-tool .vue-flow__pane { cursor: grab; }
+.is-hand-tool .vue-flow__pane:active { cursor: grabbing; }
+.is-select-tool .vue-flow__pane:not(.selection) { cursor: default; }
 .vue-flow__node { cursor: default; }
 .vue-flow__controls { overflow: hidden; background: var(--controls-bg); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: var(--shadow-controls); }
 .vue-flow__controls-button { width: 34px; height: 34px; color: var(--text-body); background: transparent; border-color: var(--border-default); }
 .vue-flow__controls-button:hover { background: var(--surface-raised); }
 .vue-flow__controls-button svg { fill: currentColor; }
+
+/* THE ACTIVE TOOL, VISIBLE WITHOUT HOVERING - which is U3 in so many words.
+
+   Three signals rather than one, because each fails on its own somewhere:
+   the ink alone is a colour difference a colour-blind reader may not resolve,
+   the ground alone is a 1px-ish tint that `:hover` also produces, and the ring
+   alone is invisible against the cluster's own border at this size. Together
+   the pressed button reads as pressed in a still screenshot, which is the test
+   the row actually applies.
+
+   The exact construction is `.segmented button[aria-pressed='true']`'s, one
+   sheet down: `--text-title` there, `--on-accent-cyan` here, because these
+   buttons carry an icon and no word and the accent is what separates
+   "current" from "hovered" when there is no label to bolden.
+
+   The pressed ground is deliberately the SAME token `:hover` uses, so hovering
+   the tool you are already in changes nothing. A distinct hover ground was
+   tried and dropped: `--surface-well` and `--surface-raised` resolve to the
+   identical value in the light palette, so the rule would have been a no-op on
+   paper and a darkening on screen - one more state that means two things. */
+.vue-flow__controls-button[aria-pressed='true'] {
+  color: var(--on-accent-cyan);
+  background: var(--surface-raised);
+  box-shadow: var(--ring-pressed);
+}
+
+/* Lucide draws in STROKE and declares `fill="none"`, which the rule four lines
+   up overrides for every icon in this cluster. On `Plus`, `Minus` and
+   `Maximize` that is harmless - they are open paths with nothing to flood - but
+   `MousePointer2` and `Hand` are closed outlines and would land as two solid
+   blobs. Scoped to the tool pair rather than fixing the rule above, because
+   that rule is what the stock Vue Flow icons still need wherever a consumer of
+   this sheet has not replaced them. */
+.canvas-tool-button svg { fill: none; }
 
 .control-rail {
   position: relative;
@@ -768,16 +849,9 @@ h3 {
   background: var(--bg-app);
 }
 
-.auth-splash-mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  color: var(--on-accent-cyan);
-  background: var(--brand-wash);
-  border: 1px solid var(--brand-rim);
-  border-radius: var(--r-lg);
-}
+/* `.auth-splash-mark` stood here: a third copy of `.brand-mark`, at 40px. The
+   splash renders the static `BrandLockup` now, so it inherits the one tile the
+   other three surfaces use and there is nothing left to keep in step. */
 
 .auth-splash p { margin: 0; }
 
@@ -1083,6 +1157,20 @@ h3 {
      line since; the console has the same element and the same defect. */
   .studio-shell:not(.is-builder) .graph-workspace {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* THE WORDMARK STANDS DOWN ON A PHONE, and both canvases, not one.
+
+     Measured at 390 with the wordmark in: the console's header read
+     `[mark] CREW STUDIO Validator Studio((*)) Ready [sign out]` with the
+     workflow's name touching the status icon - no gap at all, because eleven
+     characters of kicker ate the whole of the row's slack. The header at this
+     width has to carry a brand, a workflow, a status and an account; the mark
+     is the brand there, and the name is on the sign-in wall, on the splash and
+     in the tab title, none of which is short of room. The wall's own lockup is
+     unaffected: its product name is an `<h1>`, not this. */
+  .brand-lockup .brand-wordmark {
+    display: none;
   }
 
   /* The bar is 52px and the title wrapped out of it. Ellipsis rather than a

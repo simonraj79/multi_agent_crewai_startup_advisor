@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { CircleDot, Clock3, FilePlus2, GitBranch, Loader, Play, TriangleAlert } from 'lucide-vue-next'
+import { Clock3, FilePlus2, GitBranch, Loader, Play, TriangleAlert } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
+import BrandLockup from '../components/BrandLockup.vue'
 import GraphThumbnail from '../components/builder/GraphThumbnail.vue'
 import { PRODUCT_NAME } from '../data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../data/builderTemplates'
@@ -302,18 +303,13 @@ onBeforeUnmount(() => window.clearInterval(ticker))
   <div class="studio-shell is-home">
     <header class="app-header">
       <!--
-        The same three elements the two canvas headers carry, in the same class
-        names, so W3's `BrandLockup.vue` is a one-for-one substitution here as
-        well. On the home the lockup is not a link: it would point at the page
-        it is on.
+        The STATIC lockup, the same one the sign-in wall and the splash use, and
+        for the same reason: there is nowhere to go back to from here, and the
+        product name IS this page's heading. A `link` lockup would be an anchor
+        to the page it is already on, and its `<h1>` slot would have nothing to
+        hold - the home is a list of workflows rather than one of them.
       -->
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
-          <h1>{{ PRODUCT_NAME }}</h1>
-        </div>
-      </div>
+      <BrandLockup as="static" />
 
       <div class="header-context">
         <AccountChip v-if="user" :user="user" @sign-out="emit('signOut')" />

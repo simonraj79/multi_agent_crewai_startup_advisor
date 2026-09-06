@@ -52,6 +52,14 @@ const TOKEN_SHEETS = /^frontend\/src\/assets\/styles\/[^/]+\.css$/
 const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'frontend/src/views/StudioView.vue': ['#777777'],
   'frontend/src/components/builder/BuilderCanvas.vue': ['#777777'],
+  // The Google `G`, drawn inline in the sign-in button. Four colours of a
+  // third party's registered mark, in `fill` attributes on its four paths -
+  // the same category as the Vue Flow prop above, and not a stylesheet value
+  // at all. They cannot become tokens: a token is a value this design system
+  // gets to choose, and changing any of these would be redrawing somebody
+  // else's logo. The alternative was an image request to a third party on
+  // the one screen that has to look trustworthy.
+  'frontend/src/components/SignInPanel.vue': ['#4285F4', '#34A853', '#FBBC05', '#EA4335'],
 }
 
 /** `#abc`, `#aabbcc`, `#aabbccdd`, `rgba(…`, `rgb(…`, `hsl(…`, `hsla(…`. */
@@ -113,9 +121,30 @@ const OWNED_SURFACES: readonly string[] = [
   'frontend/src/assets/styles/node-card.css',
 ]
 
+type GitRunner = (...args: string[]) => string
+
 function git(...args: string[]): string {
   return execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
 }
+
+/** Matches CRLF as well as LF: `core.autocrlf` is on in this repository. */
+const LINE_BREAK = /\r?\n/
+
+/** One name per line, blanks dropped. */
+function toLines(output: string): string[] {
+  return output.split(LINE_BREAK).map((line) => line.trim()).filter(Boolean)
+}
+
+/**
+ * The note the skip below carries. Named rather than inlined because two
+ * places need it - the four assertions and the test that proves they stand
+ * down - and two copies of a sentence is two sentences.
+ */
+const NOTHING_NAMED =
+  'designTokens: git named no changed file on this checkout and not one '
+  + 'surface in OWNED_SURFACES is on disk, so there is nothing to scan. '
+  + 'Skipped rather than failed: a tarball export and a partial checkout are '
+  + 'both this state and neither is a colour-literal defect.'
 
 /**
  * What this branch changed, or nothing if git cannot say.
@@ -131,18 +160,33 @@ function git(...args: string[]): string {
  * explicit list below carries the check on its own. The note goes to the
  * console so a run that quietly lost half its scope says so.
  */
-function changedFiles(): string[] {
+function changedFiles(run: GitRunner = git): string[] {
   try {
-    const base = git('merge-base', 'main', 'HEAD').trim()
-    return [
-      git('diff', '--name-only', `${base}...HEAD`),
-      git('diff', '--name-only', 'HEAD'),
-      git('ls-files', '--others', '--exclude-standard'),
-    ].join('\n').split('\n')
+    const base = run('merge-base', 'main', 'HEAD').trim()
+    const branch = [
+      ...toLines(run('diff', '--name-only', `${base}...HEAD`)),
+      ...toLines(run('diff', '--name-only', 'HEAD')),
+      ...toLines(run('ls-files', '--others', '--exclude-standard')),
+    ]
+    if (branch.length) return branch
+
+    // D5 (`docs/ux-shell/DEFINITION-OF-DONE.md`). ON `main` the merge base IS
+    // HEAD, so all three sources above are empty and the branch-scoped half of
+    // this check evaporates - which is exactly what it did, and the explicit
+    // floor below was the answer to the SYMPTOM rather than to the scope.
+    //
+    // The last commit is the honest answer to `what changed here` once there
+    // is no branch. `HEAD^1...HEAD` diffs from the merge base of the first
+    // parent: for a plain commit that is the commit's own files, and for a
+    // MERGE commit it is the whole set the merge brought in - which is the
+    // case that matters, because a merge to `main` is how work arrives here.
+    // So the rule goes on covering what just landed, on the day it lands.
+    return toLines(run('diff', '--name-only', 'HEAD^1...HEAD'))
   } catch {
     console.log(
-      'designTokens: git could not name the changed files (no repo, or no `main` '
-      + 'to compare against). Checking the committed surface list only.',
+      'designTokens: git could not name the changed files (no repo, no `main` '
+      + 'to compare against, or a root commit with no first parent). Checking '
+      + 'the committed surface list only.',
     )
     return []
   }
@@ -211,8 +255,16 @@ function literalsIn(file: string): Hit[] {
 describe('design tokens: no colour literal in a file this branch touched', () => {
   const files = coveredFiles()
   const hits = files.flatMap(literalsIn)
+  // D5's floor under the floor. `coveredFiles()` is empty only when git named
+  // nothing AND not one surface in `OWNED_SURFACES` is on disk - a tarball
+  // export, a partial checkout. Neither is a defect in anybody's colours, so
+  // the assertions stand down rather than going red over a repository that is
+  // not there. It has never been true in this tree; it is the shape of state
+  // the previous version of this file FAILED on.
+  const nothingToScan = files.length === 0
 
-  it('covers the whole run shell, on a branch or on main', () => {
+  it('covers the whole run shell, on a branch or on main', (ctx) => {
+    ctx.skip(nothingToScan, NOTHING_NAMED)
     // The guard that caught the defect this function was rewritten for: on
     // `main` the merge base IS HEAD, the diff is empty, and the check used to
     // evaporate into this assertion. It is now a floor rather than a pulse -
@@ -225,7 +277,8 @@ describe('design tokens: no colour literal in a file this branch touched', () =>
     for (const file of expected) expect(files).toContain(file)
   })
 
-  it('reports the whole inventory, so the run is the evidence', () => {
+  it('reports the whole inventory, so the run is the evidence', (ctx) => {
+    ctx.skip(nothingToScan, NOTHING_NAMED)
     // The output of this test IS `docs/run-shell/evidence/T3/literals.txt`
     // (T3.2 names that artifact). Printed rather than written, so the file is
     // produced by redirecting a command that anyone can re-run.
@@ -247,7 +300,8 @@ describe('design tokens: no colour literal in a file this branch touched', () =>
     expect(files.length).toBe(byFile.size)
   })
 
-  it('contains no hex, rgba() or hsl() literal in a file W5 owns', () => {
+  it('contains no hex, rgba() or hsl() literal in a file W5 owns', (ctx) => {
+    ctx.skip(nothingToScan, NOTHING_NAMED)
     // The half of T3.2 this task can close on its own. Split from the branch
     // check below so a red suite says WHOSE work is outstanding rather than
     // only that something is - six people are editing this shell at once.
@@ -257,7 +311,8 @@ describe('design tokens: no colour literal in a file this branch touched', () =>
     expect(named, named.join('\n')).toEqual([])
   })
 
-  it('contains no hex, rgba() or hsl() literal anywhere on the branch', () => {
+  it('contains no hex, rgba() or hsl() literal anywhere on the branch', (ctx) => {
+    ctx.skip(nothingToScan, NOTHING_NAMED)
     // T3.2 in full. Each remaining line names the worker whose file it is and
     // the token to reach for; `docs/run-shell/SHELL-SCOPE.md` §7 is the same
     // list in prose. This goes green as the other five land, and until then it
@@ -334,5 +389,84 @@ describe('the token sheet declares what the design system says it does', () => {
     for (const name of ['shadow-controls', 'shadow-rail-start', 'shadow-rail-end', 'shadow-sheet']) {
       expect(light, `--${name} must not vary by theme`).not.toContain(`--${name}:`)
     }
+  })
+})
+describe('the scope survives the merge to main (DEFINITION-OF-DONE D5)', () => {
+  /**
+   * A fake `git`, so the three states this function has to get right can be
+   * exercised without a repository in one of them.
+   *
+   * The alternative was asserting against the real tree, which can only ever
+   * be in ONE of the three - and the state that mattered is the one this
+   * checkout is never in. That is precisely how the defect D5 names survived:
+   * the branch-scoped scan was written on a branch, tested on a branch, and
+   * evaporated the moment it reached `main`.
+   */
+  function fakeGit(answers: Record<string, string>) {
+    const asked: string[] = []
+    const run = (...args: string[]) => {
+      const key = args.join(' ')
+      asked.push(key)
+      if (!(key in answers)) throw new Error(`fake git was not given an answer for: ${key}`)
+      return answers[key]
+    }
+    return { run, asked }
+  }
+
+  const BRANCH_BASE = 'merge-base main HEAD'
+  const ON_BRANCH = 'diff --name-only abc123...HEAD'
+  const WORKING = 'diff --name-only HEAD'
+  const UNTRACKED = 'ls-files --others --exclude-standard'
+  const LAST_COMMIT = 'diff --name-only HEAD^1...HEAD'
+
+  it('prefers the branch diff, and never asks about the last commit', () => {
+    const { run, asked } = fakeGit({
+      [BRANCH_BASE]: 'abc123\n',
+      [ON_BRANCH]: 'frontend/src/a.vue\n',
+      [WORKING]: 'frontend/src/b.css\n',
+      [UNTRACKED]: 'frontend/src/c.vue\n',
+    })
+    expect(changedFiles(run)).toEqual([
+      'frontend/src/a.vue',
+      'frontend/src/b.css',
+      'frontend/src/c.vue',
+    ])
+    expect(asked).not.toContain(LAST_COMMIT)
+  })
+
+  it('falls back to the last commit when the branch diff is empty', () => {
+    // THE STATE ON `main`: the merge base is HEAD, so all three branch sources
+    // answer nothing and the check used to have no scope at all.
+    const { run } = fakeGit({
+      [BRANCH_BASE]: 'deadbeef\n',
+      'diff --name-only deadbeef...HEAD': '\n',
+      [WORKING]: '',
+      [UNTRACKED]: '\n\n',
+      [LAST_COMMIT]: 'frontend/src/merged.vue\nfrontend/src/merged.css\n',
+    })
+    expect(changedFiles(run)).toEqual(['frontend/src/merged.vue', 'frontend/src/merged.css'])
+  })
+
+  it('answers nothing rather than throwing when git cannot say', () => {
+    // A root commit has no `HEAD^1`; a tarball export has no `.git`. Both land
+    // here, and neither is a colour-literal defect.
+    const run = () => {
+      throw new Error('fatal: not a git repository')
+    }
+    expect(changedFiles(run)).toEqual([])
+  })
+
+  it('names why it would stand down, in the note the skip carries', () => {
+    // The four assertions above skip on `NOTHING_NAMED` rather than failing.
+    // This pins the sentence, because a skip whose reason is empty is a silent
+    // green - the failure mode the whole file exists to refuse.
+    expect(NOTHING_NAMED).toMatch(/nothing to scan/i)
+    expect(NOTHING_NAMED).toMatch(/Skipped rather than failed/i)
+  })
+
+  it('still has something to scan in THIS checkout', () => {
+    // The guard on the guard: if this ever goes red, the skip above is armed
+    // and the colour rule is being enforced over nothing.
+    expect(coveredFiles().length).toBeGreaterThan(0)
   })
 })

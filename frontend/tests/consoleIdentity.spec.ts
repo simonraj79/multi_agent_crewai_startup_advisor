@@ -278,4 +278,74 @@ describe('the console renders the workflow it is actually running', () => {
     expect(wrapper.emitted('build')).toEqual([[null]])
     wrapper.unmount()
   })
+
+  /**
+   * THE HANDOFF IS CONSUMED BY THE LAUNCH IT CARRIED (RV4 follow-up 1).
+   *
+   * A navigation record that outlives its navigation is read by
+   * `homeResumesConsole` as "resume", so a run reached from Build and then
+   * finished left `#/` handing straight back to the console with R4's Last-run
+   * card unreachable. Measured in a browser with two arms and one variable
+   * (`evidence/r2/R4/home-handoff-arms.json`): record present -> `#/run`, no
+   * card; record cleared -> `#/`, card.
+   *
+   * The record is what goes; the console keeps the workflow, because after the
+   * launch it has two better sources for it - the run's own descriptor (R1) and
+   * `StoredRunContext`, which carries the same `workflowId` / `inputField` pair
+   * the POST used. Both are asserted here rather than assumed, so a future
+   * change that cleared the record and lost the identity with it fails on the
+   * identity rather than on the storage key.
+   */
+  it('clears the builder handoff once the run it carried exists', async () => {
+    sessionStorage.setItem(
+      'u:u1:builder-run-handoff',
+      JSON.stringify({ workflowId: BUILDER_ID, inputField: 'subject', name: 'News to social post' }),
+    )
+    const wrapper = await mountConsole()
+    expect(readRunHandoff('u1'), 'the record must survive until something launches').not.toBeNull()
+    expect(wrapper.find('.handoff-banner').exists()).toBe(true)
+
+    const box = wrapper.get('textarea#idea')
+    await box.setValue('Vector databases in September')
+    // Review, not unattended: the console defaults to `auto` and a gateless
+    // authored graph answers 422 for it. The button is the operator's own.
+    const review = wrapper.findAll('button').find((button) => button.text() === 'Review')
+    if (review && review.attributes('aria-pressed') !== 'true') await review.trigger('click')
+    await flush()
+
+    const launch = wrapper.get('.status-panel .control-actions button.button-primary')
+    await launch.trigger('click')
+    await flush()
+
+    expect(readRunHandoff('u1'), 'the launch did not consume the handoff').toBeNull()
+    // And the workflow is still this one, off the descriptor rather than the
+    // record that has just gone.
+    expect(wrapper.find('.canvas-kicker').text()).toBe('RUN — YOUR WORKFLOW')
+    expect(wrapper.find('.breadcrumb-name').text()).toBe('News to social post')
+    expect(wrapper.find('label[for="idea"]').text()).toBe('SUBJECT')
+    wrapper.unmount()
+  })
+
+  /**
+   * The other side of the same rule: a refused launch changes nothing. An
+   * author who arrives from Build, types nothing and presses the disabled
+   * button still has the record, the banner and the workflow.
+   */
+  it('keeps the handoff when nothing was launched', async () => {
+    sessionStorage.setItem(
+      'u:u1:builder-run-handoff',
+      JSON.stringify({ workflowId: BUILDER_ID, inputField: 'subject', name: 'News to social post' }),
+    )
+    const wrapper = await mountConsole()
+    // Below `MIN_IDEA_CHARS`, which is the state an author who has just
+    // arrived is in: `canLaunch` is false and `launch` returns at its first
+    // line, so no run is created and nothing may be consumed.
+    await wrapper.get('textarea#idea').setValue('')
+    await flush()
+    await wrapper.get('.status-panel .control-actions button.button-primary').trigger('click')
+    await flush()
+    expect(readRunHandoff('u1')).not.toBeNull()
+    expect(wrapper.find('.handoff-banner').exists()).toBe(true)
+    wrapper.unmount()
+  })
 })

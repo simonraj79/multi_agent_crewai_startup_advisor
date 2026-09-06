@@ -415,6 +415,40 @@ const handoffBannerShown = computed(
   () => handoff.value !== null && !TERMINAL_RUN_STATUSES.includes(status.value),
 )
 
+/**
+ * THE HANDOFF IS CONSUMED THE MOMENT ITS RUN IS CREATED (RV4 follow-up 1).
+ *
+ * It is a navigation record - "the builder is sending you to this workflow" -
+ * and it was outliving the navigation. `homeResumesConsole` reads a present
+ * handoff as "resume", so after finishing a run reached by `Run it now` or by
+ * the Run switch, `#/` handed straight back to the console and R4's own Last-run
+ * card was unreachable. Measured, two arms, one variable
+ * (`docs/ux-shell/evidence/r2/R4/home-handoff-arms.json`): with the record
+ * present `#/` became `#/run` and no card rendered; with it cleared the card was
+ * there. The suite could not see it - `console-identity.spec.ts`'s home arm
+ * launches from `#/run`, so it never has a handoff at all.
+ *
+ * Clearing it here is safe because everything that read it has a better source
+ * once a run exists: `workflowIdentity` reads the run's own DESCRIPTOR (R1), and
+ * a reload restores `workflowId` and `inputField` from `StoredRunContext`, which
+ * is the same pair the POST used. What the handoff is still for is the state
+ * BEFORE a launch, and that state is untouched: an author who arrives and does
+ * not press Run keeps the record, keeps the banner and keeps the workflow.
+ *
+ * `handoff` the REF is deliberately not nulled, so the banner behaves exactly as
+ * it did - up while the launch is a live prospect, down at the terminal frame.
+ * Only the durable record goes.
+ *
+ * The run id is compared rather than merely tested, because `launch` is also
+ * Run again: a refused launch (`canLaunch` false, or a 4xx) leaves the id
+ * unchanged and must leave the handoff alone with it.
+ */
+async function launchRun(): Promise<void> {
+  const before = runId.value
+  await launch()
+  if (runId.value !== '' && runId.value !== before) clearRunHandoff(props.user?.id ?? null)
+}
+
 function backToValidator(): void {
   clearRunHandoff(props.user?.id ?? null)
   // AND THE RUN POINTER, which is new and is not tidiness (item 58, R4). This
@@ -859,7 +893,7 @@ function backToValidator(): void {
             :input-label="identity.inputLabel"
             :graph-version="descriptor.version"
             :can-return-home="identity.authored"
-            @launch="launch"
+            @launch="launchRun"
             @cancel="cancel"
             @download="downloadLogs"
             @dismiss-error="dismissError"

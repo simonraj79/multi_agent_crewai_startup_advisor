@@ -10,9 +10,12 @@ import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
  * `document.title` follows the route - three things a jsdom mount can assert
  * about a component and never about the address bar.
  *
- * NO `@launch` TAG ANYWHERE IN THIS FILE, and that is deliberate rather than
- * incidental: nothing here presses Launch, so the whole file is free against a
- * deployed origin as well as against `SYNTHETIC=1`.
+ * ONE `@launch` TEST, AND EXACTLY ONE. Everything else here is free against a
+ * deployed origin as well as against `SYNTHETIC=1`, and that was the whole file
+ * until RV4 follow-up 1: the defect is that the home hands back to the console
+ * after a run REACHED FROM BUILD AND FINISHED, and there is no way to reach that
+ * state without finishing a run. It carries the tag, so
+ * `--grep-invert @launch` against a paid origin still presses nothing.
  *
  * ## Helpers restated rather than imported
  *
@@ -63,7 +66,15 @@ async function clearLibrary(request: APIRequestContext): Promise<void> {
   const listed = await request.get('/api/builder/workflows')
   if (!listed.ok()) return
   const documents = (await listed.json()) as { id: string }[]
-  for (const entry of documents) await request.delete(`/api/builder/workflows/${entry.id}`)
+  for (const entry of documents) {
+    // UNPUBLISH FIRST, which `builder.spec.ts`'s original could not do and
+    // CLAUDE.md item 44 is the record of: `DELETE` answers 409 while any
+    // version is registered, so a file that publishes anything leaves one
+    // behind on every run and a long-lived backend accumulates them. This file
+    // publishes one workflow now (the Build-launched arm), so it cleans one up.
+    await request.post(`/api/builder/workflows/${entry.id}/unpublish`).catch(() => undefined)
+    await request.delete(`/api/builder/workflows/${entry.id}`)
+  }
 }
 
 /**
@@ -99,6 +110,79 @@ async function createDocument(request: APIRequestContext, name: string): Promise
   })
   expect(created.status(), await created.text()).toBe(201)
   return (await created.json()).id as string
+}
+
+/**
+ * A gateless `idea -> agent -> report` workflow, saved AND published, through
+ * the API.
+ *
+ * `createDocument` above is deliberately one input node, because the tests it
+ * serves only need the home to LIST something. The Build-launched arm needs a
+ * workflow that really runs, and a run resolves a REGISTERED version - so this
+ * is the smallest document that both validates and publishes. The shape is
+ * `failure-modes.spec.ts`'s, restated for the same reason every other helper in
+ * this file is: a spec file cannot be imported without registering its tests
+ * here a second time.
+ */
+async function publishRunnable(request: APIRequestContext, name: string): Promise<string> {
+  const created = await request.post('/api/builder/workflows', {
+    data: {
+      document: {
+        schema: 'builder.flow/v1',
+        name,
+        version: 1,
+        input_field: 'idea',
+        nodes: [
+          {
+            id: 'idea',
+            kind: 'input',
+            label: 'Idea',
+            position: { x: 0, y: 0 },
+            config: { field: 'idea', label: null, max_chars: 2000, required: true },
+          },
+          {
+            id: 'writer',
+            kind: 'agent',
+            label: 'Writer',
+            position: { x: 260, y: 0 },
+            config: {
+              role: 'note taker',
+              goal: 'write the note',
+              backstory: 'years of it',
+              task: {
+                description: 'work from ${state.out__idea}',
+                expected_output: 'a paragraph',
+              },
+              // The same constant `failure-modes.spec.ts` and `cast.spec.ts`
+              // author with, and it is never called: `SYNTHETIC=1` replaces the
+              // crew factories, so this names a model rather than spending one.
+              llm: { model: 'google/gemini-3.8-flash' },
+              tier: 'cheap',
+              on_error: 'fail',
+            },
+          },
+          {
+            id: 'report',
+            kind: 'output',
+            label: 'Report',
+            position: { x: 520, y: 0 },
+            config: { body_key: 'markdown_body', source: '${state.out__writer}' },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'idea', source_port: 'out', target: 'writer', target_port: 'in' },
+          { id: 'e2', source: 'writer', source_port: 'out', target: 'report', target_port: 'in' },
+        ],
+        joins: {},
+      },
+      expected_version: null,
+    },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const id = (await created.json()).id as string
+  const published = await request.post(`/api/builder/workflows/${id}/publish`)
+  expect(published.status(), await published.text()).toBe(200)
+  return id
 }
 
 /** Home, with nothing left over from a previous test to redirect it away. */
@@ -335,6 +419,82 @@ test.describe('the unified shell', () => {
 
     expect(watch.unexpected).toEqual([])
   })
+
+  /**
+   * THE ARM THE SUITE WAS BLIND TO (RV4 follow-up 1).
+   *
+   * The test above proves an UN-launched handoff still hands over, which is
+   * D2's rule and is right. What nothing covered is the state a real author is
+   * in one minute later: they pressed Run, the run finished, and they went back
+   * to `#/` looking for it. The handoff was still in `sessionStorage`, so the
+   * home read it as "resume" and bounced them into a finished console with R4's
+   * Last-run card unreachable - the card that whole row exists to provide.
+   *
+   * `console-identity.spec.ts`'s home arm cannot see this because it launches
+   * from `#/run`, so it never has a handoff at all; R1's arm clears
+   * `sessionStorage` outright. The blindness was structural, which is why this
+   * arm sets the handoff the way the builder does and then really launches.
+   *
+   * `@launch` and free: `SYNTHETIC=1` replaces the crew factories and nothing
+   * else, so the publish, the compile, the engine and the frames are the
+   * production ones and no model is called.
+   */
+  test(
+    'a Build-launched run that has finished leaves the home on the home',
+    { tag: '@launch' },
+    async ({ page, request }) => {
+      const watch = watchConsole(page)
+      const id = await publishRunnable(request, 'A workflow the home should remember')
+
+      await page.goto('/#/run')
+      await page.evaluate(
+        ({ key, workflowId, name }) => {
+          window.localStorage.clear()
+          window.sessionStorage.setItem(
+            key,
+            JSON.stringify({ workflowId, inputField: 'idea', name }),
+          )
+        },
+        {
+          key: storageKeyFor(DEFAULT_SYNTHETIC_USER, 'builder-run-handoff'),
+          workflowId: id,
+          name: 'A workflow the home should remember',
+        },
+      )
+      await page.reload()
+      await expect(page.locator('.handoff-banner')).toBeVisible()
+
+      // Review, not unattended: this graph declares no gate, and `create_run`
+      // answers 422 for `gates=auto` on a gateless workflow.
+      const review = page.getByRole('button', { name: 'Review', exact: true })
+      if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
+      await page.locator('textarea#idea').fill('Everything the home has to remember about this')
+      await page.locator('.status-panel .control-actions button.button-primary').click()
+      await expect
+        .poll(async () => page.locator('.canvas-meta span').first().textContent(), {
+          timeout: 120_000,
+        })
+        .toMatch(/Finished|Failed|Cancelled/i)
+
+      // The record went with the launch; the run pointer did not.
+      expect(
+        await page.evaluate(
+          (key) => window.sessionStorage.getItem(key),
+          storageKeyFor(DEFAULT_SYNTHETIC_USER, 'builder-run-handoff'),
+        ),
+      ).toBeNull()
+
+      await page.goto('/#/')
+      await page.reload()
+      await expect(page.locator('.home-page')).toBeVisible()
+      expect(new URL(page.url()).hash).toBe('#/')
+      const card = page.locator('.home-last-run')
+      await expect(card).toBeVisible()
+      await expect(card).toContainText('A workflow the home should remember')
+
+      expect(watch.unexpected).toEqual([])
+    },
+  )
 
   test('the breadcrumb reads Workflows / <name> on the console and reaches the home', async ({
     page,

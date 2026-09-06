@@ -323,6 +323,38 @@ test.describe('The docked test panel', () => {
       await expect(result).not.toBeEmpty()
       await expect(page.locator('[data-testid="test-run-status"]')).toHaveText(/completed/i)
 
+      /*
+       * ON SCREEN, not merely rendered - item 6, ROUND-2 X2, AUDIT-R2 H4.
+       *
+       * `toBeVisible` asks about the element's own box and opacity and says
+       * nothing about where that box is: the result was `visible` by that test
+       * for as long as it sat below the panel's fold, which is the whole defect.
+       * This asks the question the eye asks - is the result inside the scroller
+       * that holds it - and it is a question only a browser has an answer to.
+       */
+      const inView = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="test-run-result"]')
+        const scroller = document.querySelector('[data-testid="test-panel-body"]')
+        if (!el || !scroller) return null
+        const a = el.getBoundingClientRect()
+        const b = scroller.getBoundingClientRect()
+        return { top: Math.round(a.top - b.top), overlap: a.top < b.bottom && a.bottom > b.top }
+      })
+      expect(inView, 'the result or the panel body was not rendered').not.toBeNull()
+      expect(inView!.overlap, 'the result is outside the panel body the reader can see').toBe(true)
+
+      // The exact bytes are one press away, and the default is the rendered
+      // form. A compiled flow whose last node answers JSON needs the string.
+      const raw = page.locator('[data-testid="test-run-result-raw"]')
+      const toggle = page.locator('[data-testid="test-result-raw-toggle"]')
+      await expect(toggle).toHaveText('Show raw')
+      await expect(raw).toBeHidden()
+      await toggle.click()
+      await expect(raw).toBeVisible()
+      await expect(toggle).toHaveText('Hide raw')
+      await toggle.click()
+      await expect(raw).toBeHidden()
+
       // At least one card finished, drawn by the run tenancy rather than by its
       // kind. `.is-completed` is `BuilderNode`'s own class and the selector the
       // stylesheet keys on.

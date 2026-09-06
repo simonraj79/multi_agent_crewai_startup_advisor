@@ -99,9 +99,85 @@ async function pinTheme(page: Page, theme: Theme): Promise<void> {
  * `BuilderCanvas` re-fits while its container is still moving (§14 defect 4),
  * so a capture taken too early is a photograph of an intermediate zoom - which
  * is a baseline that will not reproduce and will be blamed on CSS.
+ *
+ * THE FIXED WAIT IS NOT ENOUGH AT 390, and RV4 measured what that costs: with a
+ * settled capture on disk, eight consecutive runs of the `mobile` project failed
+ * `sixteen-node template — dark` 6 of 8 and `— light` 3 of 8, always with one of
+ * exactly TWO deltas. Six rounds of adopting the settled capture did not
+ * converge, because the picture genuinely has two states and each adoption chose
+ * one of them.
+ *
+ * WHAT THE TWO STATES ARE, measured here rather than inferred, by sampling the
+ * minimap every 250 ms for 3.7 s over three runs of the 390 dark capture:
+ *
+ *   run 1   t=611  yielding true  opacity 1         0 animations   ... unchanged to t=3669
+ *   run 2   t=606  yielding true  opacity 0.700997  1 animation    -> 0.12 by t=880, held
+ *   run 3   t=620  yielding true  opacity 1         0 animations   ... unchanged to t=3391
+ *
+ * The transform is IDENTICAL to the last decimal in all three
+ * (`translate(-443px, -174.033px) scale(0.733333)`) and `data-yielding` is
+ * `true` in all three, so the fit and the yield decision are deterministic and
+ * neither is the variable. What differs is whether the fade RAN. `is-yielding`
+ * takes the panel to `opacity: 0.12`, and `.builder-minimap.is-yielding:hover`
+ * takes it straight back to 1 - so the capture depended on WHERE PLAYWRIGHT LEFT
+ * THE POINTER. `page.locator('.template-card').click()` leaves it at the card's
+ * centre; at 390, with round 2's two-row document bar shortening the pane, that
+ * point is sometimes inside the minimap's box once the canvas has opened. It is
+ * not a mid-fade at all: it is a fade that never started, held open by a hover
+ * nobody performed.
+ *
+ * So the pointer is parked somewhere with no hover rule before anything is
+ * photographed. `(0, 0)` is `header.app-header` at both viewports - asserted by
+ * `elementFromPoint` when this was measured - which is a container, not a
+ * control. With it parked, the fade completes on every run: three for three,
+ * `opacity 0.12`, no animation running.
+ *
+ * WAITED OUT RATHER THAN MASKED, deliberately. `run-canvas.spec.ts` masks its
+ * clock because a clock is a value no baseline can ever hold; this is a real
+ * overlay in a real state, and masking it would stop eight baselines covering
+ * the one element the 390 captures exist to show. So the second half of this is
+ * a wait on the thing that moves: the panel's computed opacity, unchanged with
+ * no animation running on it, for ten consecutive frames.
+ *
+ * `getAnimations()` alone would be too weak - it is empty both before a
+ * transition starts and after it ends - and a two-frame opacity comparison alone
+ * would be too weak too, because `--motion-medium` covers several frames during
+ * which a linear-ish segment can read as unchanged at two decimal places. Both
+ * together, over ten frames, is what stops the capture landing mid-fade.
  */
 async function settle(page: Page): Promise<void> {
+  await page.mouse.move(0, 0)
   await page.waitForTimeout(1600)
+  await page.evaluate(async () => {
+    const nextFrame = (): Promise<void> =>
+      new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    /** Every moving thing this capture has: the panel, and the strip inside it. */
+    const read = (): { key: string; running: number } => {
+      const panel = document.querySelector('.builder-minimap')
+      if (!panel) return { key: 'absent', running: 0 }
+      const strip = document.querySelector('[data-testid="minimap-offpane"]')
+      const running =
+        panel.getAnimations().length + (strip ? strip.getAnimations().length : 0)
+      return {
+        key: [
+          getComputedStyle(panel).opacity,
+          panel.getAttribute('data-yielding'),
+          strip ? getComputedStyle(strip).opacity : 'none',
+        ].join('|'),
+        running,
+      }
+    }
+
+    const deadline = performance.now() + 8000
+    let previous = read()
+    let stable = 0
+    while (performance.now() < deadline && stable < 10) {
+      await nextFrame()
+      const current = read()
+      stable = current.key === previous.key && current.running === 0 ? stable + 1 : 0
+      previous = current
+    }
+  })
 }
 
 /** A one-node document, created through the API and opened. */

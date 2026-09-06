@@ -1812,7 +1812,8 @@ watch(
           <template v-if="started">
             <span class="breadcrumb-sep" aria-hidden="true">/</span>
             <span class="breadcrumb-crumb is-current" aria-current="page">
-              <GitBranch :size="13" aria-hidden="true" />{{ doc.name }}
+              <GitBranch :size="13" aria-hidden="true" />
+              <span class="breadcrumb-name">{{ doc.name }}</span>
             </span>
           </template>
         </nav>

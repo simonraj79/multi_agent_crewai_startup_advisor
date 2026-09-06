@@ -337,6 +337,65 @@ test.describe('the unified shell', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+  test('keeps the workflow named at 390, truncated rather than hidden', async ({
+    page,
+    request,
+  }) => {
+    /*
+     * U2's ≤640 ruling, and it is the second answer this width has had. The
+     * header used to hide the workflow's name outright at 390, on the
+     * measurement that it wrapped inside a 52px bar and was stated again in the
+     * run console's WORKFLOW well. Two things broke that: the well belongs to
+     * the console, so on the builder the name was stated nowhere, and the
+     * lockup's `<h1>` that carried it here is `sr-only` now. So it truncates.
+     *
+     * THE ELLIPSIS IS ASSERTED AS A CHARACTER, not as a width. It lives on an
+     * inner span because `text-overflow` does nothing on the `inline-flex`
+     * crumb that holds the icon beside it - written on the crumb, a long name
+     * clipped hard with no "…" at all, which reads as a rendering fault rather
+     * than as a name that continues. jsdom cannot answer this: it has no layout
+     * and every width it reports is zero.
+     */
+    const watch = watchConsole(page)
+    const long = 'A workflow with a deliberately very long name indeed'
+    const id = await createDocument(request, long)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/#/build/${id}`)
+    await expect(page.locator('.builder-flow')).toBeVisible()
+
+    const name = page.locator('.breadcrumb-name')
+    await expect(name).toBeVisible()
+    await expect(name).toHaveText(long)
+
+    const rendered = await name.evaluate((el) => ({
+      // The box is capped and the text overflows it, which together are what
+      // `text-overflow` needs before it can draw anything.
+      capped: el.getBoundingClientRect().width <= Math.ceil(0.42 * window.innerWidth) + 1,
+      overflowing: el.scrollWidth > el.clientWidth,
+      ellipsis: window.getComputedStyle(el).textOverflow,
+      wrap: window.getComputedStyle(el).whiteSpace,
+    }))
+    expect(rendered).toEqual({
+      capped: true,
+      overflowing: true,
+      ellipsis: 'ellipsis',
+      wrap: 'nowrap',
+    })
+
+    // And the header still fits: one 52px row, nothing wrapped, no sideways
+    // scroll on the body.
+    const page390 = await page.evaluate(() => ({
+      scrollW: document.documentElement.scrollWidth,
+      clientW: document.documentElement.clientWidth,
+      headerH: Math.round(
+        (document.querySelector('.app-header') as HTMLElement).getBoundingClientRect().height,
+      ),
+    }))
+    expect(page390).toEqual({ scrollW: 390, clientW: 390, headerH: 52 })
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('the vocabulary on the console is Run, and no graph is called fixed or published', async ({
     page,
   }) => {

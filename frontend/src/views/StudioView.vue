@@ -427,7 +427,8 @@ function backToValidator(): void {
           <a class="breadcrumb-crumb" href="#/" @click.prevent="emit('home')">Workflows</a>
           <span class="breadcrumb-sep" aria-hidden="true">/</span>
           <span class="breadcrumb-crumb is-current" aria-current="page">
-            <GitBranch :size="13" aria-hidden="true" />{{ workflowName }}
+            <GitBranch :size="13" aria-hidden="true" />
+            <span class="breadcrumb-name">{{ workflowName }}</span>
           </span>
         </nav>
 

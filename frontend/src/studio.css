@@ -1173,16 +1173,6 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
     display: none;
   }
 
-  /* The bar is 52px and the title wrapped out of it. Ellipsis rather than a
-     smaller step: the shell has six type steps and this is not the place to
-     invent a seventh. */
-  .studio-shell:not(.is-builder) .brand-lockup h1 {
-    overflow: hidden;
-    max-width: 42vw;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   /* THE DRAWER IS ITS OWN SCROLLER, and at 390 it had to become one.
      A cold reader found the Cancel button cut in half at the fold and the
      WORKFLOW well cut below it (`evidence/S/narrow.png`): the rail is bounded
@@ -1237,20 +1227,29 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
      too would have the compositor filtering the same pixels twice. Plan 11
      bounds live animation for the same reason. */
 
-  /* The graph's name is the next thing to go, after the account name at 860
-     and the workspace switch at 860. It wrapped to two lines inside a 52px
-     bar, and it is the one item in the header that is stated again three
-     inches below it, in the rail's own WORKFLOW well. The connection status
-     stays, because nothing else on a phone says whether this console is
-     talking to anything.
+  /* THE WORKFLOW'S NAME SURVIVES A PHONE, and it truncates rather than going
+     away (U2's ruling, 2026-09-06).
 
-     It is the BREADCRUMB's second crumb now rather than a `.workflow-name`
-     span - same element, same place, same measurement, same decision (U2
-     replaced the span with the two crumbs). What survives at this width is the
-     FIRST crumb, because that one is the way back out and nothing else in the
-     header is. */
-  .breadcrumb .breadcrumb-sep,
-  .breadcrumb .breadcrumb-crumb.is-current { display: none; }
+     It used to be a `.workflow-name` span that this block hid outright, on the
+     measurement that it wrapped to two lines inside a 52px bar and was stated
+     again three inches below in the rail's own WORKFLOW well. Two things have
+     changed since. The rail's well belongs to the CONSOLE, so on the builder
+     the name was stated nowhere at all; and the lockup's `<h1>` - which carried
+     it here until this commit - is `sr-only` now, so hiding the crumb as well
+     left the name on screen in no place on either canvas.
+
+     `42vw` and the ellipsis triple are W3's numbers, lifted verbatim from the
+     `.brand-lockup h1` rule that stood in this block and is deleted in the same
+     commit: it sized the element that used to carry this text, at this width,
+     for this reason, and re-deriving a width for the element that carries it
+     now would be inventing a second answer to a question already measured.
+
+     The separator goes with the crumb it separates only when the crumb does,
+     which is never now - it stays, because `Workflows / <name>` with no slash
+     is two labels rather than a trail. */
+  .breadcrumb .breadcrumb-name {
+    max-width: 42vw;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1303,9 +1302,21 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
    No new step: `--type-title` is the role every panel header already uses, and
    design.md §2 refuses a seventh. */
 .breadcrumb-crumb.is-current {
-  overflow: hidden;
   color: var(--text-title);
   font: var(--type-title);
+}
+
+/* THE ELLIPSIS LIVES ON A SPAN, and that is a measurement rather than a
+   preference: `.breadcrumb-crumb` is `inline-flex` so it can hold an icon
+   beside the text, and `text-overflow` does nothing on a flex container - the
+   property applies to a block container's inline content, and a flex item is
+   neither. Written on the crumb itself, a long name at 390 clipped hard at the
+   `max-width` with no ellipsis at all: the text simply stopped
+   (`scrollWidth > clientWidth`, no "…"), which reads as a rendering fault
+   rather than as a name that continues. Found by looking at one, not by a
+   test - and now the E2E asserts on the character. */
+.breadcrumb-name {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

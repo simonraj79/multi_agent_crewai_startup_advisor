@@ -345,3 +345,63 @@ describe('the elapsed clock', () => {
     expect(panel.get('.metrics-grid dd').text()).toBe('00:31')
   })
 })
+
+/*
+ * THE RAIL'S READING ORDER - item 9, ROUND-2 X2, AUDIT-R2 H6.
+ *
+ * It used to read input -> WORKFLOW -> GATES -> VIEW -> STATUS (four tiles all
+ * zero) -> Launch, so the console's one action was the sixth block down and,
+ * measured at 1440x720, below the fold. X2's wording is the rule this asserts:
+ * "the input, the launch and the run status read top-to-bottom."
+ *
+ * A jsdom mount cannot say where anything ENDED UP - that is
+ * `e2e/studio.spec.ts`'s new fold test, in a browser. What it can say, and what
+ * nothing said before, is what order the blocks are in.
+ */
+describe('the rail reads input, launch, then status', () => {
+  /** The rail's top-level blocks, in render order, by class. */
+  function blocks(): string[] {
+    return Array.from(mountPanel().element.children).map((el) => (el as Element).className)
+  }
+
+  it('puts the primary action fourth, above VIEW and above STATUS', () => {
+    const order = blocks()
+    const actions = order.findIndex((cls) => cls.includes('control-actions'))
+    const metrics = order.findIndex((cls) => cls.includes('metrics-section'))
+    const logs = order.findIndex((cls) => cls.includes('control-logs'))
+
+    expect(actions, 'the rail has no `.control-actions` block').toBeGreaterThan(-1)
+    // Three sections precede it: the input, WORKFLOW, WHEN IT NEEDS YOU.
+    expect(actions).toBe(3)
+    expect(metrics).toBeGreaterThan(actions)
+    expect(logs).toBeGreaterThan(metrics)
+  })
+
+  it('keeps the primary button inside `.control-actions`', () => {
+    // Eight E2E specs press `.status-panel .control-actions button.button-primary`,
+    // including the run-canvas visual baseline's own launch step. The class is a
+    // contract, not decoration.
+    const panel = mountPanel()
+    expect(panel.find('.control-actions [data-testid="launch-button"]').exists()).toBe(true)
+    expect(panel.find('.control-actions .download-row').exists()).toBe(false)
+    expect(panel.find('.control-logs .download-row').exists()).toBe(true)
+  })
+
+  it('shuts the instrumentation away, and leaves the state and the run id out', () => {
+    const panel = mountPanel({ runId: 'a0629576-1111-2222-3333-444455556666', lastSequence: 97 })
+    const details = panel.get('[data-testid="status-details"]')
+
+    // Collapsed by default: `<details>` with no `open` attribute.
+    expect(details.attributes('open')).toBeUndefined()
+    // Still in the DOM, which is what seven E2E specs read it by.
+    expect(details.find('.metrics-grid').exists()).toBe(true)
+    expect(details.find('.stream-line').exists()).toBe(true)
+    expect(details.text()).toContain('seq 97')
+
+    // Out of it: the status word, and the run id - the one value here somebody
+    // quotes, and the one `e2e/studio.spec.ts` asserts is visible.
+    expect(panel.get('.status-badge').text()).toBeTruthy()
+    expect(panel.find('[data-testid="status-details"] .run-id').exists()).toBe(false)
+    expect(panel.get('.run-id').text()).toBe('a0629576')
+  })
+})

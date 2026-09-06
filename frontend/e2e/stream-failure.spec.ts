@@ -77,8 +77,29 @@ const statusBadge = (page: Page): Locator => page.locator('.status-panel .status
 const gateCard = (page: Page): Locator => page.locator('.gate-card')
 const streamLine = (page: Page): Locator => page.locator('.status-panel .stream-line')
 
+/**
+ * Open the rail's instrumentation disclosure.
+ *
+ * `seq`, `dropped`, the transport word and the four metric tiles moved behind a
+ * `Details` summary (item 9, AUDIT-R2 H6/N6) so that the primary button is no
+ * longer the sixth block down. They stay in the DOM while it is shut, but
+ * MEASURED in Chromium: `innerText` on a non-rendered element answers `''` -
+ * the HTML spec's textContent fallback is not what the engine does here - and
+ * `textContent` runs the spans together, so a greedy digit match reads the
+ * wrong number. So the reader opens it, which is what a person does.
+ */
+async function openStatusDetails(page: Page): Promise<void> {
+  const details = page.locator('[data-testid="status-details"]')
+  if (await details.count()) {
+    await details.evaluate((el) => {
+      ;(el as HTMLDetailsElement).open = true
+    })
+  }
+}
+
 /** `seq N` - the client's own high-water mark of frames it has kept. */
 async function readSequence(page: Page): Promise<number> {
+  await openStatusDetails(page)
   const text = await streamLine(page).innerText()
   return Number(/seq\s+(\d+)/.exec(text)?.[1] ?? -1)
 }

@@ -431,6 +431,46 @@ const logFormat = ref<LogFormat>('ndjson')
       </p>
     </div>
 
+    <!--
+      THE PRIMARY ACTION, FOURTH (item 9, ROUND-2 ruling 9, AUDIT-R2 H6).
+
+      It used to be LAST: input -> WORKFLOW -> GATES -> VIEW -> STATUS (four
+      metric tiles reading zero) -> Launch. Measured on this tree before the
+      change, at 1440x720: the input's top y=87, the button's top y=738 and its
+      bottom y=780 against a 720px viewport - 651px below the input and BELOW
+      THE FOLD on a laptop, so the first thing a new visitor has to find was off
+      screen under four numbers that are all zero until a run exists.
+
+      X2's wording is the order: "the input, the launch and the run status read
+      top-to-bottom". VIEW and STATUS are during-and-after concerns and follow.
+      `.control-actions` KEEPS ITS CLASS and keeps holding the primary and
+      Cancel: eight E2E specs press
+      `.status-panel .control-actions button.button-primary`, including the
+      visual baseline's own launch step. Only the log row moves out, into
+      `.control-logs`, because it is neither.
+
+      THE RAIL IS OUTSIDE `.validator-flow`. `e2e/visual/run-canvas.spec.ts`
+      screenshots that element alone, so none of its three baselines moves.
+    -->
+    <div class="control-actions">
+      <button
+        class="button button-primary"
+        :class="{ 'is-armed': armed }"
+        data-testid="launch-button"
+        type="button"
+        :disabled="!canLaunch"
+        @click="emit('launch')"
+      >
+        <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
+        <Play v-else :size="16" aria-hidden="true" />
+        {{ primaryWord }}
+      </button>
+      <button class="button button-secondary" type="button" :disabled="!isActive || status === 'stopping'" @click="emit('cancel')">
+        <Square :size="14" aria-hidden="true" />
+        {{ status === 'stopping' ? 'Stopping…' : 'Cancel' }}
+      </button>
+    </div>
+
     <div class="panel-section control-section compact-section">
       <span class="control-label panel-kicker">VIEW</span>
       <div class="segmented" role="group" aria-label="Workspace view">
@@ -470,37 +510,44 @@ const logFormat = ref<LogFormat>('ndjson')
           :title="statusWords.hint || undefined"
         ><i aria-hidden="true" />{{ statusWords.label }}</span>
       </div>
-      <dl class="metrics-grid">
-        <div><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
-        <div><dt>Calls</dt><dd>{{ usage.callCount }}</dd></div>
-        <div><dt>Tokens</dt><dd>{{ tokens }}</dd></div>
-        <div><dt>Cost</dt><dd>${{ usage.costUsd.toFixed(4) }}</dd></div>
-      </dl>
-      <div class="stream-line">
-        <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionWord }}</span>
-        <span>seq {{ lastSequence }}</span>
-        <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
-      </div>
+      <!--
+        THE INSTRUMENTATION, BEHIND A DISCLOSURE (item 9, AUDIT-R2 N6).
+
+        `ELAPSED 00:00 / CALLS 0 / TOKENS 0 / COST $0.0000` and
+        `ready · seq 0 · 0 dropped` used to sit between the reader and the
+        button. Four tiles that are zero until a run exists, and a frame
+        sequence number with no reader on this screen, are not the answer to
+        "what can I do next" - and this rail is the first thing a visitor reads.
+
+        `<details>`, so the values stay IN THE DOM while it is shut: seven E2E
+        specs read `.stream-line` and `.metrics-grid` by `innerText`,
+        `textContent` or `page.evaluate`, and all of those answer for a
+        non-rendered element. What they do not do is assert it is on screen.
+
+        THE RUN ID STAYS OUT. It is the one value here somebody quotes -
+        `e2e/studio.spec.ts` asserts it is VISIBLE - and it names the run rather
+        than measuring the stream.
+      -->
+      <details class="rail-details" data-testid="status-details">
+        <summary class="rail-details-summary">Details</summary>
+        <dl class="metrics-grid">
+          <div><dt>Elapsed</dt><dd>{{ elapsed }}</dd></div>
+          <div><dt>Calls</dt><dd>{{ usage.callCount }}</dd></div>
+          <div><dt>Tokens</dt><dd>{{ tokens }}</dd></div>
+          <div><dt>Cost</dt><dd>${{ usage.costUsd.toFixed(4) }}</dd></div>
+        </dl>
+        <div class="stream-line">
+          <span><i :class="`is-${connection}`" aria-hidden="true" />{{ connectionWord }}</span>
+          <span>seq {{ lastSequence }}</span>
+          <span :class="{ 'has-drops': droppedFrames > 0 }">{{ droppedFrames }} dropped</span>
+        </div>
+      </details>
       <code v-if="runId" class="run-id" :title="runId">{{ runId.slice(0, 8) }}</code>
     </div>
 
-    <div class="control-actions">
-      <button
-        class="button button-primary"
-        :class="{ 'is-armed': armed }"
-        data-testid="launch-button"
-        type="button"
-        :disabled="!canLaunch"
-        @click="emit('launch')"
-      >
-        <RotateCcw v-if="primaryLabel === 'Relaunch'" :size="16" aria-hidden="true" />
-        <Play v-else :size="16" aria-hidden="true" />
-        {{ primaryWord }}
-      </button>
-      <button class="button button-secondary" type="button" :disabled="!isActive || status === 'stopping'" @click="emit('cancel')">
-        <Square :size="14" aria-hidden="true" />
-        {{ status === 'stopping' ? 'Stopping…' : 'Cancel' }}
-      </button>
+    <!-- The log export is neither the action nor the status, so it is neither
+         block: last, where it already was. -->
+    <div class="control-logs">
       <div class="download-row">
         <button
           class="button button-quiet"
@@ -626,6 +673,29 @@ textarea:disabled { cursor: not-allowed; opacity: 0.64; }
 .stream-line .has-drops { color: var(--err-text); }
 .run-id { display: inline-block; margin-top: var(--space-3); padding: var(--space-1) var(--space-2); color: var(--text-muted); font: var(--type-meta); background: var(--surface-well); border-radius: var(--r-sm); }
 .control-actions { display: grid; gap: var(--space-3); padding: var(--space-6); }
+/* The same block treatment as `.control-actions`, one section lower. Two rules
+   rather than one shared class, because the two are not the same thing and a
+   later edit to the action block must not silently move the log row. */
+.control-logs { display: grid; gap: var(--space-3); padding: var(--space-6); }
+
+/*
+ * THE INSTRUMENTATION DISCLOSURE (item 9). Native `<details>`, so the shut
+ * state costs no JavaScript, keeps its content in the DOM for the seven specs
+ * that read it, and is operable from a keyboard with no `aria` of its own.
+ */
+.rail-details { margin-top: var(--space-4); }
+.rail-details-summary {
+  color: var(--text-meta);
+  font: var(--type-meta);
+  cursor: pointer;
+  list-style: none;
+}
+.rail-details-summary::-webkit-details-marker { display: none; }
+.rail-details-summary::before { content: '▸ '; }
+.rail-details[open] > .rail-details-summary::before { content: '▾ '; }
+.rail-details-summary:hover { color: var(--text-body); }
+.rail-details-summary:focus-visible { outline: 2px solid var(--on-accent-cyan); outline-offset: 2px; }
+.rail-details .metrics-grid { margin-top: var(--space-4); }
 /* `.panel-banner` supplies the layout and the colour family; these three keep
    only what differs. The error banner is the one with a control in it, so it
    centres its row and pushes the dismiss to the end. */

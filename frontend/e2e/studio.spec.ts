@@ -76,6 +76,27 @@ function watchConsole(page: Page): ConsoleWatch {
 }
 
 /** The run-control panel's own primary button, never the gate card's. */
+/**
+ * Open the rail's instrumentation disclosure.
+ *
+ * `seq`, `dropped`, the transport word and the four metric tiles moved behind a
+ * `Details` summary (item 9, AUDIT-R2 H6/N6) so that the primary button is no
+ * longer the sixth block down. They stay in the DOM while it is shut, but
+ * MEASURED in Chromium: `innerText` on a non-rendered element answers `''` -
+ * the HTML spec's textContent fallback is not what the engine does here - and
+ * `textContent` runs the spans together (`readyseq 970 dropped`), so a greedy
+ * `\d+` reads the wrong number. So the reader opens it, which is what a person
+ * does.
+ */
+async function openStatusDetails(page: Page): Promise<void> {
+  const details = page.locator('[data-testid="status-details"]')
+  if (await details.count()) {
+    await details.evaluate((el) => {
+      ;(el as HTMLDetailsElement).open = true
+    })
+  }
+}
+
 function launchButton(page: Page): Locator {
   return page.locator('.status-panel .control-actions button.button-primary')
 }
@@ -217,6 +238,58 @@ test.describe('Validator Studio', () => {
     await expect(statusBadge(page)).toHaveText(/ready/i)
   })
 
+  /*
+   * WHERE THE PRIMARY BUTTON IS - item 9, ROUND-2 X2, AUDIT-R2 H6.
+   *
+   * MEASURED on this tree before the change, at 1440x720: the input's top
+   * y=87, the button's top y=738 and its bottom y=780 against a 720px
+   * viewport - 651px below the input, the sixth block down, under four metric
+   * tiles that read zero until a run exists, and BELOW THE FOLD on a laptop.
+   * The first thing a new visitor has to find was off screen.
+   *
+   * A REAL BROWSER IS THE ONLY INSTRUMENT for this. A jsdom mount can assert
+   * the DOM order (`serverLimits.spec.ts` now does) and reports zero for every
+   * box; "does it fit on the screen" has an answer only where there is a
+   * layout engine. Presses nothing, so no `@launch` tag and no money.
+   */
+  test('puts the primary action above the fold on a 1440x720 laptop', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 720 })
+    await openStudio(page)
+    await expect(page.locator('.status-panel')).toBeVisible()
+
+    const box = await page.evaluate(() => {
+      const primary = document.querySelector(
+        '.status-panel .control-actions button.button-primary',
+      )
+      const input = document.querySelector('.status-panel textarea#idea')
+      if (!primary || !input) return null
+      const a = primary.getBoundingClientRect()
+      const b = input.getBoundingClientRect()
+      return {
+        viewport: window.innerHeight,
+        bottom: Math.round(a.bottom),
+        below: Math.round(a.top - b.top),
+      }
+    })
+    expect(box, 'the rail did not render its input and its primary button').not.toBeNull()
+    expect(box!.bottom, `the primary button ends at ${box!.bottom} in a ${box!.viewport}px window`)
+      .toBeLessThanOrEqual(box!.viewport)
+    // It was 651. The bound is generous on purpose: what this pins is the
+    // ORDER, not a pixel count that a copy change would break.
+    expect(box!.below, 'the primary button is more than four blocks below the input')
+      .toBeLessThan(500)
+
+    // The instrumentation is behind the disclosure, shut, and the run status
+    // is not - a reader is told the state without being told the sequence
+    // number.
+    const details = page.locator('[data-testid="status-details"]')
+    await expect(details).toHaveCount(1)
+    expect(await details.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false)
+    await expect(page.locator('.status-panel .stream-line')).toBeHidden()
+    await expect(page.locator('.status-panel .metrics-grid')).toBeHidden()
+    await expect(statusBadge(page)).toBeVisible()
+  })
+
   test(
     'runs the full operator journey through both gates to completion',
     { tag: '@launch' },
@@ -302,6 +375,7 @@ test.describe('Validator Studio', () => {
        * already finished at this point: a second `@launch` test would spend
        * money against a paid origin to learn the same thing.
        */
+      await openStatusDetails(page)
       const metric = async (name: string): Promise<string> =>
         (
           await page

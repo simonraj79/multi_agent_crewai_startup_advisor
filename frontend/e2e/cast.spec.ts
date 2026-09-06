@@ -476,7 +476,29 @@ async function waitForCompletion(page: Page): Promise<void> {
 }
 
 /** `seq N` off the stream line — the client's high-water mark of frames. */
+/**
+ * Open the rail's instrumentation disclosure.
+ *
+ * `seq`, `dropped`, the transport word and the four metric tiles moved behind a
+ * `Details` summary (item 9, AUDIT-R2 H6/N6) so that the primary button is no
+ * longer the sixth block down. They stay in the DOM while it is shut, but
+ * MEASURED in Chromium: `innerText` on a non-rendered element answers `''` -
+ * the HTML spec's textContent fallback is not what the engine does here - and
+ * `textContent` runs the spans together (`readyseq 970 dropped`), so a greedy
+ * `\d+` reads the wrong number. So the reader opens it, which is what a person
+ * does.
+ */
+async function openStatusDetails(page: Page): Promise<void> {
+  const details = page.locator('[data-testid="status-details"]')
+  if (await details.count()) {
+    await details.evaluate((el) => {
+      ;(el as HTMLDetailsElement).open = true
+    })
+  }
+}
+
 async function readSequence(page: Page): Promise<number> {
+  await openStatusDetails(page)
   const text = await page.locator('.status-panel .stream-line').innerText()
   return Number(/seq\s+(\d+)/.exec(text)?.[1] ?? -1)
 }
@@ -1331,6 +1353,7 @@ test.describe('the completed run', () => {
       expect(rowCount, 'a completed run produced no trace rows at all').toBeGreaterThanOrEqual(1)
 
       const frames = await readSequence(page)
+      await openStatusDetails(page)
       const frameBadge = (await page.locator('.status-panel .stream-line').innerText()).trim()
       const railBadge = (await page.locator('.chat-rail .entry-count').innerText()).trim()
 

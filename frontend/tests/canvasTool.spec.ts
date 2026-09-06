@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { App } from 'vue'
 import { useCanvasTool, type CanvasSurface } from '../src/composables/useCanvasTool'
 import { withSetup } from './helpers'

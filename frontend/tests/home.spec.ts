@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomeView from '../src/views/HomeView.vue'
-import { PRODUCT_NAME } from '../src/data/brand'
+import { PRODUCT_NAME, PRODUCT_SENTENCE } from '../src/data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../src/data/builderTemplates'
 import { HANDOFF_KEY, writeRunHandoff } from '../src/data/builderRunHandoff'
 import { scopedKey } from '../src/data/identityStorage'
@@ -171,6 +171,51 @@ describe('the home lists every workflow this account can open', () => {
     mountHome(false)
     await settle(4)
     expect(document.title).toBe(PRODUCT_NAME)
+  })
+
+  /* ── ROUND-2 X1 and X2: what this page IS, and what its cards do ─────────
+   *
+   * Three assertions over three findings the audit measured on `8d17209`, and
+   * each fails on the state it was written for rather than on a paraphrase:
+   * H1 (no product sentence anywhere on the signed-in home), N1 (the same
+   * object called `graph` here and `workflow` one route away) and ruling 4 (a
+   * template card whose click had an unstated effect).
+   */
+
+  it('says what the product is, under the brand, from the one constant', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    expect(wrapper.get('[data-testid="product-sentence"]').text()).toBe(PRODUCT_SENTENCE)
+  })
+
+  it('names the template shelf and says what a click does', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    const text = wrapper.text()
+    expect(text).toContain('TEMPLATES')
+    expect(text).toContain('Start from a working example')
+    expect(text).toContain('Click one to copy it onto the canvas as a new workflow.')
+    // The words it replaced. `A shape that already works` is a good sentence
+    // and was a bad label: it names no category, which is the whole of N4.
+    expect(text).not.toContain('START FROM')
+    expect(text).not.toContain('A shape that already works')
+  })
+
+  it('gives every template card the action its click performs', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    const actions = wrapper.findAll('[data-testid="home-templates"] .home-card-action')
+    expect(actions).toHaveLength(9)
+    for (const action of actions) expect(action.text()).toContain('Use this template')
+  })
+
+  it('calls the thing a person makes a workflow, and never a graph', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    expect(wrapper.text()).toContain('YOUR WORKFLOWS')
+    // Case-insensitive and word-anchored: `GraphThumbnail`'s class names are
+    // not on screen, and the point is the noun a reader sees.
+    expect(wrapper.text()).not.toMatch(/\bgraphs?\b/i)
   })
 
   it('says so, and stays a list, when the saved graphs cannot be read', async () => {

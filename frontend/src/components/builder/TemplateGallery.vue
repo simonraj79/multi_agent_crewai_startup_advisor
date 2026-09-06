@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
+  ArrowRight,
   Clock3,
   Copy,
   Download,
@@ -557,9 +558,27 @@ const orderedLibrary = computed(() =>
 
     <section aria-labelledby="gallery-templates-title">
       <header class="gallery-heading">
+        <!--
+          WHAT IT CONTAINS, AND WHAT A CLICK DOES (ROUND-2 §5 ruling 4).
+
+          It read `START FROM / A shape that already works`, which the audit
+          called a good sentence and a bad label: it names no category, and it
+          is the heading the owner's question - "Gallery, what does it contain"
+          - is literally about. Nothing anywhere said that a click COPIES the
+          card onto the canvas as a new, unsaved workflow, which is what it
+          does, so the one thing a reader needed to know before pressing was the
+          one thing the screen never said.
+
+          The good sentence survives as the heading; `TEMPLATES` is the label.
+          The home's template section carries the same three strings verbatim -
+          they are two views of one shelf, and the audit's C3 comparison named
+          "two copies of the same section with different words" as the reason a
+          reader cannot tell the two pages apart.
+        -->
         <div>
-          <span class="gallery-kicker">START FROM</span>
-          <h2 id="gallery-templates-title">A shape that already works</h2>
+          <span class="gallery-kicker">TEMPLATES</span>
+          <h2 id="gallery-templates-title">Start from a working example</h2>
+          <p class="gallery-lede">Click one to copy it onto the canvas as a new workflow.</p>
         </div>
         <div class="gallery-heading-aside">
           <p v-if="pricingProblem" class="gallery-notice" role="status">
@@ -656,6 +675,22 @@ const orderedLibrary = computed(() =>
                 </dd>
               </div>
             </dl>
+
+            <!--
+              WHAT THE CLICK DOES, on the card itself (ROUND-2 X2's rule that
+              every card names its action).
+
+              A `<span>`, not a `<button>`: the whole card IS the button, and a
+              button inside a button is invalid HTML that no browser fixes the
+              way you meant. So this is a label ON the affordance rather than a
+              second affordance - it names the action, the card takes the press,
+              and it reads as the last words of the card's accessible name,
+              which is exactly where "Use this template" belongs.
+            -->
+            <span class="template-action">
+              Use this template
+              <ArrowRight :size="13" aria-hidden="true" />
+            </span>
           </button>
         </li>
       </ul>
@@ -724,6 +759,11 @@ const orderedLibrary = computed(() =>
                   </dd>
                 </div>
               </dl>
+
+              <span class="template-action">
+                Use this template
+                <ArrowRight :size="13" aria-hidden="true" />
+              </span>
             </button>
           </li>
         </ul>
@@ -754,6 +794,11 @@ const orderedLibrary = computed(() =>
 
 .gallery-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .gallery-heading h2 { margin: 4px 0 0; font-size: 17px; }
+
+/* The sentence that says what a click does. Under the heading rather than on
+   each card: it is true of every card, and 9 copies of one sentence is 9 places
+   for it to go stale. */
+.gallery-lede { margin: 4px 0 0; max-width: 56ch; color: var(--text-muted); font-size: var(--fs-12); }
 .gallery-notice { display: inline-flex; gap: 6px; align-items: center; margin: 0; color: var(--warn-text); font-size: var(--fs-11); }
 .gallery-heading-aside { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; }
 .gallery-import { min-height: 32px; padding: 0 12px; font-size: var(--fs-12); }
@@ -792,6 +837,22 @@ const orderedLibrary = computed(() =>
 }
 
 .template-card:hover { background: var(--surface-raised); border-color: var(--border-hover); }
+
+/* The card's own action. `margin-top: auto` pins it to the bottom of a
+   `flex-direction: column` card, so the row lines up across cards of different
+   heights - the four blurbs are not the same length and a floating action reads
+   as four different controls. */
+.template-action {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 4px;
+  color: var(--on-accent-cyan);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+}
+
+.template-card:hover .template-action { color: var(--text-title); }
 
 .template-spine {
   padding: 6px 0;

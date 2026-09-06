@@ -3,7 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { VueFlow } from '@vue-flow/core'
-import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
+import { Activity, ChevronLeft, ChevronRight, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
+import BrandLockup from '../components/BrandLockup.vue'
 import ChatRail from '../components/ChatRail.vue'
 import CrewProgress from '../components/CrewProgress.vue'
 import DialogueRail from '../components/DialogueRail.vue'
@@ -331,13 +332,19 @@ function backToValidator(): void {
     }"
   >
     <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
+      <!--
+        The lockup is a LINK to the workflow list (row U2), and the `<h1>`
+        inside it is the view's own heading, handed to the default slot. The
+        `<template #default>` wrapper looks redundant and is not: it keeps the
+        heading's line at the indentation it has always had, so the worker who
+        owns that line's TEXT and the worker who owned this block could change
+        their own halves without landing on each other.
+      -->
+      <BrandLockup as="link">
+        <template #default>
           <h1>Validator Studio</h1>
-        </div>
-      </div>
+        </template>
+      </BrandLockup>
 
       <div class="header-context">
         <!--

@@ -6,7 +6,6 @@ import {
   ChevronRight,
   CircleAlert,
   CircleCheck,
-  CircleDot,
   Info,
   KeyRound,
   PenTool,
@@ -15,6 +14,7 @@ import {
   Unplug,
   X,
 } from 'lucide-vue-next'
+import BrandLockup from '../BrandLockup.vue'
 import SignInPanel from '../SignInPanel.vue'
 import AccountChip from './AccountChip.vue'
 import BudgetMeter from './BudgetMeter.vue'
@@ -1704,13 +1704,19 @@ watch(
     }"
   >
     <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
+      <!--
+        The lockup is a LINK to the workflow list (row U2), and the `<h1>`
+        inside it is the view's own heading, handed to the default slot. The
+        `<template #default>` wrapper looks redundant and is not: it keeps the
+        heading's line at the indentation it has always had, so the worker who
+        owns that line's TEXT and the worker who owned this block could change
+        their own halves without landing on each other.
+      -->
+      <BrandLockup as="link">
+        <template #default>
           <h1>Flow builder</h1>
-        </div>
-      </div>
+        </template>
+      </BrandLockup>
 
       <div class="header-context">
         <div class="segmented workspace-switch" role="group" aria-label="Workspace">

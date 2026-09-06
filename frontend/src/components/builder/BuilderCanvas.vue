@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { Background } from '@vue-flow/background'
-import { ControlButton, Controls } from '@vue-flow/controls'
 import { ConnectionMode, SelectionMode, VueFlow, getBezierPath, useVueFlow } from '@vue-flow/core'
 import type { Position } from '@vue-flow/core'
 import type { EdgeMouseEvent, EdgeUpdateEvent, NodeDragEvent, NodeMouseEvent } from '@vue-flow/core'
-import { Maximize, Minus, Plus } from 'lucide-vue-next'
 import BuilderMinimap from './BuilderMinimap.vue'
 import SelectionToolbar from './SelectionToolbar.vue'
 import type { MinimapNode } from './BuilderMinimap.vue'
+import CanvasControls from '../CanvasControls.vue'
+import { useCanvasTool } from '../../composables/useCanvasTool'
 import { NODE_KINDS, NODE_KIND_ORDER } from '../../data/nodeKinds'
 import {
   BUILDER_CANVAS_ATTR,
@@ -650,72 +650,28 @@ function onDistribute(axis: DistributeAxis): void {
   props.canvas.distributeSelection(axis)
 }
 
-/* --- Space-to-pan, the half Vue Flow does not finish (§4.5) --------------- */
+/* --- the pointer tool: Select / Hand, and space-to-pan (§4.5, U3) --------- */
 
 /**
- * True while the space bar is held, and the reason `pan-on-drag` is a computed.
+ * The tool this canvas is in, and the `pan-on-drag` it resolves to.
  *
- * §4.3 wants a plain left-drag on the empty pane to MARQUEE, which in Vue Flow
- * 1.48 means `selection-key-code="true"` plus a `pan-on-drag` that excludes
- * button 0 - and that takes the left button away from panning, which §4.5 says
- * Space is supposed to give back. Vue Flow's own `panActivationKeyCode`
- * (default `Space`) does half of it: measured, holding space correctly drops
- * `.selection` off the pane so a drag no longer marquees, and then the drag
- * does nothing at all, because the d3 filter still refuses button 0. Widening
- * `pan-on-drag` to `true` for exactly as long as the key is down is the
- * remaining half, and it is still Vue Flow doing the panning (R2) - this is one
- * boolean, not a pointer layer.
+ * Everything this block used to hold - the space latch, its three `window`
+ * listeners, the typing guard and the `[1, 2]` array - moved verbatim into
+ * `useCanvasTool`, because the run console needs the identical thing and two
+ * copies of a keyboard latch is how two canvases drift apart. Read the
+ * composable for the reasoning; the two facts that belong HERE are:
  *
- * Scoped to `keyup`/`blur` as well as `keydown`, because a key released while
- * the window is not focused never sends a `keyup` and the canvas would be stuck
- * unable to marquee for the rest of the session.
+ * - `builder` rests on **Select**, which is §4.3's plain-left-drag marquee and
+ *   exactly what this canvas did before U3. Nothing about a fresh document's
+ *   first gesture changes.
+ * - `selection-key-code` below stays the literal `true` and is NOT switched by
+ *   the tool. Vue Flow derives the marquee from `selectionKeyCode === true &&
+ *   shouldPanOnDrag !== true`, so Hand's `pan-on-drag: true` turns it off by
+ *   itself; a second lever for a state the library already computes is a second
+ *   thing to get out of step. `e2e/canvas-controls.spec.ts` asserts the
+ *   derivation rather than trusting this sentence.
  */
-const spaceHeld = ref(false)
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return (
-    target.isContentEditable ||
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT'
-  )
-}
-
-function onSpaceDown(event: KeyboardEvent): void {
-  if (event.code !== 'Space' || event.repeat || isTypingTarget(event.target)) return
-  spaceHeld.value = true
-}
-
-function onSpaceUp(event: KeyboardEvent): void {
-  if (event.code === 'Space') spaceHeld.value = false
-}
-
-function releaseSpace(): void {
-  spaceHeld.value = false
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onSpaceDown)
-  window.addEventListener('keyup', onSpaceUp)
-  window.addEventListener('blur', releaseSpace)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onSpaceDown)
-  window.removeEventListener('keyup', onSpaceUp)
-  window.removeEventListener('blur', releaseSpace)
-})
-
-/**
- * `true` (every button pans) while space is held; middle and right otherwise.
- *
- * Left is deliberately absent from the resting value: it belongs to the
- * marquee, which is what §4.3 asks for and what a plain drag did nothing at all
- * for before - measured, a corner-to-corner unmodified drag selected nothing
- * and moved the viewport instead.
- */
-const panOnDrag = computed<boolean | number[]>(() => (spaceHeld.value ? true : [1, 2]))
+const { tool, setTool, panOnDrag, canvasClass } = useCanvasTool('builder')
 
 /** §5.6: the empty document's one centred line, and only while it is empty. */
 const isEmptyDocument = computed(() => props.canvas.nodes.value.length === 0)
@@ -766,7 +722,7 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
   <div
     ref="frame"
     class="builder-canvas"
-    :class="{ 'is-connecting': isConnecting, 'is-hovering': isHovering, 'is-read-only': readOnly }"
+    :class="[canvasClass, { 'is-connecting': isConnecting, 'is-hovering': isHovering, 'is-read-only': readOnly }]"
     :style="{ '--canvas-zoom': String(zoomLevel) }"
     :[BUILDER_CANVAS_ATTR]="''"
     :data-mode="mode ?? 'design'"
@@ -864,36 +820,20 @@ const isHovering = computed(() => props.canvas.hoveredNodeId.value !== null)
       <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
 
       <!--
-        Named, because the stock ones are not. `<Controls>` renders three
-        `<button>`s each wrapping a bare `<svg>` with no title and no text, so a
-        screen reader announces "button, button, button" - the only three
-        unnamed interactive elements in a builder where every other icon button
-        carries an `aria-label`. The `control-*` slots replace the whole button,
-        which is what lets a name be attached at all; `ControlButton` keeps the
-        library's own class and styling, so this is a label rather than a
-        reimplementation. Inherited from `StudioView`, and fixed there too.
+        The same cluster the run console renders (U3). It was three named
+        buttons written out here and three unnamed ones over there; the markup
+        moved into `CanvasControls.vue` unchanged - same slots, same
+        `ControlButton`, same library classes, same Lucide icons - and gained
+        the Select / Hand pair. `canvas.fitView()` rather than the library's is
+        still this canvas's fit, because it carries D-15-2's legibility floor;
+        that difference is the whole reason the seam is a callback.
       -->
-      <Controls position="bottom-left" :show-interactive="false">
-        <template #control-zoom-in>
-          <ControlButton class="vue-flow__controls-zoomin" aria-label="Zoom in" @click="flow.zoomIn()">
-            <Plus :size="12" :stroke-width="2.5" aria-hidden="true" />
-          </ControlButton>
-        </template>
-        <template #control-zoom-out>
-          <ControlButton class="vue-flow__controls-zoomout" aria-label="Zoom out" @click="flow.zoomOut()">
-            <Minus :size="12" :stroke-width="2.5" aria-hidden="true" />
-          </ControlButton>
-        </template>
-        <template #control-fit-view>
-          <ControlButton
-            class="vue-flow__controls-fitview"
-            aria-label="Fit the graph to the view"
-            @click="canvas.fitView()"
-          >
-            <Maximize :size="12" :stroke-width="2.5" aria-hidden="true" />
-          </ControlButton>
-        </template>
-      </Controls>
+      <CanvasControls
+        flow-id="builder-flow"
+        :tool="tool"
+        :fit="canvas.fitView"
+        @update:tool="setTool"
+      />
     </VueFlow>
 
     <!--

@@ -74,15 +74,19 @@ async function saveTemplate(page: Page): Promise<string> {
  *
  * `News to social post` is gateless by design, so the dialog's closing sentence
  * is the 403 explanation rather than the "anyone with the link" one - which is
- * why this waits on `This graph is live` instead. Getting that wrong costs 15
+ * why this waits on the SUCCESS HEADING instead. Getting that wrong costs 15
  * seconds and reads like a publish failure, so it is stated.
+ *
+ * The heading is `Your workflow is live` since ROUND-2 ruling 10 - it was
+ * `This graph is live`, which is the string this line waited on until the
+ * merge, and neither branch could see the other half.
  */
 async function publishOpenDocument(page: Page): Promise<void> {
   await page.keyboard.press('Control+Shift+P')
   const dialog = page.locator('[aria-labelledby="publish-title"]')
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: /^(Publish|Republish)$/ }).click()
-  await expect(dialog).toContainText(/This graph is live/i, { timeout: 30_000 })
+  await expect(dialog).toContainText(/Your workflow is live/i, { timeout: 30_000 })
 }
 
 /**

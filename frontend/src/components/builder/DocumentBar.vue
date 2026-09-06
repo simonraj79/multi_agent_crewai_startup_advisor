@@ -730,6 +730,14 @@ function cancelRename(): void {
    shell's grid rows - and `Export head (vN)` above is the other half of the
    answer: the one fact the covered rows were being read for is now in the
    menu itself. */
+/* R9 / item C3: measured at `rgba(255, 255, 255, 0.03)` - the same wash
+   `InspectorRail.vue` carries for a DOCKED column - over a floating overlay,
+   where `$10.00 ceiling`, `2 of 13` and the rest of the budget meter behind it
+   read straight through the menu's own words. `--bg-app` is the ground every
+   other overlay in this product sits on; `--shadow-overlay` replaces the
+   hand-written shadow with the token the rest of the system already carries
+   this exact box-shadow value under (`tokens.css`), so a theme's shadow moves
+   with everything else that uses it instead of staying frozen here. */
 .document-menu {
   position: absolute;
   z-index: 3;
@@ -741,10 +749,10 @@ function cancelRename(): void {
   gap: 2px;
   min-width: 212px;
   padding: 6px;
-  background: var(--surface-panel);
+  background: var(--bg-app);
   border: 1px solid var(--border-default);
   border-radius: var(--r-lg);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--shadow-overlay);
 }
 
 .document-menu-item {

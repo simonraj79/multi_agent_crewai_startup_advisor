@@ -1366,3 +1366,40 @@ test.describe('the inspector rail is opaque at 1180 (R6, item 60)', () => {
     expect(watch.unexpected).toEqual([])
   })
 })
+
+/**
+ * R9 / item C3 (ROUND-2.md AUDIT-R2.md §3, `measure.json` -> C3_overflowMenuGround).
+ *
+ * Measured at 1440 (`06-overflow-1440-dark.png`): `.document-menu`'s computed
+ * background was `rgba(255, 255, 255, 0.03)`, so the budget meter's `$10.00
+ * ceiling`, `2 of 13` and `0 of 3` behind it read straight through the menu's
+ * own words - `Versions`, `Export head`, `Import .builder.json`, `Duplicate`,
+ * `Unpublish`. The fix is unconditional (`--bg-app` + `--shadow-overlay`, no
+ * media query), so this runs at the default desktop viewport rather than at
+ * 390 - the defect was never width-dependent.
+ */
+test.describe('the document overflow menu is opaque (R9, item C3)', () => {
+  test('nothing behind it reads through', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openValidatorTemplate(page)
+
+    await page.getByTestId('document-menu-button').click()
+    const menu = page.getByTestId('document-menu')
+    await expect(menu).toBeVisible()
+
+    const background = await menu.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(alphaOf(background), `computed background of the menu: ${background}`).toBe(1)
+
+    // The load-bearing half: a point inside the menu, away from any item text,
+    // answers the menu - not the budget meter or a node card painting through
+    // a translucent ground behind it.
+    const box = (await menu.boundingBox())!
+    const hit = await page.evaluate(
+      (point) => Boolean(document.elementFromPoint(point.x, point.y)?.closest('[data-testid="document-menu"]')),
+      { x: box.x + box.width * 0.5, y: box.y + 4 },
+    )
+    expect(hit, 'a point inside the menu answers the menu').toBe(true)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})

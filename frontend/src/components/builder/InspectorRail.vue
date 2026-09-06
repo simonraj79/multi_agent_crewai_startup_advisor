@@ -1055,6 +1055,29 @@ defineExpose({ focusField })
 
 <style scoped>
 .inspector-rail { display: flex; min-height: 0; flex-direction: column; overflow-y: auto; background: var(--surface-panel); border-left: 1px solid var(--border-default); }
+
+/* R6 / item 60 - OPAQUE AS AN OVERLAY, same reason the run console's own rail
+   already is (`studio.css`, `.control-rail`'s own comment: "a rail is the
+   ground; a ground does not float").
+
+   `--surface-panel` is a wash - `rgba(255,255,255,0.03)` in the dark theme -
+   correct for a rail that is a real grid COLUMN sitting beside the canvas at
+   wide viewports, wrong for the same rail once `studio.css`'s own
+   `@media (max-width: 1180px)` block turns it into `position: absolute` and
+   slides it OVER the canvas: measured at 1180x800, `rgba(255,255,255,0.03)`
+   at x:840 w:340 sat over a canvas pane of x:236 w:864, and the budget
+   meter's own right column and a node card read straight through it. The
+   console's rail never had this problem because `.control-rail`'s background
+   is `--bg-app` unconditionally, at every width - so it is restated here at
+   the identical breakpoint rather than made unconditional for this rail,
+   because the DOCKED, wide-viewport case is a real design choice (a panel
+   beside a canvas, not a ground under one) and nothing measured that case as
+   broken. */
+@media (max-width: 1180px) {
+  .inspector-rail {
+    background: var(--bg-app);
+  }
+}
 /* Not a box. The fieldset exists for its `disabled` and for nothing else. */
 .rail-lock { display: contents; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
 .rail-lock:disabled { opacity: 0.72; }

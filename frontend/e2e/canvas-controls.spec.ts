@@ -263,6 +263,69 @@ describeCanvas('run console', openConsole, '.validator-flow .vue-flow__pane', {
   marqueeInSelect: false,
 })
 
+/**
+ * R5 / item 59, the mobile arm.
+ *
+ * RV1 measured `elementFromPoint` at each of the five buttons' centres and
+ * found four answering `button.rail-scrim` and the fifth (Hand)
+ * `button.control-toggle` - not a click landing near the cluster, the browser's
+ * own hit-test at the exact centre of each button's box. The console's control
+ * rail opens by DEFAULT on a phone (unlike the chat rail, which the same
+ * `matchMedia` check starts collapsed), so the failing state is the page's own
+ * first paint, not a state a reader has to find. `test.use` sets the viewport
+ * directly rather than relying on the `mobile` Playwright project's own
+ * `testMatch`, which this file is not part of - the same pattern
+ * `builder-layout.spec.ts` already uses for its own narrow-viewport arm.
+ */
+test.describe('run console control cluster at 390 (R5, item 59)', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  async function centresResolveToButtons(page: Page): Promise<{ label: string | null; matches: boolean }[]> {
+    return page.evaluate(() => {
+      const controls = document.querySelector('.validator-flow .vue-flow__controls')
+      const buttons = controls ? Array.from(controls.querySelectorAll('button')) : []
+      return buttons.map((button) => {
+        const rect = button.getBoundingClientRect()
+        const cx = rect.left + rect.width / 2
+        const cy = rect.top + rect.height / 2
+        const hit = document.elementFromPoint(cx, cy)
+        const owner = hit ? hit.closest('button') : null
+        return { label: button.getAttribute('aria-label'), matches: owner === button }
+      })
+    })
+  }
+
+  test('all five buttons are pressable while the control rail is open (the default)', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openConsole(page)
+
+    // The default state itself: nobody has touched a toggle yet.
+    await expect(page.locator('.studio-shell')).not.toHaveClass(/controls-are-collapsed/)
+    await expect(page.locator('.rail-scrim')).toBeVisible()
+
+    const results = await centresResolveToButtons(page)
+    expect(results).toHaveLength(5)
+    for (const { label, matches } of results) expect(matches, `${label} at its own centre`).toBe(true)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('all five buttons are pressable once the control rail is collapsed', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openConsole(page)
+
+    await page.getByRole('button', { name: 'Collapse control panel' }).click()
+    await expect(page.locator('.studio-shell')).toHaveClass(/controls-are-collapsed/)
+    await expect(page.locator('.rail-scrim')).toHaveCount(0)
+
+    const results = await centresResolveToButtons(page)
+    expect(results).toHaveLength(5)
+    for (const { label, matches } of results) expect(matches, `${label} at its own centre`).toBe(true)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})
+
 test.describe('builder', () => {
   test.beforeEach(async ({ request }) => {
     await clearLibrary(request)

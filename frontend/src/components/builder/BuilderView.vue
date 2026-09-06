@@ -2021,6 +2021,7 @@ watch(
             @import="importFile"
             @duplicate="duplicateDocument"
             @unpublish="unpublishDocument"
+            @run-workspace="emit('runWorkspace')"
             @delete="askDelete"
             @menu-extent="onMenuExtent"
           >
@@ -2466,7 +2467,16 @@ watch(
    budget meter took the canvas's `1fr` and the canvas fell into an implicit
    `auto` row. A jsdom mount cannot see that; only a browser can. */
 .graph-workspace {
-  grid-template-rows: 64px auto auto minmax(0, 1fr) auto auto;
+  /* R8 / item C2: row 1 was a bare `64px`, which is a CEILING as much as a
+     floor once a track has an explicit length - so `.document-bar`'s own
+     `@media (max-width: 520px)` wrap (DocumentBar.vue) grew the bar's content
+     to ~124px while the grid row held it at 64, and the extra 60px spilled
+     over `overflow: visible` straight onto the budget meter's row underneath
+     it (measured: `Publish` and the budget meter's `$0.06 ... ceiling` line
+     sharing the same pixels). `minmax(64px, auto)` keeps the 64px floor every
+     wider layout already relies on and lets the row grow for the one case
+     that now needs more. */
+  grid-template-rows: minmax(64px, auto) auto auto minmax(0, 1fr) auto auto;
 }
 .graph-workspace > .document-bar { grid-row: 1; }
 .graph-workspace > .builder-dock { grid-row: 2; }

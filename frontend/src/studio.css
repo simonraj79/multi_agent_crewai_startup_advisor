@@ -351,13 +351,68 @@ h3 {
 .canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
 
 .validator-flow { width: 100%; height: 100%; }
-.vue-flow__pane { cursor: grab; }
-.vue-flow__pane:active { cursor: grabbing; }
+
+/* THE PANE CURSOR IS THE TOOL, on both canvases (U3).
+
+   It was an unconditional `.vue-flow__pane { cursor: grab }`, written when the
+   console was the only canvas this sheet reached and a left-drag there always
+   panned. With a Select / Hand toggle that rule became a lie in half the
+   states: Select on the console leaves the pane doing nothing at all with a
+   left button, and a hand cursor over a surface that will not move is worse
+   than no affordance.
+
+   `is-hand-tool` / `is-select-tool` come from `useCanvasTool.canvasClass` and
+   sit on the flow root of each canvas. The class follows the EFFECTIVE tool,
+   so holding space turns the cursor to `grab` for as long as it is down - the
+   pointer tells the truth even while the toggle, correctly, does not move.
+
+   `:not(.selection)` on the Select rule is the builder's marquee being left
+   alone: Vue Flow puts `.selection` on the pane itself when a left-drag will
+   band-select and its own theme sets `cursor: pointer` there. Overriding that
+   would be changing a gesture nobody asked about. On the console the class is
+   never present, so `default` is what a pane that does nothing gets. */
+.is-hand-tool .vue-flow__pane { cursor: grab; }
+.is-hand-tool .vue-flow__pane:active { cursor: grabbing; }
+.is-select-tool .vue-flow__pane:not(.selection) { cursor: default; }
 .vue-flow__node { cursor: default; }
 .vue-flow__controls { overflow: hidden; background: var(--controls-bg); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: var(--shadow-controls); }
 .vue-flow__controls-button { width: 34px; height: 34px; color: var(--text-body); background: transparent; border-color: var(--border-default); }
 .vue-flow__controls-button:hover { background: var(--surface-raised); }
 .vue-flow__controls-button svg { fill: currentColor; }
+
+/* THE ACTIVE TOOL, VISIBLE WITHOUT HOVERING - which is U3 in so many words.
+
+   Three signals rather than one, because each fails on its own somewhere:
+   the ink alone is a colour difference a colour-blind reader may not resolve,
+   the ground alone is a 1px-ish tint that `:hover` also produces, and the ring
+   alone is invisible against the cluster's own border at this size. Together
+   the pressed button reads as pressed in a still screenshot, which is the test
+   the row actually applies.
+
+   The exact construction is `.segmented button[aria-pressed='true']`'s, one
+   sheet down: `--text-title` there, `--on-accent-cyan` here, because these
+   buttons carry an icon and no word and the accent is what separates
+   "current" from "hovered" when there is no label to bolden.
+
+   The pressed ground is deliberately the SAME token `:hover` uses, so hovering
+   the tool you are already in changes nothing. A distinct hover ground was
+   tried and dropped: `--surface-well` and `--surface-raised` resolve to the
+   identical value in the light palette, so the rule would have been a no-op on
+   paper and a darkening on screen - one more state that means two things. */
+.vue-flow__controls-button[aria-pressed='true'] {
+  color: var(--on-accent-cyan);
+  background: var(--surface-raised);
+  box-shadow: var(--ring-pressed);
+}
+
+/* Lucide draws in STROKE and declares `fill="none"`, which the rule four lines
+   up overrides for every icon in this cluster. On `Plus`, `Minus` and
+   `Maximize` that is harmless - they are open paths with nothing to flood - but
+   `MousePointer2` and `Hand` are closed outlines and would land as two solid
+   blobs. Scoped to the tool pair rather than fixing the rule above, because
+   that rule is what the stock Vue Flow icons still need wherever a consumer of
+   this sheet has not replaced them. */
+.canvas-tool-button svg { fill: none; }
 
 .control-rail {
   position: relative;

@@ -976,7 +976,7 @@
 }
 .builder-palette-head { display: flex; flex-direction: column; gap: 2px; }
 .builder-palette-head-library { margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--border-default); }
-.builder-palette-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.builder-palette-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .builder-palette-head h2 { margin: 0; font-size: var(--fs-15); }
 .builder-palette-alert {
   margin: 0;
@@ -1309,7 +1309,7 @@
 .builder-library-version { color: var(--text-40); font: 600 9px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 .builder-library-status { padding: 2px 6px; font: 700 9px/1 var(--font-mono); border: 1px solid var(--border-default); border-radius: var(--r-pill); text-transform: uppercase; }
 .builder-library-status.is-draft { color: var(--text-40); }
-.builder-library-status.is-published { color: var(--accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 42%, transparent); }
+.builder-library-status.is-published { color: var(--on-accent-mint); border-color: color-mix(in srgb, var(--accent-mint) 42%, transparent); }
 
 /* Read-only, on the canvas (round 2, D-15-1). Every card carries a lock in
    its eyebrow and recedes a little; the tiles are disabled by the palette's

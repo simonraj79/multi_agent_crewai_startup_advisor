@@ -496,7 +496,7 @@ function trap(event: KeyboardEvent): void {
 }
 
 .publish-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.publish-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.publish-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .publish-header h2 { margin: 5px 0 0; font-size: var(--fs-18); }
 
 /* The one sentence under the heading. It says what LIVE means, which the four

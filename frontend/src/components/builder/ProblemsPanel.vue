@@ -445,7 +445,7 @@ defineExpose({ next, previous })
 .problems-toggle:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 .problems-kicker { font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .problems-headline { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font: 600 var(--fs-12)/1 var(--font-mono); }
-.problems-headline.is-clean { color: var(--accent-mint); }
+.problems-headline.is-clean { color: var(--on-accent-mint); }
 .problems-headline.is-blocking { color: var(--err-text); }
 .problems-checking { margin-left: auto; color: var(--text-40); font: 500 var(--fs-11)/1 var(--font-mono); }
 .problems-body { min-height: 0; max-height: 190px; overflow: auto; padding: 0 12px 10px; }

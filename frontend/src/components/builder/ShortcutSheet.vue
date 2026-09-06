@@ -245,7 +245,7 @@ function trap(event: KeyboardEvent): void {
 }
 
 .shortcut-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.shortcut-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.shortcut-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .shortcut-header h2 { margin: 5px 0 0; font-size: var(--fs-18); }
 
 .shortcut-columns { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }

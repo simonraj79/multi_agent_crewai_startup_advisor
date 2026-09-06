@@ -694,7 +694,7 @@ function cancelRename(): void {
 /* Mint only when the live version IS the one on screen. Amber otherwise, which
    covers both divergences: an older version live, and a stored publish this
    process is not serving. */
-.live-note.is-current { color: var(--accent-mint); }
+.live-note.is-current { color: var(--on-accent-mint); }
 .live-note:not(.is-current) { color: var(--warn-text); }
 
 .document-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }

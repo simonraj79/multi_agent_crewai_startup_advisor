@@ -169,7 +169,11 @@ test.describe('the console names the workflow it is running', () => {
     await page.goto(`/#/build/${id}`)
     await page.reload()
     await expect(page.locator('.vue-flow__node').first()).toBeVisible({ timeout: 30_000 })
-    await expect(runSwitch(page)).toHaveText('Run')
+    // The ACCESSIBLE name, not `textContent`: the control carries both labels
+    // so its width cannot change (D-15-14), and the spare one is
+    // `visibility: hidden` - out of the accessibility tree, still in the text.
+    await expect(runSwitch(page)).toHaveAttribute('data-run-state', 'ready')
+    await expect(runSwitch(page)).toHaveAccessibleName(/^Run$/)
     await runSwitch(page).click()
 
     await expect.poll(() => new URL(page.url()).hash).toBe('#/run')
@@ -251,7 +255,8 @@ test.describe('the console names the workflow it is running', () => {
     await saveTemplate(page)
 
     const run = runSwitch(page)
-    await expect(run).toHaveText('Publish to run')
+    await expect(run).toHaveAttribute('data-run-state', 'blocked')
+    await expect(run).toHaveAccessibleName(/^Publish to run$/)
     await expect(run).toBeDisabled()
     await expect(run).toHaveAttribute('title', /Publish button/)
     await page.screenshot({ path: 'test-results/R3-unpublished.png' })
@@ -260,7 +265,11 @@ test.describe('the console names the workflow it is running', () => {
     // carry, and the console's own built-in is a legitimate destination.
     await page.goto('/#/build')
     await page.reload()
-    await expect(runSwitch(page)).toHaveText('Run')
+    // The ACCESSIBLE name, not `textContent`: the control carries both labels
+    // so its width cannot change (D-15-14), and the spare one is
+    // `visibility: hidden` - out of the accessibility tree, still in the text.
+    await expect(runSwitch(page)).toHaveAttribute('data-run-state', 'ready')
+    await expect(runSwitch(page)).toHaveAccessibleName(/^Run$/)
     await expect(runSwitch(page)).toBeEnabled()
   })
 

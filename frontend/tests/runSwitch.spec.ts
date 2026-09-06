@@ -71,7 +71,10 @@ describe('the builder Run switch', () => {
     await flush(12)
 
     const run = wrapper.get('[data-testid="run-switch"]')
-    expect(run.text()).toBe('Run')
+    // `data-run-state`, not the text: BOTH labels are always in the DOM so the
+    // control cannot change width (D-15-14), and only one of them is visible.
+    expect(run.attributes('data-run-state')).toBe('ready')
+    expect(run.get('.switch-label > span.is-spare').text()).toBe('Publish to run')
     expect(run.attributes('disabled')).toBeUndefined()
 
     await run.trigger('click')
@@ -88,7 +91,8 @@ describe('the builder Run switch', () => {
     await flush(12)
 
     const run = wrapper.get('[data-testid="run-switch"]')
-    expect(run.text()).toBe('Publish to run')
+    expect(run.attributes('data-run-state')).toBe('blocked')
+    expect(run.get('.switch-label > span.is-spare').text()).toBe('Run')
     expect(run.attributes('disabled')).toBeDefined()
     // And the tooltip names the control that lifts the refusal, rather than
     // restating the refusal in other words.

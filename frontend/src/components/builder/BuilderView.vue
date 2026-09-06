@@ -1885,13 +1885,32 @@ watch(
             :aria-pressed="false"
             :disabled="runSwitchBlocked"
             data-testid="run-switch"
+            :data-run-state="runSwitchBlocked ? 'blocked' : 'ready'"
             :title="runSwitchBlocked
               ? 'Publish this workflow before you can run it — use the Publish button in the bar below'
               : 'Run this workflow'"
             @click="runWorkflow"
           >
             <Play :size="14" aria-hidden="true" />
-            {{ runSwitchBlocked ? 'Publish to run' : 'Run' }}
+            <!--
+              BOTH LABELS ARE ALWAYS IN THE DOM, stacked in one grid cell, and
+              the one that does not apply is `visibility: hidden`. That is not a
+              flourish: `e2e/builder-layout.spec.ts`'s D-15-14 pins this control
+              against MOVING, on the critic's own finding that a persistent mode
+              control which jumps moves under the pointer about to click it -
+              and a label that grows from `Run` to `Publish to run` when a
+              document opens does exactly that. Measured: it moved the toggle
+              53 px, and that test caught it. Reserving the wider label's width
+              in both states is what keeps the switch still.
+
+              `visibility: hidden` rather than `display: none` because only the
+              former both reserves the space AND takes the word out of the
+              accessible name, so the button is announced as one label.
+            -->
+            <span class="switch-label">
+              <span :class="{ 'is-spare': runSwitchBlocked }">Run</span>
+              <span :class="{ 'is-spare': !runSwitchBlocked }">Publish to run</span>
+            </span>
           </button>
         </div>
 
@@ -2468,6 +2487,11 @@ watch(
    under the label - a control that reads `Publish to run` and still looks
    pressable is a worse answer than either half alone. */
 .workspace-switch button:disabled { cursor: not-allowed; opacity: 0.55; }
+/* One grid cell, two labels, the wider one always paying for the width. See
+   the comment on the markup: D-15-14 pins this control against moving. */
+.workspace-switch .switch-label { display: grid; }
+.workspace-switch .switch-label > span { grid-area: 1 / 1; }
+.workspace-switch .switch-label > span.is-spare { visibility: hidden; }
 
 /* A toast in the header row, in the layout (never over the canvas, R15): an
    icon that says which kind of line it is, room for two lines before an

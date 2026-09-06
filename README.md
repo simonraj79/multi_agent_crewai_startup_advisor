@@ -10,6 +10,10 @@
 CrewAI flow and runs it — and the run console shows you what the agents are
 actually doing.**
 
+The product is **Crew Studio**: one home that lists every workflow, a canvas per
+workflow with the same pan, zoom and fit controls in Build and Run, and one mark on
+every surface.
+
 Not a picture of a flow: agents, crews, human approval gates, routers, joins and
 cycles are parsed into a typed document, structurally bounded, priced before a
 token is spent, compiled into a `crewai.flow/v1` declaration, and executed by the

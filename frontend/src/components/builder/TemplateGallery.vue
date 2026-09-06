@@ -792,7 +792,7 @@ const orderedLibrary = computed(() =>
   margin-bottom: 14px;
 }
 
-.gallery-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.gallery-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .gallery-heading h2 { margin: 4px 0 0; font-size: 17px; }
 
 /* The sentence that says what a click does. Under the heading rather than on
@@ -1027,11 +1027,11 @@ const orderedLibrary = computed(() =>
 
 .status-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); }
 .status-pill.is-draft { color: var(--text-muted); background: var(--surface-raised); }
-.status-pill.is-published { color: var(--accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
+.status-pill.is-published { color: var(--on-accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
 /* Same weight and shape as the status pill beside it - it is a status too,
    about a different version. Cyan rather than mint so "live, and it is not
    what you are editing" reads as distinct from "this head is published". */
-.live-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
+.live-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); color: var(--on-accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
 
 /* The row's four actions (D-15-15). `auto` in the row's own grid, so the name
    keeps every pixel the actions do not need.

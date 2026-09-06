@@ -496,4 +496,122 @@ test.describe('the unified shell', () => {
 
     expect(watch.unexpected).toEqual([])
   })
+
+  /* == ROUND-2 X1 and X2: the one vocabulary, in a real browser ============
+   *
+   * These read what a PERSON reads. The unit specs assert the same strings
+   * against a mounted component and cannot answer the question the audit's
+   * cold read asked - what does somebody scanning this page actually see -
+   * because a component mount has no page to scan.
+   *
+   * The negative half is the one that matters and it is why these are browser
+   * tests: `not.toContainText(/graph/i)` over a whole rendered surface catches
+   * a word arriving from a template, a stylesheet's generated content, an
+   * `aria-label` a screen reader would speak, or a component nobody thought to
+   * check - which is exactly how the five nouns of N1 accumulated.
+   */
+
+  test('the home says what the product is, and calls a workflow a workflow', async ({
+    page,
+    request,
+  }) => {
+    const watch = watchConsole(page)
+    await createDocument(request, SAVED_GRAPH_NAME)
+    await openHome(page)
+
+    // AUDIT-R2 H1: the sign-in wall's sentence, on the page a signed-in person
+    // actually lands on. It was the only screen answering "what is this", and
+    // it was the screen you stop seeing once you have an account.
+    await expect(page.locator('[data-testid="product-sentence"]')).toHaveText(
+      /^Draw a workflow on a canvas in Build, then Run it as a real CrewAI flow/,
+    )
+
+    // Ruling 4, the same three strings the gallery uses.
+    await expect(page.locator('.home-page')).toContainText('TEMPLATES')
+    await expect(page.locator('.home-page')).toContainText('Start from a working example')
+    await expect(page.locator('.home-page')).toContainText(
+      'Click one to copy it onto the canvas as a new workflow.',
+    )
+    await expect(page.locator('[data-testid="home-template-news-to-social"]')).toContainText(
+      'Use this template',
+    )
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('no visible word on the builder calls a workflow a graph', async ({ page, request }) => {
+    const watch = watchConsole(page)
+    const id = await createDocument(request, SAVED_GRAPH_NAME)
+    await page.goto(`/#/build/${id}`)
+    await expect(page.locator('.builder-flow')).toBeVisible()
+    await expect(page.locator('[data-testid="problems-checking"]')).toHaveCount(0, {
+      timeout: 30_000,
+    })
+
+    // The four the audit's census named on this surface, now one word.
+    const palette = page.locator('.builder-palette')
+    await expect(palette).toContainText('YOUR WORKFLOWS')
+    await expect(palette).toContainText('Saved here')
+    await expect(page.locator('.rail-kicker').first()).toHaveText('WORKFLOW')
+
+    /*
+     * The whole rendered page, case-insensitively, and it is a stronger claim
+     * than the three above: `graph` is gone from what a person can SEE. It says
+     * nothing about the DOM - `GraphThumbnail`, `.graph-workspace` and
+     * `builder.flow/v1` are all still there and all still correct - because
+     * `innerText` is what a reader gets and class names are not.
+     *
+     * TWO THINGS ARE SUBTRACTED, and each is a decision rather than a
+     * convenience.
+     *
+     * The document's own NAME, because `SAVED_GRAPH_NAME` is a fixture this
+     * file chose and a fixture that fails a scan of its own page is a test
+     * about itself. `split().join('')` and not `replace`, because the name is
+     * on screen four times and `replace` takes the first.
+     *
+     * `.problem-message`, because those sentences are the SERVER'S. `bounds.py`
+     * writes "this graph has no output node, so a completed run hands back no
+     * body" and the dock renders it verbatim, which is the right thing to do
+     * with a refusal - the client must not paraphrase a reason it did not
+     * decide. WC1's brief is explicit that a server sentence is reported and
+     * not rewritten, so this is the boundary of the client-side rename and the
+     * assertion below states it rather than hiding it: if the server's
+     * vocabulary is to move, it moves in `src/brief_crew/builder/bounds.py`,
+     * which is nobody's file on this branch.
+     */
+    const seen = await page.locator('.studio-shell').innerText()
+    const serverSentences = await page.locator('.problem-message').allInnerTexts()
+    let visible = seen.split(SAVED_GRAPH_NAME).join('')
+    for (const sentence of serverSentences) visible = visible.split(sentence).join('')
+
+    expect(visible, 'a visible `graph` survives in what the client itself wrote').not.toMatch(
+      /\bgraphs?\b/i,
+    )
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('the gallery names what it holds and what a click will do', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.goto('/#/build')
+    await expect(page.locator('.template-gallery')).toBeVisible({ timeout: 30_000 })
+
+    const gallery = page.locator('.template-gallery')
+    await expect(gallery).toContainText('TEMPLATES')
+    await expect(gallery).toContainText('Start from a working example')
+    await expect(gallery.locator('.gallery-lede')).toHaveText(
+      'Click one to copy it onto the canvas as a new workflow.',
+    )
+    // The action on every card, not on one. Nine cards, two rows, and the
+    // second row is inside an open `details` - which is why this counts rather
+    // than checks the first.
+    await expect(gallery.locator('.template-action')).toHaveCount(TEMPLATE_TITLES.length)
+    await expect(gallery.locator('.template-action').first()).toHaveText(/Use this template/)
+
+    // The words it replaced, gone from the whole page.
+    await expect(gallery).not.toContainText('YOUR GRAPHS')
+    await expect(gallery).not.toContainText('A shape that already works')
+
+    expect(watch.unexpected).toEqual([])
+  })
 })

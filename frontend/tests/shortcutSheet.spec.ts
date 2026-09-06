@@ -91,6 +91,13 @@ describe('the theme toggle is declared, printed and dispatched as one fact', () 
     expect(matchBinding(new KeyboardEvent('keydown', { key: 'l' }))).toBeNull()
   })
 
+  it('does not collide with the canvas tools, which now sit in the same table', () => {
+    // `Shift+L` and the bare `v`/`h` are different keys, and this is the
+    // assertion that says so after C4 put three bare letters in one table.
+    expect(matchBinding(new KeyboardEvent('keydown', { key: 'v' }))).toBeNull()
+    expect(matchBinding(new KeyboardEvent('keydown', { key: 'h' }))).toBeNull()
+  })
+
   it('does not collide with any other declared chord', () => {
     // The three attachment kinds took `T`, `M` and `K` (decision 18) and the
     // digits `1`-`7` select a kind on the same surface, so a new binding's real
@@ -128,3 +135,54 @@ describe('the theme toggle is declared, printed and dispatched as one fact', () 
 function theme() {
   return HOTKEY_BINDINGS.find((binding) => binding.id === 'theme')!
 }
+
+/* ── C4: the canvas tools are in the sheet, and still bound only once ────────
+ *
+ * `V` and `H` have been real keys since the canvas tool landed
+ * (`useCanvasTool.ts`), and until now they were advertised in a `title`
+ * tooltip and nowhere else - so the sheet that exists to make a bound key a
+ * discoverable one could not show the two keys every design tool this product
+ * is measured against puts on the same letters. That is exactly the failure
+ * this file's docstring names ("bound and undocumented is a feature nobody
+ * finds"), and it was invisible to the set-equality assertion above because
+ * the table it compares against did not contain them either.
+ *
+ * The other half is what a careless fix breaks. A binding declared here with a
+ * `run` would be bound TWICE - two window listeners for one keystroke, and
+ * `dispatchHotkey` calling `preventDefault` on a key it does not handle - so
+ * the row is marked `documentedElsewhere` and `matchBinding` skips it. Both
+ * halves are asserted, because either alone is the wrong thing.
+ */
+describe('Select and Hand are printed here and dispatched by useCanvasTool', () => {
+  const tools = () => HOTKEY_BINDINGS.filter((binding) => binding.group === 'canvas')
+
+  it('declares both, on the letters the canvas controls already print', () => {
+    expect(tools().map((binding) => binding.id)).toEqual(['tool-select', 'tool-hand'])
+    expect(bindingLabels(tools()[0])).toEqual(['V'])
+    expect(bindingLabels(tools()[1])).toEqual(['H'])
+  })
+
+  it('prints them in the sheet, under a group of their own', () => {
+    const wrapper = open()
+    expect(printedIds(wrapper)).toEqual(expect.arrayContaining(['tool-select', 'tool-hand']))
+    expect(wrapper.text()).toContain('The canvas')
+    expect(wrapper.get('[data-testid="shortcut-tool-select"]').text()).toContain('Select tool')
+    expect(wrapper.get('[data-testid="shortcut-tool-hand"]').text()).toContain('Hand tool')
+  })
+
+  it('binds neither a second time: this table dispatches nothing for V or H', () => {
+    // The whole point. `useCanvasTool` owns these keys on its own listener,
+    // together with the space-bar temporary pan whose guard ORDER is the whole
+    // of its correctness; a second dispatcher would answer the same keystroke
+    // and `preventDefault` it on the way.
+    expect(matchBinding(new KeyboardEvent('keydown', { key: 'v' }))).toBeNull()
+    expect(matchBinding(new KeyboardEvent('keydown', { key: 'V' }))).toBeNull()
+    expect(matchBinding(new KeyboardEvent('keydown', { key: 'h' }))).toBeNull()
+    for (const binding of tools()) expect(binding.documentedElsewhere).toBe(true)
+  })
+
+  it('leaves Ctrl+V paste alone, which shares a letter with Select', () => {
+    const paste = matchBinding(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true }))
+    expect(paste?.id).toBe('paste')
+  })
+})

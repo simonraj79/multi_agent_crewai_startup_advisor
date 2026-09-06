@@ -103,9 +103,9 @@ const text = computed(() => {
 .save-chip { display: flex; flex-direction: column; gap: 3px; }
 .save-chip-line { display: inline-flex; align-items: center; gap: 6px; color: var(--text-40); font: 600 var(--fs-11)/1 var(--font-mono); white-space: nowrap; }
 .save-chip-line svg { flex: 0 0 auto; }
-.is-clean .save-chip-line { color: var(--accent-mint); }
+.is-clean .save-chip-line { color: var(--on-accent-mint); }
 .is-dirty .save-chip-line { color: var(--text-muted); }
-.is-saving .save-chip-line { color: var(--accent-cyan); }
+.is-saving .save-chip-line { color: var(--on-accent-cyan); }
 .is-conflict .save-chip-line { color: var(--warn-text); }
 .is-offline .save-chip-line { color: var(--err-text); }
 /* Always amber, whatever the save state is doing above it. */

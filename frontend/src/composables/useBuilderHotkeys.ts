@@ -41,7 +41,7 @@ export interface HotkeyChord {
   alt?: boolean
 }
 
-export type HotkeyGroup = 'create' | 'edit' | 'select' | 'navigate' | 'document'
+export type HotkeyGroup = 'create' | 'edit' | 'select' | 'navigate' | 'canvas' | 'document'
 
 export interface HotkeyBinding {
   /** Stable, and the `data-testid` the sheet and the specs both address. */
@@ -67,6 +67,30 @@ export interface HotkeyBinding {
    * forgetting something.
    */
   readonly requiresCanvasFocus?: boolean
+  /**
+   * True for a binding this table PRINTS and does not dispatch (C4).
+   *
+   * `V` and `H` are real keys and have been since the canvas tool landed, but
+   * `useCanvasTool` owns them on its own `window` listener - it has to, because
+   * it also owns the space-bar temporary pan and the order of those guards is
+   * the whole of its correctness. They were advertised in a `title` tooltip and
+   * nowhere else, so the sheet - which exists precisely so that a bound key is
+   * a discoverable one - could not show them.
+   *
+   * Declaring them here with a `run` would BIND THEM A SECOND TIME: two window
+   * listeners answering one keystroke, and `dispatchHotkey` calling
+   * `preventDefault` on a key it does not handle. So `matchBinding` skips these
+   * rows and `run` below is never called - the row exists to be printed, and
+   * `useBuilderHotkeys.spec` proves both halves: the sheet shows them, and a
+   * real `KeyboardEvent` for `v` still matches nothing in this table.
+   *
+   * It is the smaller of two evils and the file should say which. The
+   * alternative - move the keys here and have `useCanvasTool` take a callback -
+   * is the better end state and a bigger change than a copy pass should make,
+   * because it moves the space-bar guard order into a second file. Recorded as
+   * a follow-up rather than done quietly.
+   */
+  readonly documentedElsewhere?: boolean
   readonly run: (actions: HotkeyActions, event: KeyboardEvent) => void
 }
 
@@ -469,6 +493,37 @@ export const HOTKEY_BINDINGS: readonly HotkeyBinding[] = [
     allowInTextEntry: false,
     run: (actions) => actions.publish(),
   },
+
+  /* ── the canvas tools, printed here and dispatched by useCanvasTool ────────
+   *
+   * Every design tool this one is measured against puts Select and Hand on `V`
+   * and `H`, and this one does too - `CanvasControls.vue` even labels the pair
+   * `Select (V)` and `Hand (H)`. A `title` tooltip is not discovery: it is
+   * found by hovering the control you already found. The `?` sheet is where a
+   * person looks for keys, and the sheet prints this table, so a key that is
+   * not in this table cannot be in the sheet.
+   *
+   * `documentedElsewhere` is what lets them be here without being bound twice;
+   * its docstring above carries the whole argument and the follow-up.
+   */
+  {
+    id: 'tool-select',
+    group: 'canvas',
+    label: 'Select tool',
+    chords: [{ key: 'v' }],
+    allowInTextEntry: false,
+    documentedElsewhere: true,
+    run: () => undefined,
+  },
+  {
+    id: 'tool-hand',
+    group: 'canvas',
+    label: 'Hand tool (drag to pan)',
+    chords: [{ key: 'h' }],
+    allowInTextEntry: false,
+    documentedElsewhere: true,
+    run: () => undefined,
+  },
 ]
 
 /** The groups in the order the sheet prints them. */
@@ -477,6 +532,7 @@ export const HOTKEY_GROUPS: readonly HotkeyGroup[] = [
   'edit',
   'select',
   'navigate',
+  'canvas',
   'document',
 ]
 
@@ -510,6 +566,11 @@ export function matchesChord(chord: HotkeyChord, event: KeyboardEvent): boolean 
 /** The binding an event fires, or null. Pure, and the whole of dispatch. */
 export function matchBinding(event: KeyboardEvent): HotkeyBinding | null {
   for (const binding of HOTKEY_BINDINGS) {
+    // A row this table only PRINTS fires nothing here, so `v` and `h` reach
+    // `useCanvasTool`'s listener exactly as they did before they were declared
+    // (C4). Skipped in `matchBinding` rather than in `dispatchHotkey` because
+    // the honest answer to "what does this table run for `v`" is nothing.
+    if (binding.documentedElsewhere) continue
     for (const chord of binding.chords) {
       if (matchesChord(chord, event)) return binding
     }

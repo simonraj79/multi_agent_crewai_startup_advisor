@@ -321,7 +321,7 @@ test.describe('Per-user isolation', () => {
     const publish = page.locator('[aria-labelledby="publish-title"]')
     await expect(publish).toBeVisible()
     await publish.getByRole('button', { name: /^(Publish|Republish)$/ }).click()
-    await expect(publish).toContainText(/this graph is live/i)
+    await expect(publish).toContainText(/your workflow is live/i)
     await page.keyboard.press('Escape')
 
     // ---- the rows agree, and none of them carries the secret ----------------

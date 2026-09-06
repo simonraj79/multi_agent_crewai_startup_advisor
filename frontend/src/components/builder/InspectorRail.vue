@@ -1087,7 +1087,7 @@ defineExpose({ focusField })
    property - the technique `WorkflowNode.vue` already uses, and the reason this
    package adds nothing to `tokens.css`. */
 .rail-icon { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; background: color-mix(in srgb, currentColor 12%, transparent); border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: var(--r-md); }
-.rail-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.rail-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
 .expert-switch { display: flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--text-40); font: 600 var(--fs-11)/1 var(--font-body); cursor: pointer; }
 .expert-switch input { accent-color: var(--accent-cyan); }
 .expert-switch input:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }

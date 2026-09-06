@@ -589,7 +589,7 @@ describe('VersionBrowser', () => {
   })
 
   it('names the three states that are not a list', () => {
-    expect(browser({ documentId: null, versions: [] }).text()).toContain('Save this graph')
+    expect(browser({ documentId: null, versions: [] }).text()).toContain('Save this workflow')
     expect(browser({ loading: true }).text()).toContain('Reading the stored versions')
     const failed = browser({ problem: 'Request failed (503)' })
     expect(failed.get('[role="alert"]').text()).toContain('Request failed (503)')

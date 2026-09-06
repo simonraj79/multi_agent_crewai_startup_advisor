@@ -851,7 +851,7 @@ export function useValidatorRun(
       const sentence = error instanceof Error ? error.message : ''
       descriptor.value = emptyGraph(workflowId.value)
       resetNodes()
-      graphProblem.value = sentence || api.probeRefusal || 'The graph could not be loaded.'
+      graphProblem.value = sentence || api.probeRefusal || 'The workflow could not be loaded.'
     }
 
     if (!storedRun) return

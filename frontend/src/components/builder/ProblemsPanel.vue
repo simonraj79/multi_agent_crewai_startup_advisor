@@ -81,6 +81,27 @@ const props = withDefaults(
      * bar rather than a paraphrase of them.
      */
     viewingVersion?: number | null
+    /**
+     * Whether a version of this workflow is registered and runnable (N8).
+     *
+     * MEASURED, not inferred: with the document bar reading
+     * `saved · v1 · v1 is live` and its primary button reading `Republish`,
+     * `[data-testid="problems-headline"]` answered `"Ready to publish"`
+     * (`AUDIT-R2` N8, `measure.json` -> `N8_problemsHeadlineWhilePublished`).
+     * Two statements about one fact, ten centimetres apart, disagreeing - and
+     * the one a reader believes is the one that reads like a to-do.
+     *
+     * The dock reports PROBLEMS. `Ready to publish` was it borrowing the
+     * toolbar's job, and it is right exactly while publishing is still the next
+     * thing to do. Once a version is live the same clean list means `No
+     * problems` and nothing more.
+     *
+     * `publishedVersion !== null` rather than `status === 'published'` is the
+     * caller's decision and `BuilderView` already makes it for the test panel:
+     * a head that is a draft may still have an OLDER version registered, and
+     * that older version is the one a run resolves.
+     */
+    published?: boolean
   }>(),
   {
     publishProblems: () => [],
@@ -88,6 +109,7 @@ const props = withDefaults(
     labels: () => ({}),
     reason: '',
     viewingVersion: null,
+    published: false,
   },
 )
 
@@ -224,7 +246,9 @@ const headline = computed(() => {
   }
   if (!merged.value.length && unchecked.value) return 'Not checked yet'
   if (!merged.value.length && unreachable.value) return 'Validation unavailable'
-  if (!merged.value.length) return 'Ready to publish'
+  // N8. A clean list means one thing; what it is worth SAYING depends on
+  // whether publishing is still ahead of the author.
+  if (!merged.value.length) return props.published ? 'No problems' : 'Ready to publish'
   const parts: string[] = []
   if (errorCount.value) parts.push(`${errorCount.value} ${errorCount.value === 1 ? 'error' : 'errors'}`)
   if (warningCount.value) {
@@ -332,7 +356,7 @@ defineExpose({ next, previous })
       <p v-else-if="!merged.length && !runRows.length" class="problems-empty">
         <span class="problems-dot is-ready" aria-hidden="true" />
         <span>
-          Ready to publish.
+          {{ published ? 'No problems.' : 'Ready to publish.' }}
           <em>Warnings never block; errors always do.</em>
         </span>
       </p>
@@ -363,7 +387,7 @@ defineExpose({ next, previous })
           </ul>
         </template>
 
-        <ul v-if="documentRows.length" class="problems-group" aria-label="Whole-graph problems">
+        <ul v-if="documentRows.length" class="problems-group" aria-label="Whole-workflow problems">
           <li v-for="(row, index) in documentRows" :key="row.key">
             <button
               type="button"
@@ -381,7 +405,7 @@ defineExpose({ next, previous })
               <span class="problem-code">{{ row.problem.code }}</span>
               <span class="problem-message">{{ row.problem.message }}</span>
               <span v-if="row.fromPublish" class="problem-tag">from publish</span>
-              <span class="problem-anchor">whole graph</span>
+              <span class="problem-anchor">whole workflow</span>
             </button>
           </li>
         </ul>
@@ -421,7 +445,7 @@ defineExpose({ next, previous })
 .problems-toggle:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 .problems-kicker { font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .problems-headline { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font: 600 var(--fs-12)/1 var(--font-mono); }
-.problems-headline.is-clean { color: var(--accent-mint); }
+.problems-headline.is-clean { color: var(--on-accent-mint); }
 .problems-headline.is-blocking { color: var(--err-text); }
 .problems-checking { margin-left: auto; color: var(--text-40); font: 500 var(--fs-11)/1 var(--font-mono); }
 .problems-body { min-height: 0; max-height: 190px; overflow: auto; padding: 0 12px 10px; }

@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
     :class="{ 'is-collapsed': collapsed, 'is-yielding': yielding }"
     :data-yielding="yielding ? 'true' : 'false'"
     role="group"
-    aria-label="Graph minimap"
+    aria-label="Workflow minimap"
   >
     <button
       class="minimap-toggle"
@@ -433,7 +433,7 @@ onBeforeUnmount(() => {
       v-if="!collapsed && offPane > 0"
       class="minimap-offpane"
       type="button"
-      :title="`Fit the graph back into the view (${offPaneLabel})`"
+      :title="`Fit the workflow back into the view (${offPaneLabel})`"
       data-testid="minimap-offpane"
       @click="emit('fit')"
     >

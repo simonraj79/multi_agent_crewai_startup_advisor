@@ -198,7 +198,7 @@ const filePicker = ref<HTMLInputElement | null>(null)
 const MENU_OFFSET_PX = 6
 
 /** What `title` says on a stored-document action while nothing is stored. */
-const NOT_STORED = 'Save this graph first - this acts on the stored version'
+const NOT_STORED = 'Save this workflow first - this acts on the stored version'
 
 /**
  * Whether Unpublish has anything to act on, as far as THIS session knows.
@@ -379,7 +379,7 @@ function cancelRename(): void {
         class="document-name-input"
         type="text"
         :maxlength="maxNameChars"
-        aria-label="Graph name"
+        aria-label="Workflow name"
         @blur="commitRename"
         @keydown.enter.prevent="commitRename"
         @keydown.esc.prevent="cancelRename"
@@ -512,7 +512,7 @@ function cancelRename(): void {
           id="document-menu"
           class="document-menu"
           role="menu"
-          aria-label="Document actions"
+          aria-label="Workflow actions"
           data-testid="document-menu"
         >
           <!--
@@ -725,7 +725,7 @@ function cancelRename(): void {
 /* Mint only when the live version IS the one on screen. Amber otherwise, which
    covers both divergences: an older version live, and a stored publish this
    process is not serving. */
-.live-note.is-current { color: var(--accent-mint); }
+.live-note.is-current { color: var(--on-accent-mint); }
 .live-note:not(.is-current) { color: var(--warn-text); }
 
 .document-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }

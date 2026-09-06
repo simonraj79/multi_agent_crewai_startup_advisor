@@ -324,7 +324,7 @@ export const BLANK: BuilderTemplate = {
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
-    name: 'Untitled graph',
+    name: 'Untitled workflow',
     version: 1,
     input_field: BLANK_INPUT_FIELD,
     nodes: [
@@ -397,7 +397,7 @@ export const BLANK: BuilderTemplate = {
 export const MINIMAL_GATED_AGENT: BuilderTemplate = {
   id: 'minimal-gated-agent',
   title: 'Minimal gated agent',
-  blurb: 'Input, a human gate, one agent, one result — the smallest graph anyone can launch.',
+  blurb: 'Input, a human gate, one agent, one result — the smallest workflow anyone can launch.',
   teaches:
     'Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.',
   modifyFirst: "The agent's prompt inputs, which are what the scoping task interpolates.",
@@ -507,7 +507,7 @@ export const NEWS_TO_SOCIAL: BuilderTemplate = {
   title: 'News to social post',
   blurb: 'Search this week’s discussion of a topic and write the post about it.',
   teaches:
-    'That two agents and one tool are a whole product, and that a graph with no gate runs unattended for whoever is signed in.',
+    'That two agents and one tool are a whole product, and that a workflow with no gate runs unattended for whoever is signed in.',
   modifyFirst: 'The subject. One box, everything downstream changes, nothing else has to.',
   caveat: NEWS_TO_SOCIAL_CAVEAT,
   document: NEWS_TO_SOCIAL_DOCUMENT,

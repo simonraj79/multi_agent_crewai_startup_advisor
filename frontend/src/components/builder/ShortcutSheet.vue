@@ -55,7 +55,8 @@ const GROUP_TITLES: Record<HotkeyGroup, string> = {
   edit: 'Editing',
   select: 'Selecting',
   navigate: 'Navigating',
-  document: 'The document',
+  canvas: 'The canvas',
+  document: 'The workflow',
 }
 
 /** The bindings grouped in the order `HOTKEY_GROUPS` declares. */
@@ -224,7 +225,7 @@ function trap(event: KeyboardEvent): void {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(10, 10, 10, 0.62);
+  background: var(--scrim);
   -webkit-backdrop-filter: var(--blur-panel);
   backdrop-filter: var(--blur-panel);
 }
@@ -240,11 +241,11 @@ function trap(event: KeyboardEvent): void {
   background: var(--surface-overlay);
   border: 1px solid var(--border-default);
   border-radius: var(--r-2xl);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-overlay);
 }
 
 .shortcut-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.shortcut-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
+.shortcut-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .shortcut-header h2 { margin: 5px 0 0; font-size: var(--fs-18); }
 
 .shortcut-columns { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }

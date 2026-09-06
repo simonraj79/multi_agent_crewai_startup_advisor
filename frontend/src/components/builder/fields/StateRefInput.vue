@@ -189,10 +189,10 @@ const advisory = computed(() => {
   if (!prefix) return undefined
   const producer = key.slice(prefix.length)
   if (!props.doc.nodes.some((node) => node.id === producer)) {
-    return `No node in this graph is called ${producer}, so this key is never written and reads as empty.`
+    return `No node in this workflow is called ${producer}, so this key is never written and reads as empty.`
   }
   if (!upstream.value.has(producer as NodeId)) {
-    return `${producer} cannot reach this node, so this key is empty every time the graph runs.`
+    return `${producer} cannot reach this node, so this key is empty every time the workflow runs.`
   }
   return undefined
 })
@@ -316,7 +316,7 @@ const activeId = computed(() =>
         <!-- Never an empty box. A filter that matches nothing is a fact about
              what this graph produces, and saying it is cheaper than leaving the
              author to wonder whether the list failed to load. -->
-        <li v-if="!matches.length" class="ref-empty">No key in this graph matches that.</li>
+        <li v-if="!matches.length" class="ref-empty">No key in this workflow matches that.</li>
       </ul>
     </div>
     </template>
@@ -332,7 +332,7 @@ const activeId = computed(() =>
 /* Absolutely positioned, so opening the list never reflows the form beneath it.
    An inspector that grows by 140px when a combobox opens moves every control
    below the one the author is using. */
-.ref-options { position: absolute; z-index: var(--z-control); top: calc(100% + 4px); right: 0; left: 0; max-height: 184px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; background: var(--surface-overlay); border: 1px solid var(--border-default); border-radius: var(--r-md); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42); }
+.ref-options { position: absolute; z-index: var(--z-control); top: calc(100% + 4px); right: 0; left: 0; max-height: 184px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; background: var(--surface-overlay); border: 1px solid var(--border-default); border-radius: var(--r-md); box-shadow: var(--shadow-overlay); }
 .ref-option { display: flex; align-items: baseline; gap: 8px; padding: 5px 7px; border-radius: var(--r-sm); cursor: pointer; }
 .ref-option code { color: var(--accent-cyan); font: 500 10px/1.4 var(--font-mono); }
 .ref-option span { overflow: hidden; color: var(--text-muted); font-size: var(--fs-11); text-overflow: ellipsis; white-space: nowrap; }

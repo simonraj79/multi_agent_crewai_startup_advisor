@@ -238,7 +238,7 @@ const inflation = computed(() => nitroMultiplier(props.value.model))
     nullable
     slider
     placeholder="model default"
-    help="Higher wanders further. Empty leaves it to the model, which is usually the better answer for a graph you want to be able to re-run."
+    help="Higher wanders further. Empty leaves it to the model, which is usually the better answer for a workflow you want to be able to re-run."
     @commit="emit('patch', { temperature: $event }, 'Set temperature')"
   />
 
@@ -267,7 +267,7 @@ const inflation = computed(() => nitroMultiplier(props.value.model))
     :min="1"
     nullable
     placeholder="model default"
-    help="A ceiling on ONE completion. What the whole graph may cost is the run ceiling, and it is measured rather than declared."
+    help="A ceiling on ONE completion. What the whole workflow may cost is the run ceiling, and it is measured rather than declared."
     @commit="emit('patch', { max_tokens: $event }, 'Set max tokens')"
   />
 

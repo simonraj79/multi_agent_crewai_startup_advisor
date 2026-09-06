@@ -379,7 +379,7 @@ export function emptyDocument(overrides: Partial<BuilderDocument> = {}): Builder
   return {
     schema: BUILDER_SCHEMA_ID,
     id: documentId('ug_00000001'),
-    name: 'Untitled graph',
+    name: 'Untitled workflow',
     version: 1,
     input_field: nodeId('idea'),
     nodes: [],

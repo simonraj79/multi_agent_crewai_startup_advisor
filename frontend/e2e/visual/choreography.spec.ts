@@ -85,7 +85,7 @@ async function animationsOn(target: Locator): Promise<string[]> {
 }
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto('/')
+  await page.goto('/#/run')
   await expect(page.locator('.workflow-node')).toHaveCount(14)
 }
 

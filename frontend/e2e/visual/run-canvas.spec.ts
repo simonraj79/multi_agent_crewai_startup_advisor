@@ -179,7 +179,7 @@ async function animationTimings(target: Locator): Promise<string[]> {
 }
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto('/')
+  await page.goto('/#/run')
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
   // The canvas fits itself on init; photographing it mid-transition would make
   // the baseline a race rather than a contract.

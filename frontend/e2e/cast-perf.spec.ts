@@ -316,7 +316,7 @@ async function readSequence(page: Page): Promise<number> {
 }
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto('/')
+  await page.goto('/#/run')
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
 }
 

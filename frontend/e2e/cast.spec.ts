@@ -392,7 +392,7 @@ async function statusValue(page: Page): Promise<string> {
 /* -------------------------------------------------------------- the journey */
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto('/')
+  await page.goto('/#/run')
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
 }
 

@@ -99,7 +99,12 @@ async function readSequence(page: Page): Promise<number> {
 }
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto('/')
+  // `/#/run`, not `/`. The console moved there on 2026-09-06 and `#/` is the
+  // home now (`docs/ux-shell/DEFINITION-OF-DONE.md` D2). Every spec in this
+  // suite that opened the console at the root was re-pointed the same way; the
+  // recovery test below still goes to `#/run` and still restores from the same
+  // stored pointer, which is the half of D2 that had to keep working.
+  await page.goto('/#/run')
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
 }
 
@@ -144,7 +149,14 @@ test.describe('Validator Studio', () => {
     const watch = watchConsole(page)
     await openStudio(page)
 
-    await expect(page).toHaveTitle('M2 Validator Studio')
+    /*
+     * RE-POINTED 2026-09-06 (U4): the tab is named after the workflow on a
+     * canvas, then the product - `pageTitle()` in `data/brand.ts` owns the
+     * separator and `PRODUCT_NAME` is spelled there and nowhere else. The `h1`
+     * below still reads `Validator Studio` because the wordmark is W3's row
+     * (U5), not this one; when it lands, this line follows it.
+     */
+    await expect(page).toHaveTitle('Idea Validator · Crew Studio')
     await expect(page.getByRole('heading', { name: 'Validator Studio', level: 1 })).toBeVisible()
 
     // The graph is fixed by contract: `service/graph.py` derives it from the

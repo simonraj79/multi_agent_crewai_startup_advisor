@@ -24,7 +24,7 @@ test.use({ video: 'on' })
 test('records a token walking the fan-out', { tag: '@launch' }, async ({ page }) => {
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/')
+  await page.goto('/#/run')
   await expect(page.locator('.workflow-node')).toHaveCount(14)
   await launchRun(page, 'A shift-swap board for veterinary nurses')
   await expect(page.locator('.gate-card h2')).toHaveText('Confirm scope', { timeout: 60_000 })

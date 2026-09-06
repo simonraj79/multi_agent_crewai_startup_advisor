@@ -434,6 +434,32 @@ const orderedLibrary = computed(() =>
               author is then looking at.
             -->
             <div class="library-actions">
+              <!--
+                THE ROW'S ACTION, NAMED (X2 ruling 3, RV4's closing note).
+                "Every card names its action" was met on the home (`Run ->`,
+                `Open in Build ->`) and on every template card
+                (`Use this template ->`), and missed here: this row offered
+                FOUR icon-only buttons and no word at all, so the one thing it
+                mostly does - open the workflow - was the only action a reader
+                had to guess. The whole row already opens it; this says so.
+
+                `Open`, not `Open in Build`: the home says where it is sending
+                you because it is somewhere else, and this list IS Build.
+
+                It emits the same `open` the row does - one handler, not a
+                second - and the four icons stay, because D-15-15's reason for
+                them holds unchanged.
+              -->
+              <button
+                class="library-open-action"
+                type="button"
+                :aria-label="`Open ${entry.name}`"
+                data-testid="library-open"
+                @click="emit('open', entry.id)"
+              >
+                Open
+                <ArrowRight :size="13" aria-hidden="true" />
+              </button>
               <button
                 class="icon-button"
                 type="button"
@@ -1044,6 +1070,26 @@ const orderedLibrary = computed(() =>
    second thing to keep in step: a separator, a real gap, and the error colour
    AT REST rather than only on hover. */
 .library-actions { display: inline-flex; gap: 2px; align-items: center; }
+/* The row's named action, in the same colour and weight `.template-action`
+   uses on every template card, so the two lists' actions read as one kind of
+   thing. `margin-right` puts a step between a word and the four icons rather
+   than letting it read as a fifth icon with a label. */
+.library-open-action {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  margin-right: var(--space-2);
+  padding: 0 var(--space-2);
+  color: var(--on-accent-cyan);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.library-open-action:hover { background: var(--surface-raised); }
 .library-actions-separator {
   width: 1px;
   align-self: stretch;

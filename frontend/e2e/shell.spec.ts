@@ -763,8 +763,9 @@ test.describe('the unified shell', () => {
     expect(watch.unexpected).toEqual([])
   })
 
-  test('the gallery names what it holds and what a click will do', async ({ page }) => {
+  test('the gallery names what it holds and what a click will do', async ({ page, request }) => {
     const watch = watchConsole(page)
+    const id = await createDocument(request, SAVED_GRAPH_NAME)
     await page.goto('/#/build')
     await expect(page.locator('.template-gallery')).toBeVisible({ timeout: 30_000 })
 
@@ -783,6 +784,18 @@ test.describe('the unified shell', () => {
     // The words it replaced, gone from the whole page.
     await expect(gallery).not.toContainText('YOUR GRAPHS')
     await expect(gallery).not.toContainText('A shape that already works')
+
+    /*
+     * X2 ruling 3 on the SAVED row, which was the last surface to miss it
+     * (RV4's closing note): four icon-only buttons and no word for the one
+     * thing the row mostly does. `Open`, not `Open in Build` - the home says
+     * where it is sending you because it is somewhere else, and this list IS
+     * Build. Last in this test, because following it leaves the gallery.
+     */
+    const row = page.locator('.library-row').filter({ hasText: SAVED_GRAPH_NAME })
+    await expect(row.getByTestId('library-open')).toHaveText(/^\s*Open\s*$/)
+    await row.getByTestId('library-open').click()
+    await expect.poll(() => new URL(page.url()).hash).toBe(`#/build/${id}`)
 
     expect(watch.unexpected).toEqual([])
   })

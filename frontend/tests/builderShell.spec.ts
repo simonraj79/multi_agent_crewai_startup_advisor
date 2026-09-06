@@ -623,6 +623,35 @@ describe('the gallery is the empty state and the way back into saved work', () =
       expect(row.find('.library-delete').exists()).toBe(true)
     })
 
+    /*
+     * X2 ruling 3's "every card names its action", which this row was the last
+     * surface to miss (RV4's closing note). The home names them (`Run ->`,
+     * `Open in Build ->`) and every template card names one
+     * (`Use this template ->`); here four icon-only buttons stood over the one
+     * thing the row mostly does, and no word said it.
+     *
+     * `Open`, not `Open in Build`: the home says where it is sending you
+     * because it is somewhere else, and this list IS Build. It emits the same
+     * `open` the row itself does, which is asserted here so the two cannot
+     * become two handlers.
+     */
+    it('names the action the row mostly performs, beside the icons', async () => {
+      const { wrapper, ids } = await threeRows()
+      const row = wrapper.findAll('.library-row')[0]
+      const open = row.get('[data-testid="library-open"]')
+      expect(open.text()).toBe('Open')
+      expect(open.attributes('aria-label')).toMatch(/^Open /)
+
+      await open.trigger('click')
+      expect(wrapper.emitted('open')?.at(-1)).toEqual([ids.newest])
+
+      // The four icons are untouched: this is a fifth, named control, not a
+      // replacement for them.
+      for (const action of ['versions', 'duplicate', 'export', 'delete'] as const) {
+        expect(row.find(`[data-testid="library-${action}"]`).exists()).toBe(true)
+      }
+    })
+
     it('separates the one irreversible action from the three that are not (D-15-26)', async () => {
       /*
        * Round 3: "four unlabelled 28px gallery glyphs, delete 34px from
@@ -646,6 +675,7 @@ describe('the gallery is the empty state and the way back into saved work', () =
         child.getAttribute('data-testid') ?? child.className,
       )
       expect(order).toEqual([
+        'library-open',
         'library-versions',
         'library-duplicate',
         'library-export',

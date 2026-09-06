@@ -781,4 +781,84 @@ function cancelRename(): void {
   opacity: 0;
   pointer-events: none;
 }
+
+/* -----------------------------------------------------------------------
+   R8 / item C2 - THE BAR FITS AT 390 (ROUND-2.md AUDIT-R2.md §3, measured in
+   `evidence/audit/measure.json` -> C2_documentBar390).
+
+   Measured before this rule existed: `barScrollWidth: 415` against a 390px
+   viewport, `.document-identity` at `w: 0` and `Publish`'s right edge at 415 -
+   9 to 25px of horizontal overflow depending on the document's own name and
+   template, because `.document-actions` carries `flex-shrink: 0` (six 32px
+   icon buttons plus Publish do not shrink) while `.document-identity` has no
+   floor below `min-width: 0` - so ALL of the missing space came out of the one
+   child allowed to give it up, which is also the one holding the workflow's
+   name. No `flex-shrink` value on either side changes that arithmetic: the
+   icon cluster and Publish, at their own natural width, already exceed the
+   ~310px this padding leaves at 390px, so a single row was never going to fit
+   both without hiding a control - and R8's own criterion is that nothing here
+   is hidden.
+
+   Two rows, as the audit itself proposes, is what removes the row that was
+   losing the argument for space: `.document-identity` gets a full row of its
+   own, `.document-name` gets `flex: 1 1 auto` instead of the 320px cap that
+   meant nothing once its row was this narrow, and `.document-actions` gets
+   the row below it - `flex-wrap: wrap` there rather than a hard assumption
+   that six icons plus Publish fit 310px on the nose, so a slightly longer
+   Publish/Republish label wraps to its own line instead of pushing the bar
+   wider than the viewport again.
+
+   NOT right-aligned (`justify-content: flex-end`), though every wider layout
+   right-aligns this row. Tried first, and it moved a defect rather than
+   fixing one: six 32px icons already fill 232px of the 310px row on their
+   own, so the trigger button (the sixth) sits near whichever edge the row
+   packs TOWARD - flex-end put it at 248px in, 30px from the row's own right
+   edge, with nowhere for `.document-menu`'s 212px to open into (see the menu's
+   own rule, below, for the other half of this fix). Left at the default
+   (`flex-start`), the same six icons still end within 40px of that edge -
+   this row was never going to leave much room on either side - but the
+   trigger's own position barely moves either way, so the choice is cosmetic:
+   `Publish`, alone on its own line, now reads on the left rather than the
+   right. R8's criterion is that `Publish` is reachable, not where it sits.
+
+   `520px` is the audit's own measured threshold, not a token: no breakpoint
+   in this codebase is a custom property (640/860/1180 are all literals of the
+   same kind), so this one is written the same way its neighbours are. */
+@media (max-width: 520px) {
+  .document-bar {
+    flex-wrap: wrap;
+  }
+
+  .document-identity {
+    flex: 1 1 100%;
+  }
+
+  .document-name,
+  .document-name-input {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .document-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  /* THE MENU ITSELF HAS TO FLIP, independently of where its trigger sits in
+     the row above. `.document-menu`'s base rule opens `left: 0` - rightward
+     from the button - which a round-2 fix chose for a WIDE bar where the
+     trigger sits well short of the right edge. At 390 the trigger is the
+     LAST of six icons in a 310px row regardless of `justify-content`
+     (measured: both alignments land it within ~40px of the row's own right
+     edge), so a menu opening rightward from there has nowhere to go -
+     reachable by neither a width measurement (the bar itself never
+     overflows) nor a glance at the closed bar, only by trying to open it.
+     Opening LEFTWARD instead - `right: 0; left: auto` - lands the menu
+     against the trigger's own right edge and extends back across the row,
+     which is exactly where five icons' worth of open space already is. */
+  .document-menu {
+    left: auto;
+    right: 0;
+  }
+}
 </style>

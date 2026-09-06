@@ -307,11 +307,29 @@ function trap(event: KeyboardEvent): void {
       aria-labelledby="publish-title"
     >
       <header class="publish-header">
+        <!--
+          THE MOMENT OF SUCCESS HAD NO NEXT STEP (ROUND-2 §5 ruling 10, over
+          AUDIT-R2 H5).
+
+          It was headed `PUBLISHED / This graph is live` over four `dl` rows -
+          a version hash, an estimated cost, an input key and five refused
+          control keys - and its only actions were a close cross and a button
+          that pans the canvas to a node. An author who has just done the thing
+          the whole builder is for was handed a contract and no verb.
+
+          So: what happened, one sentence about what it means, and the verb.
+          The hash and the refused keys are still here in full and still exact;
+          they moved behind `Technical details` because they are answers to
+          questions asked later, by somebody writing a request - and putting
+          them first is what pushed the footer below the fold at 900px, which
+          is where the only button that matters lives.
+        -->
         <div>
           <span class="publish-kicker">{{ result ? 'PUBLISHED' : 'PUBLISH' }}</span>
           <h2 id="publish-title">
-            {{ result ? 'This graph is live' : 'Register this graph as a runnable workflow' }}
+            {{ result ? 'Your workflow is live' : 'Publish this workflow so it can be run' }}
           </h2>
+          <p v-if="result" class="publish-lede">Anyone signed in can now run it.</p>
         </div>
         <button
           ref="firstControl"
@@ -374,29 +392,10 @@ function trap(event: KeyboardEvent): void {
             </dd>
           </div>
           <div>
-            <dt>Workflow version</dt>
-            <dd>
-              <code>{{ result.graph_version }}</code>
-              <span class="contract-note">Version v{{ result.version }}. The workflow's ETag body.</span>
-            </dd>
-          </div>
-          <div>
             <dt>Estimated cost</dt>
             <dd>
               <code>${{ result.static_cost_usd.toFixed(4) }}</code>
               <span class="contract-note">Per run, enforced with the nitro margin.</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Refused input keys</dt>
-            <dd>
-              <span class="contract-note">
-                A run request carrying any of these is answered 422 — they are this workflow's own
-                control keys.
-              </span>
-              <ul class="reserved-keys">
-                <li v-for="key in result.reserved_input_keys" :key="key"><code>{{ key }}</code></li>
-              </ul>
             </dd>
           </div>
         </dl>
@@ -423,11 +422,46 @@ function trap(event: KeyboardEvent): void {
           launch it.
         </p>
 
+        <!--
+          BELOW the caution, never above it. The 403 block changes what an
+          author does next - it is the one thing here they may have to act on -
+          and `details` is where a fact goes when it is exact, needed later, and
+          needed by somebody writing a request rather than by somebody reading a
+          result. Nothing is lost: both rows render in full when it is open, and
+          `publishDialog.spec.ts` asserts the hash and every refused key are in
+          the DOM whether it is open or shut, which is what `details` guarantees
+          and a `v-if` would not.
+        -->
+        <details class="publish-technical" data-testid="publish-technical">
+          <summary>Technical details</summary>
+          <dl class="publish-contract">
+            <div>
+              <dt>Workflow version</dt>
+              <dd>
+                <code>{{ result.graph_version }}</code>
+                <span class="contract-note">Version v{{ result.version }}. The workflow's ETag body.</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Refused input keys</dt>
+              <dd>
+                <span class="contract-note">
+                  A run request carrying any of these is answered 422 — they are this workflow's own
+                  control keys.
+                </span>
+                <ul class="reserved-keys">
+                  <li v-for="key in result.reserved_input_keys" :key="key"><code>{{ key }}</code></li>
+                </ul>
+              </dd>
+            </div>
+          </dl>
+        </details>
+
         <footer class="publish-actions">
           <button class="button button-quiet" type="button" @click="emit('close')">Back to the canvas</button>
-          <button class="button button-primary" type="button" @click="launch">
+          <button class="button button-primary" type="button" data-testid="publish-run" @click="launch">
             <Play :size="15" aria-hidden="true" />
-            Run it
+            Run it now
           </button>
         </footer>
       </template>
@@ -464,6 +498,19 @@ function trap(event: KeyboardEvent): void {
 .publish-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .publish-kicker { color: var(--accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
 .publish-header h2 { margin: 5px 0 0; font-size: var(--fs-18); }
+
+/* The one sentence under the heading. It says what LIVE means, which the four
+   contract rows never did - they said what the contract is. */
+.publish-lede { margin: 6px 0 0; color: var(--text-muted); font-size: var(--fs-13); line-height: 1.5; }
+
+/* The two exact facts, folded. `details` rather than a toggle of this file's
+   own: the browser has one, it carries the expanded state to a screen reader
+   with no script, and its content stays in the DOM while it is shut - which is
+   what lets a spec assert the hash is present without opening anything. */
+.publish-technical { border-top: 1px solid var(--border-default); padding-top: 12px; }
+.publish-technical summary { color: var(--text-muted); font-size: var(--fs-12); cursor: pointer; }
+.publish-technical summary:hover { color: var(--text-body); }
+.publish-technical .publish-contract { margin-top: 10px; }
 
 .precondition-list { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; }
 .precondition-list li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 9px; align-items: start; font-size: var(--fs-13); }

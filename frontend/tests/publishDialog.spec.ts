@@ -206,9 +206,61 @@ describe('a published graph hands the author its contract', () => {
     expect(wrapper.emitted('focusNode')?.[0]).toEqual(['scoper'])
   })
 
+  /* ── ROUND-2 §5 ruling 10 / H5: the success answers "what now" ───────────
+   *
+   * `13-published-1440-dark.png` is the state these were written for: headed
+   * `PUBLISHED / This graph is live` over a version hash, an input key, a cost
+   * and five refused control keys, with a close cross and a button that pans
+   * the canvas as its only actions. An author who has just done the thing the
+   * whole builder is for was handed a contract and no verb - and at 900px the
+   * footer holding the verb was below the fold.
+   *
+   * Nothing is deleted. `details` keeps its content in the DOM whether it is
+   * open or shut, so the last test here asserts the hash and every refused key
+   * are still exactly present - which is the difference between folding a fact
+   * away and dropping it, and is why this is not a `v-if`.
+   */
+
+  it('says what happened, what it means, and what to do next', async () => {
+    const wrapper = await publish({ workflow_id: 'ug_e9afa950', input_field: 'idea' })
+
+    expect(wrapper.get('#publish-title').text()).toBe('Your workflow is live')
+    expect(wrapper.get('.publish-lede').text()).toBe('Anyone signed in can now run it.')
+    expect(wrapper.get('[data-testid="publish-run"]').text()).toContain('Run it now')
+    expect(wrapper.text()).not.toContain('This graph is live')
+  })
+
+  it('folds the hash and the refused keys away without losing either', async () => {
+    const wrapper = await publish({
+      workflow_id: 'ug_e9afa950',
+      graph_version: 'd1958029f86fbb39',
+      reserved_input_keys: ['__builder__', 'out__post'],
+    })
+
+    const technical = wrapper.get('[data-testid="publish-technical"]')
+    expect(technical.element.tagName).toBe('DETAILS')
+    expect((technical.element as HTMLDetailsElement).open).toBe(false)
+    expect(technical.find('summary').text()).toBe('Technical details')
+
+    // Present in full, shut. A `v-if` would have satisfied "behind a
+    // disclosure" and made the hash unreadable to a screen reader and to this
+    // assertion at once.
+    expect(technical.text()).toContain('d1958029f86fbb39')
+    expect(technical.text()).toContain('__builder__')
+    expect(technical.text()).toContain('out__post')
+
+    // The two facts a person acts on stay above it, and so does the 403 block:
+    // both change what the author does next.
+    const contracts = wrapper.findAll('.publish-contract')
+    expect(contracts).toHaveLength(2)
+    expect(contracts[0].text()).toContain('Run input key')
+    expect(contracts[0].text()).toContain('Estimated cost')
+    expect(contracts[0].text()).not.toContain('d1958029f86fbb39')
+  })
+
   it('offers a real route to run it, carrying the workflow and its input key', async () => {
     const wrapper = await publish({ workflow_id: 'ug_e9afa950', input_field: 'idea' })
-    const run = wrapper.findAll('button').find((button) => button.text().includes('Run it'))
+    const run = wrapper.findAll('button').find((button) => button.text().includes('Run it now'))
     await run!.trigger('click')
     // Ruling R4 cut Run mode because no builder runner existed. One does, and
     // this button is the whole of what that override buys the author: the id

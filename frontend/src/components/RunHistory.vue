@@ -1,3 +1,44 @@
+<script lang="ts">
+/**
+ * The hint the home writes so this list is the first thing the console shows.
+ *
+ * ROUND-2 ruling 3: `A Run history link on the home that opens the console with
+ * the history section is YES`. There is no query for it to ride in -
+ * `useWorkspaceRoute`'s studio route is `{ name: 'studio' }` and belongs to
+ * another package, which is the same reason `builderRunHandoff` rides beside
+ * the route rather than inside it - so it is a one-shot `sessionStorage` note,
+ * consumed by `StudioView` on the next mount and removed there.
+ *
+ * `sessionStorage`, and NOT scoped to a user. It is a fact about this tab's
+ * next navigation, it carries nothing about anybody, and the worst a stale one
+ * can do is scroll a list into view. Both properties are why it is spelled once
+ * HERE - beside the section it reveals - rather than twice, in the two files
+ * that write and read it.
+ */
+export const REVEAL_HISTORY_KEY = 'console-reveal-history'
+
+/** Ask the console to reveal the history on its next mount. Never throws. */
+export function askToRevealHistory(): void {
+  try {
+    window.sessionStorage.setItem(REVEAL_HISTORY_KEY, '1')
+  } catch {
+    /* A browser refusing storage must not stop the navigation; the console then
+       opens on the run it always did, which is wrong but not broken. */
+  }
+}
+
+/** Read the hint and clear it, so a reload does not re-reveal. */
+export function takeRevealHistory(): boolean {
+  try {
+    const asked = window.sessionStorage.getItem(REVEAL_HISTORY_KEY) === '1'
+    if (asked) window.sessionStorage.removeItem(REVEAL_HISTORY_KEY)
+    return asked
+  } catch {
+    return false
+  }
+}
+</script>
+
 <script setup lang="ts">
 /**
  * "Your runs" - the caller's own history, newest first.
@@ -117,7 +158,7 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
 </script>
 
 <template>
-  <section v-if="enabled" class="run-history" aria-labelledby="run-history-heading">
+  <section v-if="enabled" id="run-history" class="run-history" aria-labelledby="run-history-heading">
     <header class="run-history-head">
       <h2 id="run-history-heading">
         <History :size="14" aria-hidden="true" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, watchEffect } from 'vue'
 import { Background } from '@vue-flow/background'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Activity, ChevronLeft, ChevronRight, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
@@ -10,7 +10,7 @@ import CrewProgress from '../components/CrewProgress.vue'
 import DialogueRail from '../components/DialogueRail.vue'
 import GateCard from '../components/GateCard.vue'
 import ReportPanel from '../components/ReportPanel.vue'
-import RunHistory from '../components/RunHistory.vue'
+import RunHistory, { takeRevealHistory } from '../components/RunHistory.vue'
 import StatusPanel from '../components/StatusPanel.vue'
 import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
@@ -328,6 +328,30 @@ const activeView = ref<'graph' | 'activity'>('graph')
 
 watch(activeView, (view) => {
   if (view === 'activity') chatCollapsed.value = false
+})
+
+/**
+ * The home's `Run history` link, arriving (item 3, ROUND-2 ruling 3).
+ *
+ * The list is always rendered - it is the last block of the control rail - so
+ * "reveal" is two facts and not a new panel: the rail must be OPEN, and the
+ * list must be where the reader is looking. Below 640px the rail is an overlay
+ * and starts collapsed, which is exactly the width at which a person who
+ * pressed `Run history` would otherwise land on a console with no list on it.
+ *
+ * ONE SHOT. `takeRevealHistory` removes the note as it reads it, so a reload of
+ * `#/run` does not scroll the reader away from a run they are watching. The
+ * scroll is guarded on the method existing, because jsdom implements no layout
+ * and does not define it.
+ */
+onMounted(async () => {
+  if (!takeRevealHistory()) return
+  controlsCollapsed.value = false
+  await nextTick()
+  const heading = document.getElementById('run-history')
+  if (heading && typeof heading.scrollIntoView === 'function') {
+    heading.scrollIntoView({ block: 'nearest' })
+  }
 })
 
 /*

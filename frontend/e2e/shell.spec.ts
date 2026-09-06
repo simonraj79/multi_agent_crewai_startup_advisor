@@ -171,6 +171,81 @@ test.describe('the unified shell', () => {
     expect(watch.unexpected).toEqual([])
   })
 
+
+  /*
+   * EVERY CARD NAMES ITS ACTION, AND THERE IS A WAY BACK TO A RUN - item 3,
+   * ROUND-2 X2, AUDIT-R2 H2. Presses nothing, so no `@launch` and no money.
+   */
+  test('names the action on every card, and offers Run on a published one', async ({
+    page,
+    request,
+  }) => {
+    const watch = watchConsole(page)
+    const draft = await createDocument(request, SAVED_GRAPH_NAME)
+    const live = await createDocument(request, `${SAVED_GRAPH_NAME} (live)`)
+    const published = await request.post(`/api/builder/workflows/${live}/publish`)
+    expect(published.status(), await published.text()).toBe(200)
+    await openHome(page)
+
+    // Built in: one action, and it is the mode's word.
+    await expect(
+      page.locator('[data-testid="home-validator"] .home-card-action'),
+    ).toHaveText(/Run/)
+
+    // Saved: the card's own action, plus Run only where a version is
+    // registered. A run resolves a REGISTERED version, so a Run on the draft
+    // would answer 404 for a graph the author can do nothing about from there.
+    await expect(
+      page.locator(`[data-testid="home-document-${draft}"] .home-card-action`),
+    ).toHaveText(/Open in Build/)
+    await expect(page.locator(`[data-testid="home-run-${draft}"]`)).toHaveCount(0)
+    await expect(page.locator(`[data-testid="home-run-${live}"]`)).toBeVisible()
+
+    // Templates: WC1's row, asserted here because this is the page that has to
+    // agree with the builder gallery word for word.
+    await expect(
+      page.locator('[data-testid="home-template-news-to-social"] .home-card-action'),
+    ).toHaveText(/Use this template/)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('the home Run history link opens the console with the list in view', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openHome(page)
+
+    await page.locator('[data-testid="home-run-history"]').click()
+    await expect.poll(() => new URL(page.url()).hash).toBe('#/run')
+
+    /*
+     * IN VIEW, which is the whole of the ask and the one thing jsdom cannot
+     * answer. The list has always been rendered - it is the last block of the
+     * control rail - so what the home lacked was a route to it and what the
+     * console lacked was any reason to show it. Measured against the rail's own
+     * scroller rather than the window: the rail scrolls, the page does not.
+     */
+    const history = page.locator('#run-history')
+    await expect(history).toBeVisible({ timeout: 20_000 })
+    const inView = await page.evaluate(() => {
+      const el = document.querySelector('#run-history')
+      const scroller = document.querySelector('.control-scroll')
+      if (!el || !scroller) return null
+      const a = el.getBoundingClientRect()
+      const b = scroller.getBoundingClientRect()
+      return a.top < b.bottom && a.bottom > b.top
+    })
+    expect(inView, 'the console rendered no history section inside its rail').not.toBeNull()
+    expect(inView, 'Run history landed on a console that was not showing the list').toBe(true)
+
+    // ONE SHOT: a reload must not scroll a reader away from a run they are
+    // watching, so the note is removed as it is read.
+    expect(
+      await page.evaluate(() => window.sessionStorage.getItem('console-reveal-history')),
+    ).toBeNull()
+
+    expect(watch.unexpected).toEqual([])
+  })
+
   test('opens the built-in workflow on the console, and a saved one on the builder', async ({
     page,
     request,

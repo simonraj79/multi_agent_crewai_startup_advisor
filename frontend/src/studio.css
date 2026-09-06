@@ -1429,6 +1429,41 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 }
 
 .home-card:hover .home-card-action { color: var(--text-title); }
+
+/*
+ * THE ONE CARD WITH TWO ACTIONS (item 3).
+ *
+ * A saved workflow can be opened for editing and, once published, run. Two
+ * actions cannot both live inside one card-shaped button, and a button inside a
+ * button is invalid HTML - so the card keeps the whole cell and the second
+ * action is a sibling layered over its bottom-right corner. The cell is the
+ * positioning context; the card fills it, so nothing about the grid changes.
+ */
+.home-cell { position: relative; display: flex; min-width: 0; }
+.home-cell > .home-card { flex: 1 1 auto; }
+
+/* Space kept for the overlaid button, so a long action never runs under it. */
+.home-card.is-runnable .home-card-action { padding-right: var(--space-8); }
+
+.home-card-run {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 1;
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-title);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.home-card-run:hover { border-color: var(--border-hover-strong); color: var(--text-title); }
+.home-card-run:focus-visible { outline: 2px solid var(--on-accent-cyan); outline-offset: 2px; }
 .home-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
 
 /* The finished run, above everything. It is the one card on this page about a
@@ -1447,6 +1482,9 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 }
 
 .home-last-run h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+/* The status, under the workflow's name. It used to BE the heading, so the card
+   said a run happened and never what it was about (item 3). */
+.home-last-run-state { margin: var(--space-1) 0 0; color: var(--text-muted); font: var(--type-meta); }
 
 /* `auto-fill` over a 232px floor, the same track the builder gallery uses, so
    the two screens line their cards up at every width instead of each finding

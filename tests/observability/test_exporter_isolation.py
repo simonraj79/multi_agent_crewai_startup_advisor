@@ -21,6 +21,7 @@ socket, and both point at localhost.
 
 from __future__ import annotations
 
+import collections
 import http.server
 import importlib.util
 import socket
@@ -29,6 +30,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from brief_crew import config as project_config
 from brief_crew.observability import build_exporter
 from brief_crew.observability.langfuse_exporter import LangfuseExporter, NullExporter
 from brief_crew.observability.policy import ExporterPolicy
@@ -61,24 +63,107 @@ class _SlowHandler(http.server.BaseHTTPRequestHandler):
         return None
 
 
-class _RunOutcome:
-    """What a run looked like from the application's side, and nothing else."""
+#: The frame kinds whose COUNT is driven by a clock rather than by the run.
+#:
+#: `metrics` is the only one, and it is doubly time-driven.
+#: `RunRecord.emit_metrics` is *coalesced* - it returns None when usage has not
+#: moved since the last snapshot - and `RunRegistry.sweep_metrics` calls it once
+#: per maintenance tick (`gate_sweep_interval`, 15s by default) for every live
+#: run. So how many `metrics` frames a run carries is a fact about where the
+#: ticks fell, and on a loaded runner the terminal `run_completed` snapshot can
+#: be coalesced away entirely.
+#:
+#: Measured on this tree, one synthetic validator run, nothing else changed:
+#:
+#:     tick 15.0s -> 96 frames total, metrics=1 (run_completed)
+#:     tick  0.2s -> 99 frames total, metrics=4 (3 interval + 1 run_completed)
+#:
+#: and the NON-metrics total is 95 in both. That invariant is what this
+#: comparison is built on, and it is also the diagnosis of the CI failure this
+#: exclusion fixes: the run under test reported 96 and the control 95, which is
+#: one `metrics` frame and cannot be anything else.
+TIME_DRIVEN_KINDS = frozenset({"metrics"})
 
-    def __init__(self, payload: dict) -> None:
+#: What a run that lost nothing reports. Asserted alongside the comparison
+#: against the control, because "identical to a control that ALSO dropped a
+#: frame" is not the claim row E2 makes - two equally damaged runs would
+#: satisfy an equality check and satisfy nothing else.
+_LOST_NOTHING = {"dropped": 0, "gaps": 0, "emit_errors": 0, "subscriber_dropped": 0}
+
+
+def _all_frames(client, run_id: str) -> list[dict]:
+    """Every frame of the run, following the cursor rather than assuming a page.
+
+    `GET /frames` defaults to `limit=100` and a single run already emits 96, so
+    reading one page would silently truncate the census the moment a `metrics`
+    frame or two pushed it over - which is exactly the kind of quiet arithmetic
+    this test exists to refuse.
+    """
+
+    frames: list[dict] = []
+    after = 0
+    while True:
+        page = client.get(
+            f"/api/runs/{run_id}/frames", params={"after": after, "limit": 100}
+        ).json()
+        batch = page["frames"]
+        if not batch:
+            return frames
+        frames.extend(item["data"] for item in batch)
+        nxt = page.get("next_after")
+        if nxt is None or nxt == after:
+            return frames
+        after = nxt
+
+
+class _RunOutcome:
+    """What a run looked like from the application's side, and nothing else.
+
+    Deliberately NOT a frame total. The claim these tests make is that a
+    broken exporter backend leaves the run alone, and a single integer is a
+    weak way to say it in both directions: it cannot tell a lost frame from a
+    coalesced one, and it fails on a difference that has nothing to do with the
+    exporter. This carries three things instead, and each is a stronger form of
+    the same claim:
+
+    * the per-kind CENSUS with `TIME_DRIVEN_KINDS` removed - so the run must
+      have produced the same agents, tools, model calls, node transitions and
+      verdict, not merely the same number of frames;
+    * the run's own integrity counters - `dropped`, `gaps`, `emit_errors`,
+      `subscriber_dropped` - so a run that reached the same census by losing a
+      frame and gaining another is not equal to one that lost nothing;
+    * status and result, unchanged.
+
+    A failure now names the kind that differed rather than printing two
+    integers, which is what made the CI failure this replaces take a day to
+    read.
+    """
+
+    INTEGRITY_KEYS = ("dropped", "gaps", "emit_errors", "subscriber_dropped")
+
+    def __init__(self, payload: dict, frames: list[dict]) -> None:
         self.status = payload["status"]
-        self.frames = payload["frames"]["count"]
         self.result = payload.get("result")
+        counters = payload["frames"]
+        self.integrity = {key: counters[key] for key in self.INTEGRITY_KEYS}
+        self.kinds = collections.Counter(
+            kind
+            for kind in (frame.get("kind") for frame in frames)
+            if kind not in TIME_DRIVEN_KINDS
+        )
 
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, _RunOutcome)
             and self.status == other.status
-            and self.frames == other.frames
+            and self.kinds == other.kinds
+            and self.integrity == other.integrity
             and self.result == other.result
         )
 
     def __repr__(self) -> str:  # pragma: no cover - only on a failure message
-        return f"<run {self.status} frames={self.frames}>"
+        census = ", ".join(f"{kind}={n}" for kind, n in sorted(self.kinds.items()))
+        return f"<run {self.status} {census} integrity={self.integrity}>"
 
 
 def _run_once(exporter) -> tuple[_RunOutcome, str]:
@@ -90,7 +175,31 @@ def _run_once(exporter) -> tuple[_RunOutcome, str]:
 
     with patch("brief_crew.observability.build_exporter", return_value=exporter):
         app = create_app(synthetic=True)
-    with TestClient(app) as client:
+
+    # `gates="auto"` below is refused with 403 for an anonymous caller unless
+    # the deployment has opted in. That guard is right and is not being
+    # weakened here: `tests/service/test_gates_mode.py` owns it and asserts
+    # both halves - the refusal for a caller nobody can bill, and the opt-in.
+    # These tests are about the EXPORTER, and every one of them needs a run
+    # that goes end to end with nobody there to answer a gate, so the opt-out
+    # is DECLARED here rather than inherited from whatever machine is running.
+    #
+    # `create_run` reads it as `project_config.VALIDATOR_ALLOW_AUTO_GATES` - a
+    # module attribute looked up per request - so patching the attribute is
+    # what reaches it. Patching here rather than in three `setUp`s because
+    # this helper is the only place in the module that posts a run, and a test
+    # class added later gets the opt-out without having to remember it.
+    #
+    # It has to be declared because it cannot be relied on, and this suite is
+    # the proof: it passed on this machine and failed on CI for a week.
+    # `.env` sets the knob. `brief_crew/__init__.py` resolves `.env` from its
+    # own file, so a git worktree ought to see none - but `crewai` calls
+    # python-dotenv's bare `load_dotenv()`, and `find_dotenv()` walks up from
+    # `site-packages/crewai/`, which for an in-repository virtualenv lands
+    # back in the repository and loads its `.env` regardless. A CI runner has
+    # no `.env` at all, so there the knob is False and the POST is a 403.
+    auto_gates = patch.object(project_config, "VALIDATOR_ALLOW_AUTO_GATES", True)
+    with auto_gates, TestClient(app) as client:
         response = client.post(
             "/api/sessions/isolation/runs",
             json={
@@ -106,7 +215,8 @@ def _run_once(exporter) -> tuple[_RunOutcome, str]:
             if payload["status"] in ("completed", "failed", "cancelled"):
                 break
             time.sleep(0.05)
-    return _RunOutcome(payload), run_id
+        frames = _all_frames(client, run_id)
+    return _RunOutcome(payload, frames), run_id
 
 
 @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI is not installed")
@@ -133,7 +243,8 @@ class ControlTests(unittest.TestCase):
         finally:
             exporter.close()
         self.assertEqual("completed", outcome.status)
-        self.assertGreater(outcome.frames, 20)
+        self.assertGreater(sum(outcome.kinds.values()), 20)
+        self.assertEqual(_LOST_NOTHING, outcome.integrity)
         self.assertEqual(0, exporter.stats(run_id)["http_errors"])
 
 
@@ -175,6 +286,7 @@ class MissingKeysTests(unittest.TestCase):
         control = _control_outcome()
         outcome, run_id = _run_once(NullExporter("no keys"))
         self.assertEqual(control, outcome)
+        self.assertEqual(_LOST_NOTHING, outcome.integrity)
         self.assertEqual({}, NullExporter("no keys").stats(run_id))
 
     def test_no_credential_is_ever_named_in_the_reason(self) -> None:
@@ -222,6 +334,7 @@ class UnreachableBackendTests(unittest.TestCase):
         finally:
             exporter.close()
         self.assertEqual(control, outcome)
+        self.assertEqual(_LOST_NOTHING, outcome.integrity)
         self.assertGreaterEqual(
             stats["http_errors"],
             1,
@@ -248,6 +361,7 @@ class UnreachableBackendTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
         self.assertEqual(control, outcome)
+        self.assertEqual(_LOST_NOTHING, outcome.integrity)
         self.assertGreaterEqual(stats["http_errors"], 1)
 
     def test_the_summary_line_carries_the_failure_count(self) -> None:

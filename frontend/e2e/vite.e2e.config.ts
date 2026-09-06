@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
-import { DEFAULT_SYNTHETIC_USER, syntheticUserOf } from './syntheticUser'
+import { DEFAULT_SYNTHETIC_USER, syntheticUserOf } from './syntheticUser.ts'
 
 /**
  * A second dev server for the end-to-end suite, kept separate from

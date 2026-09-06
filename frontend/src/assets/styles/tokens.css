@@ -236,11 +236,20 @@
 
   /* THE BRAND MARK'S WASH AND RIM, and the ink that sits on the gradient.
 
-     Two literals written out twice (`.brand-mark`, `.auth-splash-mark`) plus a
-     third copy inside the shell's hairline glow; and three near-identical inks
-     - #10201c, #101a18, #0d1715 - on one shared gradient. One value each. The
-     ink is #10201c because that is `.button-primary`'s, and `.button-primary`
-     is the one of the three that a baseline captures. */
+     What these three replaced, when they were minted: two literals written
+     out twice - once in `.brand-mark` and once in the auth splash's own 40px
+     copy of that tile - plus a third copy inside the shell's hairline glow;
+     and three near-identical inks, #10201c, #101a18 and #0d1715, on one
+     shared gradient. One value each. The ink is #10201c because that is
+     `.button-primary`'s, and `.button-primary` is the one of the three that a
+     baseline captures.
+
+     The splash's copy is gone as of the unified shell - it renders the static
+     `BrandLockup` and inherits the one `.brand-mark` tile the other three
+     surfaces use (`studio.css:852` records the deletion where the rule
+     stood). The paragraph above is kept as the reason these tokens exist,
+     which is what a token comment is for; it is not a list of today's call
+     sites, and `grep -rn brand-wash src` is. */
   --brand-wash: rgba(153, 234, 249, 0.08);
   --brand-rim: rgba(153, 234, 249, 0.28);
   --ink-on-brand: #10201c;

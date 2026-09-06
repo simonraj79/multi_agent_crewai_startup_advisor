@@ -2,7 +2,7 @@
 /**
  * The sign-in wall.
  *
- * Deliberately says what the console DOES before asking for an account. A
+ * Deliberately says what the app DOES before asking for an account. A
  * bare "Sign in with Google" on an unexplained dark page is indistinguishable
  * from a phishing prompt, and this one asks for a Google identity on a
  * `.onrender.com` host, which is exactly the shape people are told to distrust.
@@ -30,9 +30,22 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
       -->
       <BrandLockup as="static" />
 
+      <!--
+        The lede describes the PRODUCT, not one of its workflows.
+
+        It read "A six-agent crew that scores a startup idea against real
+        market, sentiment and feasibility evidence" until 2026-09-06 - a
+        description of the Idea validator, which is now one row of the home's
+        list beside every graph a person has drawn and nine templates. The
+        first thing a stranger reads should not name the narrowest thing the
+        app does. `workflow`, `Build` and `Run` are row U4's vocabulary and
+        they are what the two canvases, the breadcrumb and the mode switch
+        already say; the product's name is the `<h1>` above this and is not
+        repeated here.
+      -->
       <p class="signin-lede">
-        A six-agent crew that scores a startup idea against real market,
-        sentiment and feasibility evidence &mdash; and shows its working, live.
+        Draw a workflow on a canvas in Build, then Run it as a real CrewAI
+        flow and watch every agent work &mdash; live.
       </p>
 
       <button

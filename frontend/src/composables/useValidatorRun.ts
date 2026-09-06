@@ -272,10 +272,29 @@ export function workflowIdentity(
       : workflowId === DEFAULT_WORKFLOW_ID
         ? VALIDATOR_SUBTITLE
         : served?.name || name,
+    /*
+     * THE FALLBACK IS THE FIELD'S OWN NAME, AND NOTHING ELSE (RV4 follow-up 4).
+     *
+     * It read `${field} TO RUN`, echoing the validator's `IDEA TO VALIDATE`
+     * shape. Two costs, and the second is the one that was measured. It is a
+     * phrase nobody wrote: the author typed `subject` on the input card and the
+     * label said `SUBJECT TO RUN`. And it is reached for exactly as long as the
+     * descriptor takes to arrive, so the label CHANGED under the reader -
+     * sampled on the publish dialog's `Run it now` route, `SUBJECT TO RUN` at
+     * +71 ms and `SUBJECT` at +98 ms, a race an E2E snapshot can land on either
+     * side of.
+     *
+     * The field name alone is the same word the settled label shows whenever the
+     * author named the card after the field, which is the common case, so the
+     * flash disappears rather than being made quieter. Where they differ the
+     * label still SETTLES to the author's own word - the descriptor still wins -
+     * and what shows meanwhile is a name off the run's own launch contract
+     * rather than an invented sentence.
+     */
     inputLabel: inputNode?.label
       ? inputNode.label.toUpperCase()
       : authored
-        ? `${inputField.replaceAll('_', ' ').toUpperCase()} TO RUN`
+        ? inputField.replaceAll('_', ' ').toUpperCase()
         : VALIDATOR_INPUT_LABEL,
   }
 }

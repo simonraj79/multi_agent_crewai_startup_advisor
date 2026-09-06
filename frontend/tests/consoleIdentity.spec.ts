@@ -76,8 +76,11 @@ describe('workflowIdentity: the run names its own workflow', () => {
     expect(identity.name).toBe('')
     expect(identity.kicker).toBe('RUN — YOUR WORKFLOW')
     // The field name is the only thing known at that moment, and it is used
-    // rather than the validator's label.
-    expect(identity.inputLabel).toBe('SUBJECT TO RUN')
+    // rather than the validator's label - the NAME alone, with nothing added
+    // to it (RV4 follow-up 4). It read `SUBJECT TO RUN`, which is a phrase
+    // nobody wrote, and it was replaced by the author's own `SUBJECT` about
+    // 27ms later - a label that changed under the reader.
+    expect(identity.inputLabel).toBe('SUBJECT')
   })
 
   it('uses the handoff name ONLY as the provisional one, never over the served one', () => {
@@ -95,12 +98,12 @@ describe('workflowIdentity: the run names its own workflow', () => {
     const identity = workflowIdentity(refused, BUILDER_ID, 'subject')
     expect(identity.authored).toBe(true)
     expect(identity.name).toBe('')
-    expect(identity.inputLabel).toBe('SUBJECT TO RUN')
+    expect(identity.inputLabel).toBe('SUBJECT')
   })
 
   it('turns an underscored field into words when there is no input node to read', () => {
     const identity = workflowIdentity(MOCK_GRAPH, BUILDER_ID, 'source_material')
-    expect(identity.inputLabel).toBe('SOURCE MATERIAL TO RUN')
+    expect(identity.inputLabel).toBe('SOURCE MATERIAL')
   })
 
   it('does not mistake the validator\'s first agent for an input card', () => {

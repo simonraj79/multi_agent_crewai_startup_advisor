@@ -1280,3 +1280,89 @@ test.describe('the canvas stays legible at the zooms it picks for itself', () =>
     expect(watch.unexpected).toEqual([])
   })
 })
+
+/**
+ * R6 / item 60.
+ *
+ * `studio.css`'s own `@media (max-width: 1180px)` turns `.builder-inspector`
+ * into an overlay - `position: absolute`, sliding in from the right over the
+ * canvas - but `InspectorRail.vue`'s background stayed `--surface-panel`, a
+ * wash meant for a rail that is a real grid COLUMN. Measured at 1180x800 with
+ * the Idea validator template open and a node selected: `rgba(255,255,255,
+ * 0.03)` at `x:840 w:340` over a canvas pane of `x:236 w:864` - the budget
+ * meter's own right column and a node card read straight through it. The run
+ * console's own rail never had this defect, because `.control-rail`'s
+ * background is `--bg-app` unconditionally; `InspectorRail.vue` now restates
+ * that at the identical breakpoint.
+ *
+ * `1180` rather than a value further in: the ledger row is explicit that this
+ * is the FIRST pixel of the query, and no committed snapshot covers this
+ * width today - `builder-canvas.spec.ts`'s baselines are 1440 and 390, so
+ * this row does not regenerate one.
+ */
+/**
+ * The alpha channel of a computed `rgb()`/`rgba()` string.
+ *
+ * `getComputedStyle` always resolves to one of those two forms (never a hex or
+ * a named colour), and `rgb()` - three components - IS opaque; taking the last
+ * numeric token before the closing paren without checking the component count
+ * would read the BLUE channel of an opaque colour as its alpha. Splitting on
+ * the parsed component count is what a regex anchored on `)` cannot do.
+ */
+function alphaOf(rgbString: string): number {
+  const body = rgbString.match(/^rgba?\(([^)]+)\)$/)?.[1] ?? ''
+  const parts = body.split(',').map((part) => part.trim())
+  return parts.length === 4 ? Number(parts[3]) : 1
+}
+
+test.describe('the inspector rail is opaque at 1180 (R6, item 60)', () => {
+  test.use({ viewport: { width: 1180, height: 800 } })
+
+  test('nothing of the canvas reads through the docked inspector', async ({ page }) => {
+    const watch = watchConsole(page)
+    await openValidatorTemplate(page)
+    // Not `.first()`: the template's own input node sits at the fit's left
+    // edge, where the docked palette column can still intercept a click before
+    // the opening fit settles. `Scope the idea` sits well inside the pane.
+    await page.locator('.vue-flow__node', { hasText: 'Scope the idea' }).click()
+
+    const rail = page.locator('.inspector-rail')
+    await expect(rail).toBeVisible()
+
+    // Fully opaque: an alpha component of 1, never the wash's 0.03/0.035.
+    const background = await rail.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(alphaOf(background), `computed background of the rail: ${background}`).toBe(1)
+
+    // The load-bearing half: a point well inside the rail's own box, away from
+    // any control, resolves to the rail - not to a node card or the budget
+    // meter's canvas content painting through a translucent ground.
+    const railBox = await rail.boundingBox()
+    if (!railBox) throw new Error('the inspector rail has no box')
+    const hit = await page.evaluate(
+      (point) => {
+        const element = document.elementFromPoint(point.x, point.y)
+        return {
+          inRail: Boolean(element?.closest('.inspector-rail')),
+          inCanvas: Boolean(element?.closest('#builder-canvas')),
+        }
+      },
+      { x: railBox.x + railBox.width * 0.85, y: railBox.y + railBox.height * 0.5 },
+    )
+    expect(hit.inRail, 'a point inside the rail answers the rail').toBe(true)
+    expect(hit.inCanvas, 'the same point does not also answer the canvas').toBe(false)
+
+    expect(watch.unexpected).toEqual([])
+  })
+
+  test('the run console at the same width is unchanged', async ({ page }) => {
+    const watch = watchConsole(page)
+    await page.goto('/#/run')
+    await expect(page.locator('.validator-flow')).toBeVisible()
+
+    const rail = page.locator('.control-rail')
+    const background = await rail.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(alphaOf(background), `computed background of the console's rail: ${background}`).toBe(1)
+
+    expect(watch.unexpected).toEqual([])
+  })
+})

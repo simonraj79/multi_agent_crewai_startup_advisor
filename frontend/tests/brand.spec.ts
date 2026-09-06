@@ -53,7 +53,18 @@ function darkToken(name: string): string {
   return match[1].trim()
 }
 
-/** Every `.vue`/`.ts` file under `src/`, which is where a second spelling hides. */
+/**
+ * Every `.vue`, `.ts` and `.css` file under `src/`, which is where a second
+ * spelling hides.
+ *
+ * `.css` was added on 2026-09-06, because the scan had already missed one.
+ * U5's own grep (`docs/ux-shell/VERDICT.md` §2) answered `src/studio.css:1165`
+ * - the retired product name, quoted inside a comment - while every assertion
+ * below it stayed green, for the single reason that this walk did not open a
+ * stylesheet. `studio.css` is the file that names every brand class and
+ * carries this shell's reasoning in prose; excluding it made the scan agree
+ * with itself rather than with the criterion.
+ */
 function sourceFiles(): string[] {
   const found: string[] = []
   const walk = (dir: string) => {
@@ -63,7 +74,7 @@ function sourceFiles(): string[] {
         walk(full)
         continue
       }
-      if (/\.(vue|ts)$/.test(entry)) found.push(path.relative(FRONTEND, full).replace(/\\/g, '/'))
+      if (/\.(vue|ts|css)$/.test(entry)) found.push(path.relative(FRONTEND, full).replace(/\\/g, '/'))
     }
   }
   walk(path.join(FRONTEND, 'src'))

@@ -158,7 +158,10 @@ test.describe('Validator Studio', () => {
      * named the product twice and the thing on screen never.
      */
     await expect(page).toHaveTitle('Idea Validator · Crew Studio')
-    await expect(page.getByRole('heading', { name: 'Idea Validator', level: 1 })).toBeVisible()
+    // `toHaveText`, not `toBeVisible`: the heading is `sr-only` (U2's ruling).
+    // It is the page's heading for anyone reading by structure, and the
+    // breadcrumb beside it is the visible name.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Idea Validator')
 
     // The graph is fixed by contract: `service/graph.py` derives it from the
     // CrewAI Flow topology and the frontend renders exactly what it is served.

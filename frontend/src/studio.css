@@ -1292,12 +1292,41 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 /* The page you are on is not a link and does not pretend to be one. It also
    TRUNCATES rather than wrapping: the header is 52px, and a two-line crumb
    inside it pushes the account chip off its own baseline - the same failure the
-   account name at 860px was measured for. */
+   account name at 860px was measured for.
+
+   IT CARRIES THE WEIGHT THE `<h1>` USED TO (U2's ruling, 2026-09-06). The
+   workflow's name was on screen twice - in the lockup's heading slot and here -
+   so the heading became `sr-only` and this crumb became the page's visible
+   name. `--type-title` is one role up from the `--type-label` the trail is set
+   in, which is what makes the pair read as a hierarchy rather than as two
+   equal words either side of a slash; `--text-title` is the same step in ink.
+   No new step: `--type-title` is the role every panel header already uses, and
+   design.md §2 refuses a seventh. */
 .breadcrumb-crumb.is-current {
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--text-title);
+  font: var(--type-title);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* THE LOCKUP'S OWN LINE - one rule in W3's territory, created by this change
+   and named in the report.
+
+   `.brand-words` is `align-items: baseline`, which is right for a kicker
+   beside a heading and means nothing once the heading is `sr-only` and
+   absolutely positioned: the div is left holding one 11px line box,
+   baseline-aligned against nothing, and the wordmark sat high against a 32px
+   mark. Centring is what a single line beside a tile wants.
+
+   Unconditional rather than `:has(> h1.sr-only)`, and the reason is that
+   `.brand-words` exists ONLY in the lockup's `link` form - the `static` form
+   puts its `<h1>` straight beside the mark with no wrapper - and both of the
+   `link` form's two callers now hand it an `sr-only` heading. A `:has()` here
+   would be a condition that is always true, bought at the price of a selector
+   older Safari drops on the floor. */
+.brand-lockup .brand-words {
+  align-items: center;
 }
 
 .breadcrumb-sep { color: var(--text-meta); }

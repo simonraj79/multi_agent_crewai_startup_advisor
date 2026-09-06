@@ -329,12 +329,21 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="panel-section control-section">
+      <!--
+        THE BOX CAN NOW BE EMPTY, SO IT SAYS WHAT GOES IN IT (RV4 follow-up 5).
+        The example idea was seeded for every workflow, including ones somebody
+        else drew; it belongs to the built-in validator and stays there
+        (`useValidatorRun`), which leaves an authored workflow's box empty on
+        arrival. One sentence, in the reader's words rather than the field's:
+        the label above already says which field this is.
+      -->
       <label for="idea" class="control-label panel-kicker">{{ inputLabel }}</label>
       <textarea
         id="idea"
         class="panel-well"
         :value="idea"
         rows="4"
+        placeholder="What should this run start with?"
         :maxlength="MAX_IDEA_CHARS"
         :disabled="isActive"
         aria-describedby="idea-hint"

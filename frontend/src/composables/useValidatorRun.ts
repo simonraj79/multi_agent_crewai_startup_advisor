@@ -155,6 +155,12 @@ const DEFAULT_WORKFLOW_ID = 'idea-validator'
 /** What both built-in workflows call their request input. `BUILTIN_WORKFLOW_INPUT_FIELDS`. */
 const DEFAULT_INPUT_FIELD = 'idea'
 /**
+ * The example the built-in validator opens with, and the ONE workflow it is
+ * about (RV4 follow-up 5). Named rather than inlined so the condition that
+ * guards it is readable at the site that seeds the box.
+ */
+export const VALIDATOR_EXAMPLE_IDEA = 'An AI tool that turns Figma files into production React'
+/**
  * The refresh-recovery pointer and the session id it was launched under. Both
  * are keyed to the signed-in user when there is one (`u:<id>:` in front;
  * `identityStorage.ts`, D-01-5). Exported so `tests/identityStorage.spec.ts`
@@ -437,7 +443,29 @@ export function useValidatorRun(
   const descriptor = ref<GraphDescriptor>(structuredClone(MOCK_GRAPH))
   const workflowId = ref(storedAtLoad?.workflowId ?? options.workflowId ?? DEFAULT_WORKFLOW_ID)
   const inputField = ref(storedAtLoad?.inputField ?? options.inputField ?? DEFAULT_INPUT_FIELD)
-  const idea = ref('An AI tool that turns Figma files into production React')
+  /**
+   * THE EXAMPLE IDEA BELONGS TO THE VALIDATOR, AND TO NOTHING ELSE
+   * (RV4 follow-up 5).
+   *
+   * It was seeded unconditionally, so an idle console for an authored workflow
+   * opened with a box labelled `SUBJECT` holding "An AI tool that turns Figma
+   * files into production React" - a sentence about the built-in validator's
+   * subject, over somebody else's workflow, with Run pointed at it. Measured on
+   * a fresh console for a published `News to social post`. R2 governs the value
+   * after a run, so the row could not see this; it is the same class of
+   * confusion R1 and R2 exist to remove.
+   *
+   * The predicate is the WORKFLOW, not the input field. A built-in workflow the
+   * product ships may fairly show an example of the thing it is for; anything
+   * else - an authored graph, and `brief-flow` too - starts empty with its own
+   * placeholder, because the product has no idea what that workflow is about
+   * and guessing reads as a value the author left there.
+   *
+   * An empty box means `canLaunch` is false on arrival, which is correct and
+   * already explained: the counter under the box states the minimum and says
+   * why the button is dead (item 11).
+   */
+  const idea = ref(workflowId.value === DEFAULT_WORKFLOW_ID ? VALIDATOR_EXAMPLE_IDEA : '')
   /**
    * Who answers the two gates. `human` pauses at both; `auto` runs the whole
    * pipeline unattended.

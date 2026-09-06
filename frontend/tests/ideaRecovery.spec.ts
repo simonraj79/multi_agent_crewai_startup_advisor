@@ -218,6 +218,11 @@ describe('idea recovery across a reload', () => {
    * And it does NOT take a key the graph does not read. A builder document may
    * carry its own `idea` state key; putting that in a box labelled `SUBJECT`
    * would be a worse lie than recovering nothing.
+   *
+   * "Recovering nothing" is now literally nothing (RV4 follow-up 5): the
+   * example idea belongs to the built-in validator, so an authored workflow's
+   * box starts EMPTY and stays empty here rather than falling back to a
+   * sentence about Figma under a label reading `SUBJECT`.
    */
   it('ignores an `idea` key on a graph whose input is `subject`', async () => {
     localStorage.setItem(
@@ -244,6 +249,38 @@ describe('idea recovery across a reload', () => {
     await run.initialize()
     await flush(24)
 
-    expect(run.idea.value).toBe(DEFAULT_IDEA)
+    expect(run.idea.value).toBe('')
+  })
+
+  /**
+   * THE EXAMPLE IS THE VALIDATOR'S (RV4 follow-up 5).
+   *
+   * Measured on a fresh console for a published `News to social post`: the box
+   * held "An AI tool that turns Figma files into production React" under a
+   * label reading `SUBJECT`, before anything had run, with Run pointed at it.
+   * R2 governs the value after a run, so nothing here could see it.
+   *
+   * The predicate is the WORKFLOW rather than the input field, so `brief-flow`
+   * - a built-in that is not the validator - starts empty too. The product has
+   * no idea what an authored workflow is about, and guessing reads as a value
+   * its author left there.
+   */
+  it('seeds the example idea for the built-in validator and for nothing else', () => {
+    localStorage.clear()
+    const [validator, a] = withSetup(() => useValidatorRun(api))
+    expect(validator.idea.value).toBe(DEFAULT_IDEA)
+    a.unmount()
+
+    const [authored, b] = withSetup(() =>
+      useValidatorRun(api, { workflowId: 'ug_a96d869d', inputField: 'subject' }),
+    )
+    expect(authored.idea.value).toBe('')
+    b.unmount()
+
+    const [brief, c] = withSetup(() =>
+      useValidatorRun(api, { workflowId: 'brief-flow', inputField: 'topic' }),
+    )
+    expect(brief.idea.value).toBe('')
+    c.unmount()
   })
 })

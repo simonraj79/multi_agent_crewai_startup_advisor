@@ -1154,6 +1154,235 @@ h3 {
      bar, and it is the one item in the header that is stated again three
      inches below it, in the rail's own WORKFLOW well. The connection status
      stays, because nothing else on a phone says whether this console is
-     talking to anything. */
-  .studio-shell:not(.is-builder) .workflow-name { display: none; }
+     talking to anything.
+
+     It is the BREADCRUMB's second crumb now rather than a `.workflow-name`
+     span - same element, same place, same measurement, same decision (U2
+     replaced the span with the two crumbs). What survives at this width is the
+     FIRST crumb, because that one is the way back out and nothing else in the
+     header is. */
+  .breadcrumb .breadcrumb-sep,
+  .breadcrumb .breadcrumb-crumb.is-current { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   THE BREADCRUMB, on both canvases (docs/ux-shell/DEFINITION-OF-DONE.md U2).
+
+   Two crumbs: the list, then the workflow. It replaces the run console's
+   `.workflow-name` span, which said the same name and never said that it was
+   one of a list or how to get back to one - the console had no way back to
+   anything, because before the home existed there was nothing to go back TO.
+
+   The first crumb is an `<a href="#/">` with its click intercepted rather than
+   a `<button>`, so the browser's own affordances work on it: a real target in
+   the status bar, middle-click for a new tab, copy-link-address. The router
+   still owns navigation - `@click.prevent` - but a link that cannot be copied
+   is a link pretending to be one.
+   --------------------------------------------------------------------------- */
+.breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-5);
+  border-right: 1px solid var(--border-default);
+  font: var(--type-label);
+}
+
+.breadcrumb-crumb {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--r-sm);
+  color: var(--link-strong);
+  text-decoration: none;
+}
+
+a.breadcrumb-crumb:hover { text-decoration: underline; }
+
+/* The page you are on is not a link and does not pretend to be one. It also
+   TRUNCATES rather than wrapping: the header is 52px, and a two-line crumb
+   inside it pushes the account chip off its own baseline - the same failure the
+   account name at 860px was measured for. */
+.breadcrumb-crumb.is-current {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-sep { color: var(--text-meta); }
+
+/* ---------------------------------------------------------------------------
+   THE HOME - `views/HomeView.vue`, U1.
+
+   A page rather than a console: one scrolling column, no rails, no canvas.
+   `.studio-shell` is `height: 100dvh; overflow: hidden`, which is right for a
+   three-pane console and wrong for a list, so the shell becomes a two-row grid
+   here and the scrolling happens INSIDE `.home-main`. Making the shell itself
+   scroll would take the header out of view on the way down, and the header is
+   where the account and the sign-out live.
+   --------------------------------------------------------------------------- */
+.studio-shell.is-home {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.home-main {
+  min-height: 0;
+  overflow: auto;
+}
+
+.home-page {
+  display: grid;
+  width: min(1080px, 100%);
+  gap: var(--space-8);
+  align-content: start;
+  padding: var(--space-8) var(--space-6);
+  margin: 0 auto;
+}
+
+.home-resuming,
+.home-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  margin: 0;
+  color: var(--text-muted);
+  font: var(--type-label);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+}
+
+.home-empty.is-problem { color: var(--err-text); border-color: var(--err-border-strong); }
+
+.home-section { min-width: 0; }
+
+.home-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.home-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+.home-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
+
+/* The finished run, above everything. It is the one card on this page about a
+   thing that already happened, so it is a strip rather than a tile - a tile
+   would put it in a grid beside things you can start, which is a different
+   verb. */
+.home-last-run {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+}
+
+.home-last-run h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+
+/* `auto-fill` over a 232px floor, the same track the builder gallery uses, so
+   the two screens line their cards up at every width instead of each finding
+   its own column count. At 390px it resolves to one column with no breakpoint
+   of its own. */
+.home-grid {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* A COLUMN with the meta row pushed to the bottom edge, for the reason the
+   template card records: the grid row is as tall as its tallest card, and cards
+   packed to the start end their content well above their own bottom edge and
+   read as unfinished beside a full one. */
+.home-card {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  color: var(--text-body);
+  text-align: left;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+  cursor: pointer;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.home-card:hover { background: var(--surface-raised); border-color: var(--border-hover); }
+
+.home-card-spine {
+  padding: var(--space-2) 0;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+}
+
+/* The slot is held at the drawn height while a document picture is still being
+   fetched, so nothing under the reader's pointer moves when it lands. */
+.home-card-spine.is-empty { min-height: 60px; }
+
+.home-card-name {
+  overflow: hidden;
+  color: var(--text-title);
+  font: var(--type-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-card-blurb { color: var(--text-muted); font: var(--type-body); }
+
+.home-card-problem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--warn-text-strong);
+  font: var(--type-meta);
+}
+
+.home-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+
+.home-card-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-meta);
+  font: var(--type-meta);
+}
+
+/* One pill, four meanings, and the colour is the only thing that differs -
+   `published` is a live thing, `draft` and `template` are not, and `run only`
+   says this workflow has no Build mode to switch to. */
+.home-pill {
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-meta);
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
+  text-transform: uppercase;
+  background: var(--surface-well);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-pill);
+}
+
+.home-pill.is-published { color: var(--on-accent-mint); }
+.home-pill.is-run-only { color: var(--on-accent-cyan); }

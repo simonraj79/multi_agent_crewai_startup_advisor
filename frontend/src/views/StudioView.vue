@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, watchEffect } from 'vue'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { VueFlow } from '@vue-flow/core'
@@ -15,6 +15,7 @@ import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
+import { pageTitle } from '../data/brand'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 import type { SignedInUser } from '../composables/useAuthGate'
@@ -40,6 +41,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  /** The breadcrumb's first crumb: back to the list of every workflow. */
+  home: []
   build: []
   signOut: []
 }>()
@@ -76,18 +79,37 @@ onMounted(() => {
 })
 
 /**
- * What the canvas heading says, when it is not the validator.
+ * The workflow this console is pointed at, by name.
  *
- * `descriptor.name` is the graph the console is ACTUALLY drawing, and after a
- * builder handoff that is the author's own workflow. The kicker's "FIXED"
- * likewise stops being true the moment the graph is one somebody just drew.
- * Both fall back to the validator's own wording verbatim, which is the only
- * thing this console could draw before the builder existed.
+ * `descriptor.name` is the graph it is ACTUALLY drawing, and after a builder
+ * handoff that is the author's own workflow; the handoff carries the name so
+ * the breadcrumb is right before the descriptor has arrived. This is the second
+ * crumb, and it is what `document.title` reads.
  */
-const canvasKicker = computed(() => (handoff.value ? 'PUBLISHED GRAPH' : 'FIXED VALIDATOR GRAPH'))
+const workflowName = computed(() => handoff.value?.name || descriptor.value.name)
+
+/**
+ * What the canvas heading says.
+ *
+ * THE KICKER IS THE MODE, NOT THE GRAPH (`docs/ux-shell/DEFINITION-OF-DONE.md`
+ * U4). It read `FIXED VALIDATOR GRAPH` / `PUBLISHED GRAPH`, which is three
+ * vocabularies in two strings - `fixed`, `published` and `graph` - for a
+ * distinction the reader has already been told twice by the time they reach it:
+ * the breadcrumb above names the workflow and the handoff strip names the
+ * publication. What the heading has to say that nothing else does is which of
+ * the two modes of that workflow is on screen, and the pair is Build and Run.
+ * The second clause keeps the one fact the old strings carried that is not said
+ * elsewhere - whether this is the built-in workflow or one somebody drew - in
+ * the same words the home page uses for it.
+ *
+ * `canvasTitle` still falls back to the validator's own wording verbatim, which
+ * is the only thing this console could draw before the builder existed.
+ */
+const canvasKicker = computed(() => (handoff.value ? 'RUN — YOUR WORKFLOW' : 'RUN — BUILT IN'))
 const canvasTitle = computed(() =>
   handoff.value ? handoff.value.name || descriptor.value.name : 'Evidence pipeline',
 )
+
 
 const {
   descriptor,
@@ -144,6 +166,20 @@ const {
   // the next person on the same browser never restores it, and swept on
   // sign-out. The handoff above is read the same way.
   userId: () => props.user?.id ?? null,
+})
+
+/**
+ * The tab's name follows the route (U4). One workflow per tab, so the workflow
+ * is what names it; `pageTitle` owns the separator and the product half, and
+ * `PRODUCT_NAME` is spelled in `data/brand.ts` and nowhere else.
+ *
+ * BELOW the destructure and not beside `workflowName`, because a `watchEffect`
+ * runs its body immediately: reading `descriptor` from above the `const` that
+ * binds it is a temporal dead zone, which is a blank page at runtime rather
+ * than a type error. The two computeds above are lazy and so may sit there.
+ */
+watchEffect(() => {
+  document.title = pageTitle(workflowName.value)
 })
 
 /**
@@ -341,10 +377,33 @@ function backToValidator(): void {
 
       <div class="header-context">
         <!--
-          The one control this view gained in the move. `Run` is pressed because
-          you are looking at the run console; `Build` leaves for `#/build`. The
-          builder never offers the mirror image of this pair inside itself
-          (cut list item 1) - it navigates back here through the same route.
+          WHERE YOU ARE, IN TWO CRUMBS (U2). It replaces the bare
+          `.workflow-name` span that sat where the second crumb now does: the
+          name was already here, and what was missing was the fact that it is
+          one of a list and the way back to that list. `Workflows` is a real
+          `<a href="#/">`, not a button, so the browser's own affordances - a
+          status-bar target, middle-click, copy link - all work; the click is
+          intercepted so the SPA routes rather than reloading.
+        -->
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a class="breadcrumb-crumb" href="#/" @click.prevent="emit('home')">Workflows</a>
+          <span class="breadcrumb-sep" aria-hidden="true">/</span>
+          <span class="breadcrumb-crumb is-current" aria-current="page">
+            <GitBranch :size="13" aria-hidden="true" />{{ workflowName }}
+          </span>
+        </nav>
+
+        <!--
+          The mode switch for the workflow the breadcrumb names: Build draws it,
+          Run runs it. Both canvases carry the same pair now, so it is the one
+          control that means the same thing in both places.
+
+          THE COMMENT HERE USED TO CITE CUT LIST ITEM 1 - "the builder offers no
+          mirror image of this pair" - and that ruling was already overturned by
+          `.agent/plans/00-architecture.md` D2 before this file was written;
+          `BuilderView.vue` has carried the same segmented pair since. It is
+          recorded rather than deleted because a stale citation is worse than
+          none: the next reader would have taken the cut list at its word.
         -->
         <div class="segmented workspace-switch" role="group" aria-label="Workspace">
           <button type="button" :aria-pressed="false" @click="emit('build')">
@@ -355,7 +414,6 @@ function backToValidator(): void {
           </button>
         </div>
 
-        <span class="workflow-name"><GitBranch :size="14" aria-hidden="true" />{{ descriptor.name }}</span>
         <span class="live-status" :class="`is-${connection}`" aria-live="polite">
           <Radio :size="13" aria-hidden="true" />
           {{ connectionLabel }}

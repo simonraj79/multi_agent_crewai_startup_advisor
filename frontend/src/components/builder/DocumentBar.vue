@@ -8,6 +8,7 @@ import {
   Keyboard,
   Moon,
   Lock,
+  Play,
   Redo2,
   Rocket,
   Save,
@@ -129,6 +130,17 @@ const emit = defineEmits<{
    * can reach it.
    */
   unpublish: []
+  /**
+   * R10 / item C1 (ROUND-2.md §5, row R10). The header's own
+   * `.workspace-switch` is `display: none` below 860px (`BuilderView.vue`'s
+   * own scoped style), so a builder document at 390 had no route to the run
+   * console at all except typing `#/run`. This is the SAME event the header
+   * switch's `Run` button already emits - a second way to reach it, not a
+   * second meaning for it. WB owns only that this reaches the menu; the
+   * emit's handler (what `Run` does for an unpublished document) is R3's,
+   * owned by WA.
+   */
+  runWorkspace: []
   /** Ask to delete. The confirm is DOCKED under the bar, never a dialog (R15). */
   delete: []
   /**
@@ -587,6 +599,25 @@ function cancelRename(): void {
           >
             <Unplug :size="14" aria-hidden="true" />
             Unpublish
+          </button>
+          <!--
+            R10 / item C1: the header's `Run` half of `.workspace-switch` is
+            `display: none` below 860px, so this is the only route to the run
+            console a phone-width visitor has. Same event the header button
+            emits (`runWorkspace`) - a second door onto the same handler, not a
+            second handler. Grouped with the safe items, ABOVE the separator,
+            so D-15-6's rule ("Delete is the only one after the separator")
+            still holds.
+          -->
+          <button
+            class="document-menu-item"
+            type="button"
+            role="menuitem"
+            data-testid="menu-run"
+            @click="choose(() => emit('runWorkspace'))"
+          >
+            <Play :size="14" aria-hidden="true" />
+            Run
           </button>
           <!--
             Round 2, D-15-6: Delete sat 34px under Duplicate in the same colour

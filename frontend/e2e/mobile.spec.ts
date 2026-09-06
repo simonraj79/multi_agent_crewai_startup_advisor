@@ -228,4 +228,40 @@ test.describe('the builder at 390x844', () => {
 
     expect(errors).toEqual([])
   })
+
+  /**
+   * R10 / item C1 (ROUND-2.md row R10).
+   *
+   * `.workspace-switch`'s `Run` half is `display: none` below 860px
+   * (`BuilderView.vue`'s own scoped style), so a builder document at 390 had
+   * no route to the run console at all short of typing `#/run`. `menu-run`
+   * emits the SAME `runWorkspace` event the header button does - this test
+   * proves the door, not a new room behind it.
+   */
+  test('still offers a route to Run mode, through the document menu', async ({ page }) => {
+    const errors = watchConsole(page)
+    await page.goto('/#/build')
+    await page.locator('.template-card').filter({ hasText: 'Minimal gated agent' }).click()
+    await expect(page.locator('.document-bar')).toBeVisible()
+
+    // The header's own switch really is hidden at this width - the premise,
+    // not an aside. If a future fix gives it back directly, this row (and the
+    // menu item it is about) may retire.
+    await expect(page.locator('.workspace-switch')).toBeHidden()
+
+    await page.getByTestId('document-menu-button').click()
+    const runItem = page.getByTestId('menu-run')
+    await expect(runItem).toBeVisible()
+    const runBox = (await runItem.boundingBox())!
+    const hitsRun = await page.evaluate(
+      (point) => document.elementFromPoint(point.x, point.y)?.closest('[data-testid="menu-run"]') !== null,
+      { x: runBox.x + runBox.width / 2, y: runBox.y + runBox.height / 2 },
+    )
+    expect(hitsRun, 'Run is reachable at its own centre').toBe(true)
+
+    await runItem.click()
+    await expect(page).toHaveURL(/#\/run/)
+
+    expect(errors).toEqual([])
+  })
 })

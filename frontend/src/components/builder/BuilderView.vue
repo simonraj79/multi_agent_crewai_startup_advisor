@@ -1943,6 +1943,7 @@ watch(
             @import="importFile"
             @duplicate="duplicateDocument"
             @unpublish="unpublishDocument"
+            @run-workspace="emit('runWorkspace')"
             @delete="askDelete"
             @menu-extent="onMenuExtent"
           >

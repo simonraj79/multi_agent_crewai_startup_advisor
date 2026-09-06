@@ -318,8 +318,9 @@ test.describe('Validator Studio', () => {
       await expect(page.locator('.workflow-node[aria-label="Reporter, Completed"]')).toHaveCount(1)
       await expect(page.locator('.workflow-node[aria-label="Validation brief, Completed"]')).toHaveCount(1)
       await expect(page.locator('.error-banner')).toHaveCount(0)
-      // The primary button turns into a relaunch once the run is history.
-      await expect(launchButton(page)).toHaveText(/relaunch/i)
+      // The primary button names a SECOND run once the first is history
+      // (`Run again`, ROUND-2 ruling 5 - it read `Relaunch`).
+      await expect(launchButton(page)).toHaveText(/^run again$/i)
 
       expect(watch.unexpected).toEqual([])
     },

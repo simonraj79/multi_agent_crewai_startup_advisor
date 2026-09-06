@@ -46,6 +46,48 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
   })
 }
 
+/*
+ * THE PRIMARY BUTTON'S WORD - ROUND-2 X1 / ruling 5, AUDIT-R2 N2.
+ *
+ * The console said `Launch` / `Relaunch` for the action the workspace switch
+ * two inches above calls `Run`, so the one thing this screen does had two
+ * names. Nothing in the suite read the button's text, which is why the two
+ * vocabularies could sit beside each other for as long as they did.
+ */
+describe('the primary button says what the mode is called', () => {
+  it('reads `Run` at rest and `Run again` once a run is history', () => {
+    expect(mountPanel({ primaryLabel: 'Launch' }).get('[data-testid="launch-button"]').text())
+      .toBe('Run')
+    expect(
+      mountPanel({ primaryLabel: 'Relaunch', status: 'completed' })
+        .get('[data-testid="launch-button"]')
+        .text(),
+    ).toBe('Run again')
+  })
+
+  it('says `Starting…` while the run is being asked for, as the test panel does', () => {
+    expect(mountPanel({ primaryLabel: 'Launching…' }).get('[data-testid="launch-button"]').text())
+      .toBe('Starting…')
+  })
+
+  it("lets the run's own state win mid-flight, unmapped", () => {
+    expect(
+      mountPanel({ primaryLabel: 'Send', status: 'waiting', isActive: true })
+        .get('[data-testid="launch-button"]')
+        .text(),
+    ).toBe('Waiting for you')
+  })
+
+  it("asks the question the gate pair answers, in words that are not the graph model's", () => {
+    const text = mountPanel().text()
+    expect(text).toContain('WHEN IT NEEDS YOU')
+    expect(text).not.toContain('GATES')
+    // The two buttons keep their words by ruling.
+    expect(text).toContain('Review')
+    expect(text).toContain('Unattended')
+  })
+})
+
 describe('the bounds are stated where they are enforced', () => {
   it('matches the server constant', () => {
     // Drift here is the whole hazard of a duplicated constant, so it is a test

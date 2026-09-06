@@ -12,6 +12,11 @@ import type { TestInput } from '../../../types/builder'
  * of more. The plan's out-of-scope list says the same thing about a chat-shaped
  * tester for the same reason.
  *
+ * IT DOES NOT SAY "SAVE" (ROUND-2 ruling 5, AUDIT-R2 N7). The document's own
+ * Save sits twelve rows above this one in the same pane, and the two meant
+ * different things: that one writes the workflow, this one remembers a value to
+ * try it with. `Remember` is the verb, and the picker above says what it holds.
+ *
  * "USE LAST RUN'S OUTPUTS AS MOCKS" is a checkbox on the save and not a button
  * of its own, because it is a property of the row being written rather than an
  * action: the label, the value and the mocks are one row, and offering the
@@ -65,7 +70,7 @@ function save(): void {
 
     <div class="test-input-saved">
       <label class="test-input-picker">
-        <span class="test-input-legend">Saved</span>
+        <span class="test-input-legend">Saved inputs</span>
         <select
           class="test-input-select"
           data-testid="test-input-select"
@@ -97,7 +102,7 @@ function save(): void {
         data-testid="test-input-label"
         type="text"
         maxlength="80"
-        placeholder="Save this as…"
+        placeholder="Remember this input as…"
         aria-label="A name for this saved input"
       >
       <label v-if="lastRunId" class="test-input-mocks">
@@ -106,7 +111,7 @@ function save(): void {
       </label>
       <button type="submit" class="test-input-submit" data-testid="test-input-save" :disabled="!canSave">
         <Save :size="13" aria-hidden="true" />
-        {{ saving ? 'Saving…' : 'Save' }}
+        {{ saving ? 'Remembering…' : 'Remember' }}
       </button>
     </form>
   </div>

@@ -7,7 +7,8 @@ import { renderMarkdown } from '../../../utils/markdown'
 import type { FlowTest } from '../../../composables/useFlowTest'
 
 /**
- * The Run tab: pick an input, press Run, watch it on the canvas, read the body.
+ * The Try it tab: pick an input, press Try it, watch it on the canvas, read
+ * the body.
  *
  * The node STATES are not drawn here. They are drawn on the builder canvas,
  * through `[data-mode='run']` (13 D2, `builder.css`) - which is the whole reason
@@ -58,7 +59,7 @@ const forwardOption = computed(() => run.pendingGate.value?.options[0]?.id ?? 'a
         @click="void test.startRun()"
       >
         <Play :size="13" aria-hidden="true" />
-        {{ run.launching.value ? 'Starting…' : 'Run' }}
+        {{ run.launching.value ? 'Starting…' : 'Try it' }}
       </button>
       <button
         v-if="run.isActive.value"

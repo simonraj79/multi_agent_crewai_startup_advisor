@@ -351,7 +351,11 @@ test.describe('the failure reaches the screen', () => {
      * `Retry-After`, which is what `CORS_EXPOSE_HEADERS` puts that header on
      * the wire for.
      */
-    const launchButton = page.getByRole('button', { name: /^Launch/ })
+    // `Run`, not `Launch` (ROUND-2 ruling 5). Scoped to the rail rather than
+    // asked of the page: the header's workspace switch also has a button named
+    // `Run`, and an unscoped role+name would be two matches and a strict-mode
+    // failure.
+    const launchButton = page.locator('.status-panel').getByRole('button', { name: /^Run/ })
     const limited = page.locator('[role="alert"]').filter({ hasText: /too many runs/i })
     for (let attempt = 0; attempt < 14; attempt += 1) {
       await launchButton.click()

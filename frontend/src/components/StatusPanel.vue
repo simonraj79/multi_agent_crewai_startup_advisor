@@ -169,7 +169,32 @@ const MID_RUN_VERBS: Readonly<Record<string, string>> = {
   waiting: 'Waiting for you',
   stopping: 'Stopping…',
 }
-const primaryWord = computed(() => MID_RUN_VERBS[props.status] ?? props.primaryLabel)
+
+/**
+ * ONE VERB PER CONCEPT (ROUND-2 ruling 5, AUDIT-R2 N2).
+ *
+ * `Run` is the MODE - it is the word on the workspace switch in the header of
+ * every screen - and this is that mode's primary action, so it is the same
+ * word. `Launch` and `Relaunch` were a second vocabulary for the one thing the
+ * console does, and the builder carried four more run-shaped words of its own.
+ *
+ * MAPPED HERE, NOT IN THE COMPOSABLE, and that is deliberate rather than shy.
+ * `primaryLabel` is `useValidatorRun`'s: it is read as a VALUE by
+ * `runRecovery.spec.ts`, it is the state the `RotateCcw` icon below keys on,
+ * and it is another worker's file this week. What changes is what the button
+ * SAYS, which is this component's job. An unmapped label passes straight
+ * through, so a caller that supplies its own word still gets it.
+ */
+const PRIMARY_WORDS: Readonly<Record<string, string>> = {
+  Launch: 'Run',
+  Relaunch: 'Run again',
+  // The test panel's own button already says `Starting…`; two surfaces over one
+  // pipeline should not name the same second differently.
+  'Launching…': 'Starting…',
+}
+const primaryWord = computed(
+  () => MID_RUN_VERBS[props.status] ?? PRIMARY_WORDS[props.primaryLabel] ?? props.primaryLabel,
+)
 
 /**
  * The same words the header chip uses, from the same function.
@@ -361,7 +386,15 @@ const logFormat = ref<LogFormat>('ndjson')
     </div>
 
     <div class="panel-section control-section compact-section">
-      <span class="control-label panel-kicker">GATES</span>
+      <!--
+        `GATES` was the graph model's word for this, on the one panel a
+        first-time visitor reads before spending money (AUDIT-R2 N5). The
+        BUTTONS keep their words by ruling - `Review` and `Unattended` are what
+        the request field, the gate card and this repository's own prose all
+        call the two modes - and only the kicker changes, to the question the
+        pair actually answers.
+      -->
+      <span class="control-label panel-kicker">WHEN IT NEEDS YOU</span>
       <div class="segmented" role="group" aria-label="Who answers the gates">
         <button
           type="button"

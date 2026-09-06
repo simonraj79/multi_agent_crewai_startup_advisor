@@ -36,12 +36,26 @@ const props = defineProps<{
   labels: Record<string, string>
 }>()
 
+/**
+ * ONE VERB PER CONCEPT (ROUND-2 ruling 5, AUDIT-R2 N2).
+ *
+ * Four run-shaped words used to be visible on this screen at once - the
+ * header's `Run` switch, this strip's `Run` tab, its `Dry run` tab and the
+ * button inside the Run tab - so a reader who wanted to try their workflow had
+ * a one-in-four chance of pressing the thing that spends money first. The
+ * strip's words are now the panel's own vocabulary and none of them is `Run`:
+ * `Run` is the MODE, and it appears exactly once on the builder, in the header
+ * switch that leaves for the console.
+ *
+ * The keys are unchanged, so every `data-testid="test-tab-<key>"` a spec reads
+ * is unchanged too. This is a label table and nothing else.
+ */
 const TAB_LABELS: Record<TestTab, string> = {
-  run: 'Run',
-  node: 'Node',
-  dry: 'Dry run',
+  run: 'Try it',
+  node: 'One step',
+  dry: 'Check',
   code: 'Code',
-  state: 'State',
+  state: 'Data',
 }
 
 const dragging = ref(false)

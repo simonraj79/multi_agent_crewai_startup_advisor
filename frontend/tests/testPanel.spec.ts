@@ -257,6 +257,39 @@ describe('the panel is docked, collapsed, resizable and never modal', () => {
     harness.app.unmount()
   })
 
+  /*
+   * THE WORDS, not only the keys - ROUND-2 X1 / ruling 5, AUDIT-R2 N2.
+   *
+   * The strip used to read `Run · Node · Dry run · Code · State`, so the
+   * builder showed four run-shaped words at once - the header's `Run` switch,
+   * this `Run` tab, `Dry run`, and the button inside the tab - and a reader who
+   * wanted to try their workflow had no way to rank them. The keys are the
+   * contract every spec reads; these are what a person reads, and nothing
+   * asserted them, which is how they were allowed to collide.
+   */
+  it("names each tab in the panel's own vocabulary, and never `Run`", () => {
+    const harness = makeTest()
+    const wrapper = mountPanel(harness)
+
+    const words: Record<string, string> = {
+      run: 'Try it',
+      node: 'One step',
+      dry: 'Check',
+      code: 'Code',
+      state: 'Data',
+    }
+    for (const tab of TEST_TABS) {
+      expect(wrapper.get(`[data-testid="test-tab-${tab}"]`).text(), tab).toBe(words[tab])
+    }
+
+    // `Run` is the MODE, and the only place it may appear on the builder is the
+    // header switch that leaves for the console - which is not this component.
+    expect(wrapper.get('.test-tabs').text()).not.toMatch(/Run/)
+
+    wrapper.unmount()
+    harness.app.unmount()
+  })
+
   it('opens on the tab that was pressed rather than on whichever was last', async () => {
     const harness = makeTest()
     const wrapper = mountPanel(harness)

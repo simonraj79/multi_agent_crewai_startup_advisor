@@ -1934,7 +1934,7 @@ test.describe('the shell at 390x844', () => {
        */
       const drawer = await hitTest(page, '.control-rail', [
         { name: 'the control rail', selector: '.control-rail' },
-        { name: 'the Launch button', selector: '[data-testid="launch-button"]' },
+        { name: 'the Run button', selector: '[data-testid="launch-button"]' },
         { name: 'the status chip', selector: '.status-panel .status-badge' },
       ])
       for (const probe of drawer) {

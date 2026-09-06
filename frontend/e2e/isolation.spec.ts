@@ -566,13 +566,13 @@ test.describe('Per-user isolation', () => {
         await expect(page.locator('.live-status')).not.toHaveText(/connecting/i)
 
         // An empty console: no run id, no "Running your published graph", no
-        // "run not found", no gate, and Launch rather than Relaunch.
+        // "run not found", no gate, and `Run` rather than `Run again`.
         await expect(page.locator('.status-panel .run-id')).toHaveCount(0)
         await expect(page.locator('.handoff-banner')).toHaveCount(0)
         await expect(errorBanner(page)).toHaveCount(0)
         await expect(page.locator('.gate-card')).toHaveCount(0)
         await expect(page.locator('.status-panel .status-badge')).not.toHaveText(/waiting|running|error/i)
-        await expect(launchButton(page)).toHaveText('Launch')
+        await expect(launchButton(page)).toHaveText('Run')
 
         const asBob = await storageSnapshot(page)
         // Bob's console minted its own session id and nothing else is his.

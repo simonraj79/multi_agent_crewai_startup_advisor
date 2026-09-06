@@ -699,13 +699,29 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
 
    `:where()` CONTRIBUTES NO SPECIFICITY, so this whole selector is (0,1,0) -
    `.workspace-switch` and `.format-picker` still outrank it and keep their own
-   columns and padding, exactly as they do today. And the guard is a baseline
-   rather than a preference: the builder's sixteen full-page screenshots contain
-   its header, so giving its pair the chrome it has always lacked is a
-   sixteen-baseline change. SHELL-SCOPE.md §6.5 is the commit that drops the
-   `:not()` and regenerates them.
+   columns and padding, exactly as they do today.
+
+   THE `:not(.is-builder)` GUARD IS GONE (2026-09-06, ROUND-2 X3,
+   SHELL-SCOPE.md §6.5). It shipped as a baseline-stability measure, not a
+   design decision - the comment above said so in as many words - and it had
+   a real cost nobody had priced until RV4's follow-ups named it: on the
+   builder, BOTH halves of `.workspace-switch` painted the user agent's own
+   button chrome, `rgb(240,240,240)` on `rgb(0,0,0)`, so nothing on screen
+   said which mode - Build or Run - was current. `aria-pressed` was the only
+   place the state lived. `:where(.studio-shell)` now reaches both shells, so
+   the pressed half gets the same `--text-title` ink, `--surface-raised`
+   ground and `--ring-pressed` ring the console has always had. Every other
+   builder `.segmented` (the fan-in AND/OR, the tier and on-error pickers, the
+   LLM preset chips) sits inside a `FieldRow`, whose own `.field-row
+   :deep(.segmented)` rule already outranks this one on specificity regardless
+   of the guard - so this change reaches exactly one control, and reconciling
+   it with `BuilderView.vue`'s own `.workspace-switch` overrides (28px halves,
+   192px width, no movement across gallery/unpublished/published - D-15-14) is
+   `BuilderView.vue`'s half of the same commit. This regenerates all sixteen
+   builder full-page baselines, which is the trade the old comment was
+   guarding against and round 2 is already paying elsewhere.
    --------------------------------------------------------------------------- */
-:where(.studio-shell:not(.is-builder)) .segmented {
+:where(.studio-shell) .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
   padding: 3px;
@@ -714,7 +730,7 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-inset-well);
 }
-:where(.studio-shell:not(.is-builder)) .segmented button {
+:where(.studio-shell) .segmented button {
   display: inline-flex;
   min-height: 34px;
   align-items: center;
@@ -727,13 +743,13 @@ a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
   cursor: pointer;
   transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
 }
-:where(.studio-shell:not(.is-builder)) .segmented button:hover:not(:disabled) { color: var(--text-body); }
-:where(.studio-shell:not(.is-builder)) .segmented button[aria-pressed='true'] {
+:where(.studio-shell) .segmented button:hover:not(:disabled) { color: var(--text-body); }
+:where(.studio-shell) .segmented button[aria-pressed='true'] {
   color: var(--text-title);
   background: var(--surface-raised);
   box-shadow: var(--ring-pressed);
 }
-:where(.studio-shell:not(.is-builder)) .segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
+:where(.studio-shell) .segmented button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @media (max-width: 1180px) {
   .studio-main { grid-template-columns: var(--chat-width) minmax(0, 1fr); }

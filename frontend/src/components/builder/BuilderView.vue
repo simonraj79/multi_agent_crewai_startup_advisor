@@ -2500,19 +2500,39 @@ watch(
 .graph-workspace > .test-panel { grid-row: 6; }
 
 /* `display: grid` STATED HERE, and it is not a flourish (RV4 follow-up 6).
-   `studio.css`'s `.segmented` base is scoped `:where(.studio-shell:not(.is-builder))`,
-   so this control inherited no `display` at all and the `grid-template-columns`
-   below reached nothing: the two halves were inline-blocks on a BASELINE, which
-   is why they could sit 15px out of vertical alignment with each other. A grid
-   row stretches both halves to one height by construction, which is the same
-   thing the console's own switch has always done. */
+   `studio.css`'s `.segmented` base used to be scoped
+   `:where(.studio-shell:not(.is-builder))`, so this control inherited no
+   `display` at all and the `grid-template-columns` below reached nothing: the
+   two halves were inline-blocks on a BASELINE, which is why they could sit
+   15px out of vertical alignment with each other. A grid row stretches both
+   halves to one height by construction, which is the same thing the console's
+   own switch has always done.
+
+   THE GUARD IS GONE NOW (2026-09-06, ROUND-2 X3, SHELL-SCOPE.md §6.5), and
+   `:where(.studio-shell) .segmented` reaches this control too - which is the
+   point: the pair had no visual pressed state at all, both halves painting
+   the browser's own button chrome (`docs/ux-shell/evidence/r2/final/X3`).
+   `grid-template-columns: auto auto` and `padding: 2px` still win over the
+   shared rule's `1fr 1fr` / `3px` on specificity (a plain scoped class beats
+   `:where()`, which contributes none), so the 192px auto-sized width and the
+   no-movement invariant (D-15-14) are untouched - only the ground, border,
+   radius and box-shadow the container never declared for itself are new, and
+   they are the shared rule's. */
 .workspace-switch { display: grid; grid-template-columns: auto auto; align-items: stretch; padding: 2px; }
 /* `height`, not `min-height` (RV4 follow-up 6). A minimum is a floor, and the
    stacked spare label below turned it into a variable: measured at 1440 on
    `ux/round-2`, the `Run` half was 96.7 x 41 against `Build`'s 67.8 x 28, so the
    segmented pair had two different heights and one of them overhung the 52px
    header. The control is one row of one line of text in both states, so its
-   height is a constant and is written as one. */
+   height is a constant and is written as one.
+
+   `min-height: 28px` ADDED HERE (ROUND-2 X3). The shared rule's own
+   `.segmented button` sets `min-height: 34px` for the console, and `height`
+   and `min-height` are different properties - the cascade does not have them
+   compete, so without a `min-height` of its own this rule's `height: 28px`
+   would still lose to the shared rule's floor and render at 34px, exactly
+   the console's height. Restating it here is what keeps the builder's 28px
+   halves 28px now that the shared rule reaches them. */
 /* `display: inline-flex` STATED HERE TOO (RV4 follow-up NEW 1). Clamping the
    height fixed the BOX and stopped there - the button itself inherited no
    `display` from the grid parent above, so a browser's own button default
@@ -2525,13 +2545,23 @@ watch(
    the same tokens, so the two switches are one shape - and `justify-content:
    center` matches it for the same reason. The stacked-label grid below is
    unchanged: the reservation is a `display: grid` question, this fix is a
-   `display: inline-flex` one, and they nest exactly as before. */
-.workspace-switch button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 28px; padding: 0 10px; font-size: var(--fs-12); }
-/* The Run switch while this workflow is unpublished (item 57). The console's
-   own `.segmented button:disabled` rule is scoped `:not(.is-builder)`, so the
-   builder gets none of it; this is that rule's pair, and it is the affordance
-   under the label - a control that reads `Publish to run` and still looks
-   pressable is a worse answer than either half alone. */
+   `display: inline-flex` one, and they nest exactly as before.
+
+   Everything the shared rule sets and this rule does not - `color:
+   var(--text-muted)`, `background: transparent`, `border-radius: var(--r-md)`
+   on the unpressed half, plus the hover and `[aria-pressed='true']` rules
+   below this block - now reaches the builder unopposed. That is the whole
+   fix: the pressed half gets `color: var(--text-title)`,
+   `background: var(--surface-raised)` and `box-shadow: var(--ring-pressed)`,
+   same computed values as the console, with nothing declared here to block
+   them. */
+.workspace-switch button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 28px; min-height: 28px; padding: 0 10px; font-size: var(--fs-12); }
+/* The Run switch while this workflow is unpublished (item 57). The shared
+   rule's own `.segmented button:disabled` now reaches the builder too
+   (opacity 0.5), but this rule's higher specificity still wins - deliberately
+   different at 0.55, kept because the label change to "Publish to run" is
+   already the affordance under the label; a control that reads that and
+   still looks pressable is a worse answer than either half alone. */
 .workspace-switch button:disabled { cursor: not-allowed; opacity: 0.55; }
 /* One grid cell, two labels, the wider one always paying for the width. See
    the comment on the markup: D-15-14 pins this control against moving. */

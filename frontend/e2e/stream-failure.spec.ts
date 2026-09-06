@@ -141,7 +141,7 @@ test.describe('a dropped socket loses nothing', () => {
       test.setTimeout(180_000)
       const watch = watchConsole(page)
 
-      await page.goto('/')
+      await page.goto('/#/run')
       await expect(page.locator('.vue-flow__node').first()).toBeVisible()
       await launchRun(page, 'A rota planner for community pharmacy locums')
 
@@ -225,7 +225,7 @@ test.describe('a dropped socket loses nothing', () => {
       test.setTimeout(180_000)
       const watch = watchConsole(page)
 
-      await page.goto('/')
+      await page.goto('/#/run')
       await expect(page.locator('.vue-flow__node').first()).toBeVisible()
       await launchRun(page, 'A shift swap board for hospital porters')
       await expect(gateCard(page).locator('h2')).toHaveText('Confirm scope', { timeout: 90_000 })

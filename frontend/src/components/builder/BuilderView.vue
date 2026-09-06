@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch, watchEffect } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
   CircleCheck,
-  CircleDot,
+  GitBranch,
   Info,
   KeyRound,
   PenTool,
@@ -15,6 +15,7 @@ import {
   Unplug,
   X,
 } from 'lucide-vue-next'
+import BrandLockup from '../BrandLockup.vue'
 import SignInPanel from '../SignInPanel.vue'
 import AccountChip from './AccountChip.vue'
 import BudgetMeter from './BudgetMeter.vue'
@@ -42,7 +43,9 @@ import { useBuilderPersistence } from '../../composables/useBuilderPersistence'
 import { BUILDER_PROBLEMS, useBuilderProblems } from '../../composables/useBuilderProblems'
 import { BUILDER_BUDGET, useBuilderValidation } from '../../composables/useBuilderValidation'
 import { useStudioTheme } from '../../composables/useStudioTheme'
-import { BLANK, documentFromTemplate } from '../../data/builderTemplates'
+import { pageTitle } from '../../data/brand'
+import { ALL_BUILDER_TEMPLATES, BLANK, documentFromTemplate } from '../../data/builderTemplates'
+import { loadModels } from '../../data/models'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
 import { ExportFileError, downloadExport, exportFilename, readExportFile } from '../../utils/builderExport'
 import { loadVocabulary, vocabulary, vocabularyProblem } from '../../data/builderVocabulary'
@@ -93,6 +96,15 @@ const props = withDefaults(
     /** From `#/build/:documentId`, or null for `#/build`. */
     documentId: DocumentId | null
     /**
+     * A template the home asked this view to open, by id, or null.
+     *
+     * Handed OVER the route change rather than through it (`App.vue` owns the
+     * ref and the reasoning). It is taken exactly once, on the mount that
+     * receives it, and `templateTaken` clears it - so a reload of `#/build`
+     * shows the gallery, which is what that address means.
+     */
+    templateId?: string | null
+    /**
      * The signed-in account, or null when there is none - exactly what
      * `StudioView` receives (plan 01 D9). Optional with a null default rather
      * than required, because every spec that mounted this view before identity
@@ -114,12 +126,23 @@ const props = withDefaults(
     signingIn?: boolean
     signInError?: string | null
   }>(),
-  { user: null, authenticated: false, authConfigured: false, signingIn: false, signInError: null },
+  {
+    templateId: null,
+    user: null,
+    authenticated: false,
+    authConfigured: false,
+    signingIn: false,
+    signInError: null,
+  },
 )
 
 const emit = defineEmits<{
+  /** The breadcrumb's first crumb: back to the list of every workflow. */
+  home: []
   /** Leave for the run console. */
   runWorkspace: []
+  /** The template named by `templateId` has been seeded; forget it. */
+  templateTaken: []
   /**
    * Start and end a session. Handled by `App.vue` and nowhere else: `endSession`
    * drops the cached bearer token BEFORE revoking the cookie, and a second
@@ -687,6 +710,33 @@ async function startBuilder(): Promise<void> {
   if (props.documentId) await openDocument(props.documentId)
 }
 
+/**
+ * Seed the template the home picked, if it picked one.
+ *
+ * `loadModels()` is AWAITED first, and that is the one thing this path has to
+ * get right that the gallery gets for free: four of the templates name their
+ * models by ROLE, `documentFromTemplate` resolves those against the served
+ * roster, and the gallery has already awaited the roster by the time an author
+ * can click a card there. Arriving from the home, nothing has - so seeding
+ * without the await would put `{{workhorse}}` in a model field and the first
+ * validate would answer `model-unknown` about a field the author never touched.
+ * It is the same single in-flight request every model picker shares.
+ *
+ * A `templateId` that names nothing is ignored rather than reported: the only
+ * way to produce one is to edit the address bar or to run a build where the
+ * home and the template module disagree, and the honest answer to both is the
+ * gallery, which is what the reader gets.
+ */
+async function seedTemplateFromRoute(): Promise<void> {
+  const id = props.templateId
+  if (!id || props.documentId) return
+  const template = ALL_BUILDER_TEMPLATES.find((entry) => entry.id === id)
+  emit('templateTaken')
+  if (!template) return
+  await loadModels()
+  startTemplate(template)
+}
+
 onMounted(async () => {
   // Before anything else, because three of the seven kinds have REQUIRED fields
   // whose legal values only the server knows. Every creation path is disabled
@@ -695,6 +745,16 @@ onMounted(async () => {
   // will reject.
   void loadVocabulary()
   await startBuilder()
+  await seedTemplateFromRoute()
+})
+
+/**
+ * The tab's name follows the route (U4): the workflow on the canvas, then the
+ * product. The gallery is a LIST rather than a workflow and takes the bare
+ * product name, exactly as the home does - there is no workflow open to name.
+ */
+watchEffect(() => {
+  document.title = pageTitle(started.value ? doc.value.name : null)
 })
 
 watch(signedOut, (out) => {
@@ -1704,15 +1764,69 @@ watch(
     }"
   >
     <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
-          <h1>Flow builder</h1>
-        </div>
-      </div>
+      <!--
+        The lockup is a LINK to the workflow list (row U2), and the `<h1>`
+        inside it is the view's own heading, handed to the default slot. The
+        `<template #default>` wrapper looks redundant and is not: it keeps the
+        heading's line at the indentation it has always had, so the worker who
+        owns that line's TEXT and the worker who owned this block could change
+        their own halves without landing on each other.
+
+        THE HEADING IS THE WORKFLOW, and the tool's old name was the last
+        surface still naming a TOOL rather than the thing on screen (U4). The
+        gallery has no workflow open, so it takes `Build` - the mode - which is
+        the one honest heading for a page that is a list of shapes to start
+        from.
+
+        `sr-only`, for the reason `StudioView` states at length: the breadcrumb
+        beside it is the visible name (U2), and one name in two places eighteen
+        inches apart is a stutter rather than a hierarchy. The heading stays in
+        the DOM so the page has one.
+      -->
+      <BrandLockup as="link">
+        <template #default>
+          <h1 class="sr-only">{{ started ? doc.name : 'Build' }}</h1>
+        </template>
+      </BrandLockup>
 
       <div class="header-context">
+        <!--
+          WHERE YOU ARE, IN TWO CRUMBS (U2), and the same element in the same
+          place as the run console's. `Workflows` is a real `<a href="#/">` so
+          the browser's own affordances work on it; the click is intercepted so
+          the SPA routes rather than reloading.
+
+          The gallery gets ONE crumb, and it is still a link. A breadcrumb of
+          one link reads oddly on paper and is the only way back to the home
+          from `#/build` until W3's lockup becomes one - and the gallery is not
+          the home: it lists templates and saved graphs for the builder, where
+          the home lists every workflow including the built-in one.
+        -->
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a
+            class="breadcrumb-crumb"
+            href="#/"
+            data-testid="breadcrumb-home"
+            @click.prevent="emit('home')"
+          >Workflows</a>
+          <template v-if="started">
+            <span class="breadcrumb-sep" aria-hidden="true">/</span>
+            <span class="breadcrumb-crumb is-current" aria-current="page">
+              <GitBranch :size="13" aria-hidden="true" />
+              <span class="breadcrumb-name">{{ doc.name }}</span>
+            </span>
+          </template>
+        </nav>
+
+        <!--
+          The mode switch for the workflow the breadcrumb names. It stays on the
+          gallery, where there is no open workflow to switch the mode OF, for a
+          measured reason rather than a design one: `e2e/builder-layout.spec.ts`
+          pins this control's left edge at `/#/build` as the thing a notice must
+          not displace, and hiding it there would retire that check to tidy up a
+          button. Whether the gallery should carry it is W3's kind of question,
+          not a route change's.
+        -->
         <div class="segmented workspace-switch" role="group" aria-label="Workspace">
           <button type="button" :aria-pressed="true">
             <PenTool :size="14" aria-hidden="true" /> Build
@@ -1797,7 +1911,7 @@ watch(
         @update:filter="canvas.filterQuery.value = $event"
       />
 
-      <section id="builder-canvas" class="graph-workspace" aria-label="Flow builder" tabindex="-1">
+      <section id="builder-canvas" class="graph-workspace" aria-label="Build workspace" tabindex="-1">
         <template v-if="started">
           <DocumentBar
             :name="doc.name"

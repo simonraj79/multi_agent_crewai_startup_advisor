@@ -187,10 +187,34 @@ h3 {
 .workflow-name,
 .live-status { display: flex; align-items: center; }
 .brand-lockup { gap: var(--space-4); }
-.brand-mark { display: grid; width: 32px; height: 32px; place-items: center; color: var(--accent-cyan); background: var(--brand-wash); border: 1px solid var(--brand-rim); border-radius: var(--r-lg); }
-.brand-lockup > div:last-child { display: flex; align-items: baseline; gap: var(--space-3); }
-.brand-lockup span { color: var(--accent-mint); font: var(--type-kicker); }
+.brand-mark { display: grid; width: 32px; height: 32px; place-items: center; color: var(--on-accent-cyan); background: var(--brand-wash); border: 1px solid var(--brand-rim); border-radius: var(--r-lg); }
+/* Named rather than `> div:last-child`: the lockup is a LINK on both canvases
+   now, and a positional selector inside an anchor whose contents a slot fills
+   is a rule that stops matching the day somebody adds an element after it. */
+.brand-lockup .brand-words { display: flex; align-items: baseline; gap: var(--space-3); }
+/* THE WORDMARK. The kicker slot the literal `M2` used to sit in, which is the
+   right weight for it on a canvas: the page is a workflow, and the workflow's
+   name is the `<h1>` beside this. Uppercase with the house tracking because
+   that is what `--type-kicker` is for - it is a mono label, not a title.
+
+   `nowrap` and `flex: none` because `M2` was two characters and this is
+   eleven: at 390 the console's header put CREW over STUDIO and pushed the
+   workflow's name into a two-line box, which was found by looking at a 390
+   capture rather than by any test. The `<h1>` beside it already ellipsises at
+   that width, so the space this refuses to give up is space that surrenders
+   gracefully next door. */
+.brand-lockup .brand-wordmark { flex: none; color: var(--on-accent-mint); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; white-space: nowrap; }
 .brand-lockup h1 { margin: 0; font: var(--type-display); }
+
+/* THE LOCKUP IS THE WAY HOME (row U2), so it is an anchor and has to look like
+   one without looking like a link in a sentence: no underline, the heading's
+   own ink, and the mark's rim taking the full accent on hover. The rim is the
+   hover cue rather than a second wash because `--brand-wash` has no lighter
+   sibling and inventing one would be a token this row does not need. The
+   focus ring is the global `:focus-visible` above; the radius here is what
+   makes it hug the lockup rather than a rectangle around it. */
+a.brand-lockup { border-radius: var(--r-lg); color: inherit; text-decoration: none; }
+a.brand-lockup:hover .brand-mark { border-color: var(--on-accent-cyan); }
 /* 14px, and it stays 14px. `.header-context` is the builder's header too and
    sixteen full-page baselines have it at this width; SHELL-SCOPE.md §2a
    records it as frozen rather than as a house value. */
@@ -203,18 +227,20 @@ h3 {
 .live-status.is-reconnecting,
 .live-status.is-connecting { color: var(--warn-text-strong); }
 
-/* THE BRAND MARK, READABLE - in the run console only, and the guard is a
-   baseline rather than a preference.
+/* THE BRAND MARK, READABLE - on BOTH canvases now, and the guard that used to
+   scope it to the run console is gone.
 
    `--on-accent-*` is the same colour with enough ink to be read on paper: the
    shared pastels measure 1.02-1.17:1 against the light header, and this pair
-   is the first thing anyone reads. `.brand-mark` and the `M2` span are the
-   BUILDER's header as well, and its sixteen baselines include eight light
-   ones, so the swap is scoped here and SHELL-SCOPE.md §6.5 is the commit that
-   drops the guard. In the dark theme `--on-accent-*` IS the accent, so this
-   rule changes nothing there at all. */
-.studio-shell:not(.is-builder) .brand-mark { color: var(--on-accent-cyan); }
-.studio-shell:not(.is-builder) .brand-lockup span { color: var(--on-accent-mint); }
+   is the first thing anyone reads. The guard existed for one reason and said
+   so - the builder's sixteen full-page baselines include eight light ones, and
+   a colour change there is sixteen red tests - and DEFINITION-OF-DONE.md D4
+   retires it: both baseline sets move in this build anyway, because the header
+   is inside every one of their frames, and RV1 regenerates them once on the
+   integrated branch. Two headers that were the same element in two colours are
+   now one. In the dark theme `--on-accent-*` IS the accent, so nothing moves
+   there at all; the swap itself lives on `.brand-mark` and `.brand-wordmark`
+   above. */
 
 .studio-main {
   position: relative;
@@ -351,13 +377,68 @@ h3 {
 .canvas-meta code { padding: var(--space-1) var(--space-2); color: var(--text-meta); font: var(--type-meta); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); }
 
 .validator-flow { width: 100%; height: 100%; }
-.vue-flow__pane { cursor: grab; }
-.vue-flow__pane:active { cursor: grabbing; }
+
+/* THE PANE CURSOR IS THE TOOL, on both canvases (U3).
+
+   It was an unconditional `.vue-flow__pane { cursor: grab }`, written when the
+   console was the only canvas this sheet reached and a left-drag there always
+   panned. With a Select / Hand toggle that rule became a lie in half the
+   states: Select on the console leaves the pane doing nothing at all with a
+   left button, and a hand cursor over a surface that will not move is worse
+   than no affordance.
+
+   `is-hand-tool` / `is-select-tool` come from `useCanvasTool.canvasClass` and
+   sit on the flow root of each canvas. The class follows the EFFECTIVE tool,
+   so holding space turns the cursor to `grab` for as long as it is down - the
+   pointer tells the truth even while the toggle, correctly, does not move.
+
+   `:not(.selection)` on the Select rule is the builder's marquee being left
+   alone: Vue Flow puts `.selection` on the pane itself when a left-drag will
+   band-select and its own theme sets `cursor: pointer` there. Overriding that
+   would be changing a gesture nobody asked about. On the console the class is
+   never present, so `default` is what a pane that does nothing gets. */
+.is-hand-tool .vue-flow__pane { cursor: grab; }
+.is-hand-tool .vue-flow__pane:active { cursor: grabbing; }
+.is-select-tool .vue-flow__pane:not(.selection) { cursor: default; }
 .vue-flow__node { cursor: default; }
 .vue-flow__controls { overflow: hidden; background: var(--controls-bg); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: var(--shadow-controls); }
 .vue-flow__controls-button { width: 34px; height: 34px; color: var(--text-body); background: transparent; border-color: var(--border-default); }
 .vue-flow__controls-button:hover { background: var(--surface-raised); }
 .vue-flow__controls-button svg { fill: currentColor; }
+
+/* THE ACTIVE TOOL, VISIBLE WITHOUT HOVERING - which is U3 in so many words.
+
+   Three signals rather than one, because each fails on its own somewhere:
+   the ink alone is a colour difference a colour-blind reader may not resolve,
+   the ground alone is a 1px-ish tint that `:hover` also produces, and the ring
+   alone is invisible against the cluster's own border at this size. Together
+   the pressed button reads as pressed in a still screenshot, which is the test
+   the row actually applies.
+
+   The exact construction is `.segmented button[aria-pressed='true']`'s, one
+   sheet down: `--text-title` there, `--on-accent-cyan` here, because these
+   buttons carry an icon and no word and the accent is what separates
+   "current" from "hovered" when there is no label to bolden.
+
+   The pressed ground is deliberately the SAME token `:hover` uses, so hovering
+   the tool you are already in changes nothing. A distinct hover ground was
+   tried and dropped: `--surface-well` and `--surface-raised` resolve to the
+   identical value in the light palette, so the rule would have been a no-op on
+   paper and a darkening on screen - one more state that means two things. */
+.vue-flow__controls-button[aria-pressed='true'] {
+  color: var(--on-accent-cyan);
+  background: var(--surface-raised);
+  box-shadow: var(--ring-pressed);
+}
+
+/* Lucide draws in STROKE and declares `fill="none"`, which the rule four lines
+   up overrides for every icon in this cluster. On `Plus`, `Minus` and
+   `Maximize` that is harmless - they are open paths with nothing to flood - but
+   `MousePointer2` and `Hand` are closed outlines and would land as two solid
+   blobs. Scoped to the tool pair rather than fixing the rule above, because
+   that rule is what the stock Vue Flow icons still need wherever a consumer of
+   this sheet has not replaced them. */
+.canvas-tool-button svg { fill: none; }
 
 .control-rail {
   position: relative;
@@ -768,16 +849,9 @@ h3 {
   background: var(--bg-app);
 }
 
-.auth-splash-mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  color: var(--on-accent-cyan);
-  background: var(--brand-wash);
-  border: 1px solid var(--brand-rim);
-  border-radius: var(--r-lg);
-}
+/* `.auth-splash-mark` stood here: a third copy of `.brand-mark`, at 40px. The
+   splash renders the static `BrandLockup` now, so it inherits the one tile the
+   other three surfaces use and there is nothing left to keep in step. */
 
 .auth-splash p { margin: 0; }
 
@@ -1085,14 +1159,18 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The bar is 52px and the title wrapped out of it. Ellipsis rather than a
-     smaller step: the shell has six type steps and this is not the place to
-     invent a seventh. */
-  .studio-shell:not(.is-builder) .brand-lockup h1 {
-    overflow: hidden;
-    max-width: 42vw;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  /* THE WORDMARK STANDS DOWN ON A PHONE, and both canvases, not one.
+
+     Measured at 390 with the wordmark in: the console's header read
+     `[mark] CREW STUDIO Validator Studio((*)) Ready [sign out]` with the
+     workflow's name touching the status icon - no gap at all, because eleven
+     characters of kicker ate the whole of the row's slack. The header at this
+     width has to carry a brand, a workflow, a status and an account; the mark
+     is the brand there, and the name is on the sign-in wall, on the splash and
+     in the tab title, none of which is short of room. The wall's own lockup is
+     unaffected: its product name is an `<h1>`, not this. */
+  .brand-lockup .brand-wordmark {
+    display: none;
   }
 
   /* THE DRAWER IS ITS OWN SCROLLER, and at 390 it had to become one.
@@ -1149,11 +1227,290 @@ h3 {
      too would have the compositor filtering the same pixels twice. Plan 11
      bounds live animation for the same reason. */
 
-  /* The graph's name is the next thing to go, after the account name at 860
-     and the workspace switch at 860. It wrapped to two lines inside a 52px
-     bar, and it is the one item in the header that is stated again three
-     inches below it, in the rail's own WORKFLOW well. The connection status
-     stays, because nothing else on a phone says whether this console is
-     talking to anything. */
-  .studio-shell:not(.is-builder) .workflow-name { display: none; }
+  /* THE WORKFLOW'S NAME SURVIVES A PHONE, and it truncates rather than going
+     away (U2's ruling, 2026-09-06).
+
+     It used to be a `.workflow-name` span that this block hid outright, on the
+     measurement that it wrapped to two lines inside a 52px bar and was stated
+     again three inches below in the rail's own WORKFLOW well. Two things have
+     changed since. The rail's well belongs to the CONSOLE, so on the builder
+     the name was stated nowhere at all; and the lockup's `<h1>` - which carried
+     it here until this commit - is `sr-only` now, so hiding the crumb as well
+     left the name on screen in no place on either canvas.
+
+     `42vw` and the ellipsis triple are W3's numbers, lifted verbatim from the
+     `.brand-lockup h1` rule that stood in this block and is deleted in the same
+     commit: it sized the element that used to carry this text, at this width,
+     for this reason, and re-deriving a width for the element that carries it
+     now would be inventing a second answer to a question already measured.
+
+     The separator goes with the crumb it separates only when the crumb does,
+     which is never now - it stays, because `Workflows / <name>` with no slash
+     is two labels rather than a trail. */
+  .breadcrumb .breadcrumb-name {
+    max-width: 42vw;
+  }
 }
+
+/* ---------------------------------------------------------------------------
+   THE BREADCRUMB, on both canvases (docs/ux-shell/DEFINITION-OF-DONE.md U2).
+
+   Two crumbs: the list, then the workflow. It replaces the run console's
+   `.workflow-name` span, which said the same name and never said that it was
+   one of a list or how to get back to one - the console had no way back to
+   anything, because before the home existed there was nothing to go back TO.
+
+   The first crumb is an `<a href="#/">` with its click intercepted rather than
+   a `<button>`, so the browser's own affordances work on it: a real target in
+   the status bar, middle-click for a new tab, copy-link-address. The router
+   still owns navigation - `@click.prevent` - but a link that cannot be copied
+   is a link pretending to be one.
+   --------------------------------------------------------------------------- */
+.breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-5);
+  border-right: 1px solid var(--border-default);
+  font: var(--type-label);
+}
+
+.breadcrumb-crumb {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--r-sm);
+  color: var(--link-strong);
+  text-decoration: none;
+}
+
+a.breadcrumb-crumb:hover { text-decoration: underline; }
+
+/* The page you are on is not a link and does not pretend to be one. It also
+   TRUNCATES rather than wrapping: the header is 52px, and a two-line crumb
+   inside it pushes the account chip off its own baseline - the same failure the
+   account name at 860px was measured for.
+
+   IT CARRIES THE WEIGHT THE `<h1>` USED TO (U2's ruling, 2026-09-06). The
+   workflow's name was on screen twice - in the lockup's heading slot and here -
+   so the heading became `sr-only` and this crumb became the page's visible
+   name. `--type-title` is one role up from the `--type-label` the trail is set
+   in, which is what makes the pair read as a hierarchy rather than as two
+   equal words either side of a slash; `--text-title` is the same step in ink.
+   No new step: `--type-title` is the role every panel header already uses, and
+   design.md §2 refuses a seventh. */
+.breadcrumb-crumb.is-current {
+  color: var(--text-title);
+  font: var(--type-title);
+}
+
+/* THE ELLIPSIS LIVES ON A SPAN, and that is a measurement rather than a
+   preference: `.breadcrumb-crumb` is `inline-flex` so it can hold an icon
+   beside the text, and `text-overflow` does nothing on a flex container - the
+   property applies to a block container's inline content, and a flex item is
+   neither. Written on the crumb itself, a long name at 390 clipped hard at the
+   `max-width` with no ellipsis at all: the text simply stopped
+   (`scrollWidth > clientWidth`, no "…"), which reads as a rendering fault
+   rather than as a name that continues. Found by looking at one, not by a
+   test - and now the E2E asserts on the character. */
+.breadcrumb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* THE LOCKUP'S OWN LINE - one rule in W3's territory, created by this change
+   and named in the report.
+
+   `.brand-words` is `align-items: baseline`, which is right for a kicker
+   beside a heading and means nothing once the heading is `sr-only` and
+   absolutely positioned: the div is left holding one 11px line box,
+   baseline-aligned against nothing, and the wordmark sat high against a 32px
+   mark. Centring is what a single line beside a tile wants.
+
+   Unconditional rather than `:has(> h1.sr-only)`, and the reason is that
+   `.brand-words` exists ONLY in the lockup's `link` form - the `static` form
+   puts its `<h1>` straight beside the mark with no wrapper - and both of the
+   `link` form's two callers now hand it an `sr-only` heading. A `:has()` here
+   would be a condition that is always true, bought at the price of a selector
+   older Safari drops on the floor. */
+.brand-lockup .brand-words {
+  align-items: center;
+}
+
+.breadcrumb-sep { color: var(--text-meta); }
+
+/* ---------------------------------------------------------------------------
+   THE HOME - `views/HomeView.vue`, U1.
+
+   A page rather than a console: one scrolling column, no rails, no canvas.
+   `.studio-shell` is `height: 100dvh; overflow: hidden`, which is right for a
+   three-pane console and wrong for a list, so the shell becomes a two-row grid
+   here and the scrolling happens INSIDE `.home-main`. Making the shell itself
+   scroll would take the header out of view on the way down, and the header is
+   where the account and the sign-out live.
+   --------------------------------------------------------------------------- */
+.studio-shell.is-home {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.home-main {
+  min-height: 0;
+  overflow: auto;
+}
+
+.home-page {
+  display: grid;
+  width: min(1080px, 100%);
+  gap: var(--space-8);
+  align-content: start;
+  padding: var(--space-8) var(--space-6);
+  margin: 0 auto;
+}
+
+.home-resuming,
+.home-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  margin: 0;
+  color: var(--text-muted);
+  font: var(--type-label);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+}
+
+.home-empty.is-problem { color: var(--err-text); border-color: var(--err-border-strong); }
+
+.home-section { min-width: 0; }
+
+.home-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.home-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+.home-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
+
+/* The finished run, above everything. It is the one card on this page about a
+   thing that already happened, so it is a strip rather than a tile - a tile
+   would put it in a grid beside things you can start, which is a different
+   verb. */
+.home-last-run {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+}
+
+.home-last-run h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+
+/* `auto-fill` over a 232px floor, the same track the builder gallery uses, so
+   the two screens line their cards up at every width instead of each finding
+   its own column count. At 390px it resolves to one column with no breakpoint
+   of its own. */
+.home-grid {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* A COLUMN with the meta row pushed to the bottom edge, for the reason the
+   template card records: the grid row is as tall as its tallest card, and cards
+   packed to the start end their content well above their own bottom edge and
+   read as unfinished beside a full one. */
+.home-card {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  color: var(--text-body);
+  text-align: left;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+  cursor: pointer;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.home-card:hover { background: var(--surface-raised); border-color: var(--border-hover); }
+
+.home-card-spine {
+  padding: var(--space-2) 0;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+}
+
+/* The slot is held at the drawn height while a document picture is still being
+   fetched, so nothing under the reader's pointer moves when it lands. */
+.home-card-spine.is-empty { min-height: 60px; }
+
+.home-card-name {
+  overflow: hidden;
+  color: var(--text-title);
+  font: var(--type-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-card-blurb { color: var(--text-muted); font: var(--type-body); }
+
+.home-card-problem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--warn-text-strong);
+  font: var(--type-meta);
+}
+
+.home-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+
+.home-card-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-meta);
+  font: var(--type-meta);
+}
+
+/* One pill, four meanings, and the colour is the only thing that differs -
+   `published` is a live thing, `draft` and `template` are not, and `run only`
+   says this workflow has no Build mode to switch to. */
+.home-pill {
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-meta);
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
+  text-transform: uppercase;
+  background: var(--surface-well);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-pill);
+}
+
+.home-pill.is-published { color: var(--on-accent-mint); }
+.home-pill.is-run-only { color: var(--on-accent-cyan); }

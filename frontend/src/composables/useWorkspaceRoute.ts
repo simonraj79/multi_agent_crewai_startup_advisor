@@ -3,7 +3,7 @@ import { DOCUMENT_ID_PATTERN } from '../types/builder'
 import type { DocumentId } from '../types/builder'
 
 /**
- * Which of the two workspaces the window is showing, read from and written to
+ * Which workspace the window is showing, read from and written to
  * `location.hash`.
  *
  * Sixty lines instead of `vue-router`, and the reason is deployment rather than
@@ -18,15 +18,32 @@ import type { DocumentId } from '../types/builder'
  * colleague and the URL a refresh returns to, so the document id has to survive
  * a round trip through the address bar unchanged - which is what
  * `workspaceRoute`/`routeHash` are tested on.
+ *
+ * THREE ROUTES SINCE 2026-09-06, NOT TWO (`docs/ux-shell/DEFINITION-OF-DONE.md`
+ * D2, which amends `docs/flow-builder-spec.md` §1.3). `#/` was the run console;
+ * it is now the HOME, a list of every workflow this account can open, and the
+ * console moved to `#/run`. The two builder hashes are untouched, which is the
+ * whole of the deep-link promise: a link an author sent last week still opens
+ * the graph it named. What moved is the one hash nobody bookmarks, and the cost
+ * of moving it is paid by `homeResumesConsole` below rather than by the
+ * reader - a run still in flight puts you back on the console with no click.
  */
 export type WorkspaceRoute =
+  | { name: 'home' }
   | { name: 'studio' }
   | { name: 'builder'; documentId: DocumentId | null }
 
+const HOME: WorkspaceRoute = { name: 'home' }
 const STUDIO: WorkspaceRoute = { name: 'studio' }
 
 /**
- * The route a hash names, with anything unrecognised falling to the studio.
+ * The route a hash names, with anything unrecognised falling to the home.
+ *
+ * The fallback moved with the root, and deliberately: an unknown hash is not an
+ * error state to render, it is a URL that means nothing, and the app's answer
+ * instead of a 404 page should be the screen that lists everything the reader
+ * could have meant. That used to be the console, which listed one workflow and
+ * ran it.
  *
  * A malformed document id lands on the EMPTY builder rather than on a builder
  * claiming to hold it. `DOCUMENT_ID_PATTERN` is the server's own
@@ -42,7 +59,9 @@ const STUDIO: WorkspaceRoute = { name: 'studio' }
 export function workspaceRoute(hash: string): WorkspaceRoute {
   const path = hash.replace(/^#/, '')
   const segments = path.split('/').filter((segment) => segment.length > 0)
-  if (segments[0] !== 'build') return STUDIO
+  if (segments.length === 0) return HOME
+  if (segments[0] === 'run') return STUDIO
+  if (segments[0] !== 'build') return HOME
   const id = segments[1]
   if (id === undefined || !DOCUMENT_ID_PATTERN.test(id)) return { name: 'builder', documentId: null }
   return { name: 'builder', documentId: id as DocumentId }
@@ -50,8 +69,43 @@ export function workspaceRoute(hash: string): WorkspaceRoute {
 
 /** The hash a route is written as. The exact inverse of `workspaceRoute`. */
 export function routeHash(route: WorkspaceRoute): string {
-  if (route.name === 'studio') return '#/'
+  if (route.name === 'home') return '#/'
+  if (route.name === 'studio') return '#/run'
   return route.documentId === null ? '#/build' : `#/build/${route.documentId}`
+}
+
+/**
+ * What the home knows about the run the console left behind.
+ *
+ * `terminal` is completed, failed or cancelled: nothing more will stream for
+ * it. `live` is anything else INCLUDING "the server would not say" - a pointer
+ * whose status could not be read is treated as a run still going, because the
+ * cost of being wrong in that direction is one extra click back to the home,
+ * and the cost of being wrong in the other is an operator who cannot find the
+ * gate that is waiting for them.
+ */
+export type RunPointerState = 'none' | 'live' | 'terminal'
+
+/**
+ * Whether `#/` should hand straight over to the console (D2).
+ *
+ * Pure, and it takes the two facts rather than reading them, because the
+ * reading is three different things - `localStorage`, `sessionStorage`, and
+ * possibly one `GET /api/runs/{id}` - and none of them is a decision. This is
+ * the decision, and it is the one part worth a test that cannot be flaky.
+ *
+ * The rule it enforces is that MOVING THE CONSOLE OFF `#/` MUST NOT PUT
+ * RECOVERY ONE CLICK FURTHER AWAY. Refresh recovery is what a person does when
+ * a page has gone wrong; a run waiting at a gate, or a graph the builder has
+ * just handed over, is exactly the state in which somebody reloads. A terminal
+ * pointer is different in kind: it is history, and the home says so with a card
+ * rather than by taking the wheel.
+ */
+export function homeResumesConsole(facts: {
+  readonly handoff: boolean
+  readonly pointer: RunPointerState
+}): boolean {
+  return facts.handoff || facts.pointer === 'live'
 }
 
 /**
@@ -81,13 +135,16 @@ export function useWorkspaceRoute() {
   /**
    * `replace` rewrites the current history entry instead of pushing a new one.
    *
-   * There is exactly one caller and it is the reason the option exists: the
-   * first save of a new draft, where the server hands back an id and the
-   * address has to start naming it. Pushing there would put `#/build` (the
-   * gallery) and `#/build/<id>` (the same document, now stored) next to each
-   * other on the stack, so Back would land the author on a gallery they never
-   * visited from a graph they are still editing. Replacing keeps Back meaning
-   * "the page before I started building".
+   * Two callers now, and both are cases where a pushed entry would put a Back
+   * button on a screen the person never chose. The first is the first save of a
+   * new draft, where the server hands back an id and the address has to start
+   * naming it: pushing there would put `#/build` (the gallery) and
+   * `#/build/<id>` (the same document, now stored) next to each other on the
+   * stack, so Back would land the author on a gallery they never visited from a
+   * graph they are still editing. The second is the home's hand-over to the
+   * console for a run still in flight (D2) - Back from there has to reach
+   * whatever was before the reload, not bounce off a home that would only
+   * redirect again.
    *
    * `replaceState` does not fire `hashchange`, which is exactly right here -
    * `route.value` was already assigned above, and re-parsing the same hash

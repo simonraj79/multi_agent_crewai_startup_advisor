@@ -437,7 +437,7 @@ test.describe('Per-user isolation', () => {
         },
         { key: storageKeyFor(BOB, 'builder-run-handoff'), workflowId: aliceDocumentId, name: ALICE_GRAPH_NAME },
       )
-      await page.goto('/#/')
+      await page.goto('/#/run')
       await page.reload()
 
       await expect(page.locator('.handoff-banner')).toContainText(ALICE_GRAPH_NAME)
@@ -526,7 +526,7 @@ test.describe('Per-user isolation', () => {
        */
 
       // ---- Alice leaves residue: a draft, a handoff, and a run at a gate ----
-      await page.goto('/#/')
+      await page.goto('/#/run')
       await expect(consoleChip(page)).toContainText(ALICE)
       await expect(page.locator('.live-status')).not.toHaveText(/connecting/i)
       const review = page.getByRole('button', { name: 'Review', exact: true })

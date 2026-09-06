@@ -99,7 +99,12 @@ async function readSequence(page: Page): Promise<number> {
 }
 
 async function openStudio(page: Page): Promise<void> {
-  await page.goto('/')
+  // `/#/run`, not `/`. The console moved there on 2026-09-06 and `#/` is the
+  // home now (`docs/ux-shell/DEFINITION-OF-DONE.md` D2). Every spec in this
+  // suite that opened the console at the root was re-pointed the same way; the
+  // recovery test below still goes to `#/run` and still restores from the same
+  // stored pointer, which is the half of D2 that had to keep working.
+  await page.goto('/#/run')
   await expect(page.locator('.vue-flow__node').first()).toBeVisible()
 }
 
@@ -144,8 +149,19 @@ test.describe('Validator Studio', () => {
     const watch = watchConsole(page)
     await openStudio(page)
 
-    await expect(page).toHaveTitle('M2 Validator Studio')
-    await expect(page.getByRole('heading', { name: 'Validator Studio', level: 1 })).toBeVisible()
+    /*
+     * RE-POINTED 2026-09-06 (U4 and U5). The tab is named after the workflow on
+     * a canvas, then the product - `pageTitle()` in `data/brand.ts` owns the
+     * separator and `PRODUCT_NAME` is spelled there and nowhere else. The `h1`
+     * is the WORKFLOW rather than the product: the lockup beside it carries the
+     * product name in its kicker, so a product name in the heading would have
+     * named the product twice and the thing on screen never.
+     */
+    await expect(page).toHaveTitle('Idea Validator · Crew Studio')
+    // `toHaveText`, not `toBeVisible`: the heading is `sr-only` (U2's ruling).
+    // It is the page's heading for anyone reading by structure, and the
+    // breadcrumb beside it is the visible name.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Idea Validator')
 
     // The graph is fixed by contract: `service/graph.py` derives it from the
     // CrewAI Flow topology and the frontend renders exactly what it is served.

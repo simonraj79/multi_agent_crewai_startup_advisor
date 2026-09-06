@@ -172,7 +172,7 @@ test.describe('plan 11 capture set', () => {
 
         // --- empty: a graph the server refused ---------------------------
         await stubGraph(page, null)
-        await page.goto('/')
+        await page.goto('/#/run')
         await forgetRun(page)
         await page.reload()
         await expect(page.locator('.status-panel')).toBeVisible()
@@ -182,7 +182,7 @@ test.describe('plan 11 capture set', () => {
 
         // --- one node ------------------------------------------------------
         await stubGraph(page, graphOf(1))
-        await page.goto('/')
+        await page.goto('/#/run')
         await page.reload()
         await expect(page.locator('.workflow-node')).toHaveCount(1)
         await page.waitForTimeout(400)
@@ -191,7 +191,7 @@ test.describe('plan 11 capture set', () => {
 
         // --- the largest admissible graph ----------------------------------
         await stubGraph(page, graphOf(MAX_FLOW_NODES, ATTACHMENTS))
-        await page.goto('/')
+        await page.goto('/#/run')
         await page.reload()
         await expect(page.locator('.workflow-node')).toHaveCount(MAX_FLOW_NODES + ATTACHMENTS)
         await page.waitForTimeout(600)
@@ -199,7 +199,7 @@ test.describe('plan 11 capture set', () => {
         await page.unrouteAll({ behavior: 'ignoreErrors' })
 
         // --- running: a real launch, mid fan-out ---------------------------
-        await page.goto('/')
+        await page.goto('/#/run')
         await page.reload()
         await expect(page.locator('.workflow-node')).toHaveCount(14)
         await launchRun(page, 'A rota assistant for community pharmacies')

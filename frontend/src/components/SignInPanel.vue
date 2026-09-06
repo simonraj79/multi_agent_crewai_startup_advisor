@@ -9,7 +9,8 @@
  * Naming the app, the provider and what is stored is the cheapest way to earn
  * the click honestly.
  */
-import { CircleDot, LoaderCircle, ShieldCheck } from 'lucide-vue-next'
+import { LoaderCircle, ShieldCheck } from 'lucide-vue-next'
+import BrandLockup from './BrandLockup.vue'
 
 defineProps<{
   signingIn: boolean
@@ -22,15 +23,12 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
 <template>
   <div class="signin-shell">
     <main class="signin-card">
-      <div class="signin-brand">
-        <div class="brand-mark" aria-hidden="true">
-          <CircleDot :size="20" :stroke-width="1.8" />
-        </div>
-        <div>
-          <span>M2</span>
-          <h1>Validator Studio</h1>
-        </div>
-      </div>
+      <!--
+        The STATIC form of the lockup: there is no workflow to be inside and
+        nowhere to navigate back to, so the product's name is this page's own
+        heading rather than a label beside somebody else's.
+      -->
+      <BrandLockup as="static" />
 
       <p class="signin-lede">
         A six-agent crew that scores a startup idea against real market,
@@ -85,7 +83,7 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
   min-height: 100vh;
   padding: 24px;
   background:
-    radial-gradient(60% 50% at 50% 0%, rgba(153, 234, 249, 0.09), transparent 70%),
+    radial-gradient(60% 50% at 50% 0%, var(--brand-wash), transparent 70%),
     var(--bg-app);
 }
 
@@ -100,24 +98,11 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
   border-radius: var(--r-2xl);
 }
 
-.signin-brand { display: flex; align-items: center; gap: 12px; }
-.signin-brand span { color: var(--accent-mint); font: 700 var(--fs-11)/1 var(--font-mono); }
-.signin-brand h1 {
-  margin: 2px 0 0;
-  color: var(--text-title);
-  font: 600 var(--fs-18)/1.2 var(--font-display);
-}
-
-.brand-mark {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: var(--accent-cyan);
-  background: rgba(153, 234, 249, 0.08);
-  border: 1px solid rgba(153, 234, 249, 0.28);
-  border-radius: var(--r-lg);
-}
+/* The `.signin-brand` and `.brand-mark` rules that stood here were a second,
+   scoped copy of `studio.css`'s `.brand-lockup` block, three colour literals
+   and all. `BrandLockup` renders the same class names and `studio.css` is
+   global, so the copy is gone rather than re-tokenised: one lockup, styled in
+   one place, on all four surfaces. */
 
 .signin-lede {
   margin: 0;
@@ -141,9 +126,12 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
   transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 
+/* The border alone carries the hover now. The `rgba(255,255,255,.09)` wash
+   that stood beside it was not a token and could not become one, and in the
+   light theme it was a white wash on a near-white card: a hover state that
+   did nothing on half the deployments it shipped to. */
 .google-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: var(--accent-cyan);
+  border-color: var(--on-accent-cyan);
 }
 
 .google-button:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }

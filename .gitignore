@@ -81,16 +81,17 @@ db/
 # uv.lock is also committed - 07-deployment.md requires it at the repo root,
 # because Render auto-detects it to pin the build.
 
-# The global *.png rule above is for run artifacts (plot output, screenshots).
-# Frontend source assets are real code and must survive a fresh clone.
-# The one file this currently rescues is hero.png, which
-# frontend/src/components/HelloWorld.vue imports - and this comment used to say
-# "at build time", which is not true: HelloWorld.vue has no importers anywhere
-# (`grep -rn HelloWorld frontend/src` is empty), so it never enters Vite's
-# module graph and hero.png is never emitted into a bundle. The exception is
-# kept anyway, because remaining-work item 7 is an open keep-or-delete decision
-# about that whole dead cluster and an ignore rule must not decide it silently.
-!frontend/src/assets/**/*.png
+# The exception that stood here rescued exactly one file from the global *.png
+# rule: frontend/src/assets/hero.png, imported by frontend/src/components/
+# HelloWorld.vue, which nothing imported. Its own comment said the rule was
+# kept because CLAUDE.md remaining-work item 7 was an open keep-or-delete
+# decision and an ignore rule must not decide it silently. The decision is
+# taken - the cluster is deleted with the brand work that replaces the last
+# thing it was kept for - so the exception goes with the file it rescued
+# rather than sitting here rescuing nothing.
+#
+# There is no frontend source PNG left. Add this back, with the file's name in
+# a comment, the day there is one.
 
 # VISUAL BASELINES, which are the opposite of a run artifact.
 #

@@ -6,11 +6,24 @@
     <!-- public/favicon.svg has existed since the first commit and was
          referenced by nothing, so every page load asked for /favicon.ico and
          got a 404. That 404 is why e2e/studio.spec.ts carries an
-         ALLOWED_CONSOLE_ERROR exemption at all. -->
+         ALLOWED_CONSOLE_ERROR exemption at all. It carried Vite's stock purple
+         bolt until 2026-09-06; it is this product's own mark now. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- #1a1a1a is the VALUE of `--bg-app` in src/assets/styles/tokens.css,
+         the ground the whole app is painted on. This file is parsed before any
+         stylesheet and cannot read a custom property, so the value is written
+         out; `tests/brand.spec.ts` parses the token sheet and asserts the two
+         still agree, which is what stops this becoming the untracked literal
+         it looks like. -->
     <meta name="theme-color" content="#1a1a1a" />
-    <meta name="description" content="M2 Validator Studio live workflow console" />
-    <title>M2 Validator Studio</title>
+    <meta
+      name="description"
+      content="Draw a crew of agents on a canvas, compile it to a real CrewAI flow, and watch the run."
+    />
+    <!-- One product name, spelled in src/data/brand.ts. This tag cannot import
+         it, so `tests/brand.spec.ts` asserts the two agree rather than trusting
+         whoever edits one to remember the other. -->
+    <title>Crew Studio</title>
   </head>
   <body>
     <div id="app"></div>

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
-import { VueFlow } from '@vue-flow/core'
-import { Activity, ChevronLeft, ChevronRight, CircleDot, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { Activity, ChevronLeft, ChevronRight, FileText, GitBranch, LogOut, PenTool, Play, Radio, X } from 'lucide-vue-next'
+import BrandLockup from '../components/BrandLockup.vue'
+import CanvasControls from '../components/CanvasControls.vue'
 import ChatRail from '../components/ChatRail.vue'
 import CrewProgress from '../components/CrewProgress.vue'
 import DialogueRail from '../components/DialogueRail.vue'
@@ -13,8 +14,10 @@ import RunHistory from '../components/RunHistory.vue'
 import StatusPanel from '../components/StatusPanel.vue'
 import WorkflowEdge from '../components/WorkflowEdge.vue'
 import WorkflowNode from '../components/WorkflowNode.vue'
+import { useCanvasTool } from '../composables/useCanvasTool'
 import { useValidatorRun } from '../composables/useValidatorRun'
 import { characterIndex } from '../composables/useRunChoreography'
+import { pageTitle } from '../data/brand'
 import { clearRunHandoff, readRunHandoff } from '../data/builderRunHandoff'
 import { connectionLabel as transportWord, runStatusDisplay } from '../data/runStatusDisplay'
 import type { SignedInUser } from '../composables/useAuthGate'
@@ -40,6 +43,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  /** The breadcrumb's first crumb: back to the list of every workflow. */
+  home: []
   build: []
   signOut: []
 }>()
@@ -55,39 +60,68 @@ const emit = defineEmits<{
 const handoff = ref(readRunHandoff(props.user?.id ?? null))
 
 /**
- * Names for `<Controls>`'s three unnamed buttons.
+ * Select / Hand, `H` / `V`, and the space bar - the same composable the builder
+ * canvas uses, on the same terms (`DEFINITION-OF-DONE.md` U3).
  *
- * `onMounted` and a query, because the labels have to land on elements the
- * library renders and there is no prop for them. Keyed off the library's own
- * class names, which are its public API - they are what every Vue Flow theme
- * targets - and each write is guarded, so a version that renames one leaves the
- * other two named rather than throwing on the render.
+ * It replaces a DOM hack that lived here: three `aria-label`s written onto the
+ * library's own buttons in `onMounted`, because `<Controls>` renders three
+ * `<button>`s around bare `<svg>`s with no title and no text and there is no
+ * prop for a name. `CanvasControls` fills the `control-*` slots instead, which
+ * is the declarative fix that hack's own comment said it wanted; D4 is what
+ * makes it affordable, by regenerating the screenshot baselines once on the
+ * integrated branch rather than treating them as a reason not to name a button.
+ *
+ * `console` rests on Hand, which is what this canvas has always done - it never
+ * passed `pan-on-drag`, so it inherited the library's `true` and a left-drag
+ * panned. Nothing about the first frame of a run changes.
  */
-const CONTROL_NAMES: ReadonlyArray<[string, string]> = [
-  ['.vue-flow__controls-zoomin', 'Zoom in'],
-  ['.vue-flow__controls-zoomout', 'Zoom out'],
-  ['.vue-flow__controls-fitview', 'Fit the graph to the view'],
-]
+const { tool, setTool, panOnDrag, canvasClass } = useCanvasTool('console')
 
-onMounted(() => {
-  for (const [selector, name] of CONTROL_NAMES) {
-    document.querySelector(selector)?.setAttribute('aria-label', name)
-  }
-})
+/** The instance `<VueFlow id>` registers, so Fit and zoom reach this canvas. */
+const flow = useVueFlow('studio-flow')
 
 /**
- * What the canvas heading says, when it is not the validator.
+ * The console's fit, stated once.
  *
- * `descriptor.name` is the graph the console is ACTUALLY drawing, and after a
- * builder handoff that is the author's own workflow. The kicker's "FIXED"
- * likewise stops being true the moment the graph is one somebody just drew.
- * Both fall back to the validator's own wording verbatim, which is the only
- * thing this console could draw before the builder existed.
+ * Bound to `<VueFlow :fit-view-options>` AND handed to the Fit button, because
+ * a button that framed the graph differently from the automatic fit is a button
+ * that undoes what the page did on arrival. It was an inline literal on the
+ * prop alone until the Fit button needed the same numbers.
  */
-const canvasKicker = computed(() => (handoff.value ? 'PUBLISHED GRAPH' : 'FIXED VALIDATOR GRAPH'))
+const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 0.9 }
+
+/**
+ * The workflow this console is pointed at, by name.
+ *
+ * `descriptor.name` is the graph it is ACTUALLY drawing, and after a builder
+ * handoff that is the author's own workflow; the handoff carries the name so
+ * the breadcrumb is right before the descriptor has arrived. This is the second
+ * crumb, and it is what `document.title` reads.
+ */
+const workflowName = computed(() => handoff.value?.name || descriptor.value.name)
+
+/**
+ * What the canvas heading says.
+ *
+ * THE KICKER IS THE MODE, NOT THE GRAPH (`docs/ux-shell/DEFINITION-OF-DONE.md`
+ * U4). It read `FIXED VALIDATOR GRAPH` / `PUBLISHED GRAPH`, which is three
+ * vocabularies in two strings - `fixed`, `published` and `graph` - for a
+ * distinction the reader has already been told twice by the time they reach it:
+ * the breadcrumb above names the workflow and the handoff strip names the
+ * publication. What the heading has to say that nothing else does is which of
+ * the two modes of that workflow is on screen, and the pair is Build and Run.
+ * The second clause keeps the one fact the old strings carried that is not said
+ * elsewhere - whether this is the built-in workflow or one somebody drew - in
+ * the same words the home page uses for it.
+ *
+ * `canvasTitle` still falls back to the validator's own wording verbatim, which
+ * is the only thing this console could draw before the builder existed.
+ */
+const canvasKicker = computed(() => (handoff.value ? 'RUN — YOUR WORKFLOW' : 'RUN — BUILT IN'))
 const canvasTitle = computed(() =>
   handoff.value ? handoff.value.name || descriptor.value.name : 'Evidence pipeline',
 )
+
 
 const {
   descriptor,
@@ -144,6 +178,20 @@ const {
   // the next person on the same browser never restores it, and swept on
   // sign-out. The handoff above is read the same way.
   userId: () => props.user?.id ?? null,
+})
+
+/**
+ * The tab's name follows the route (U4). One workflow per tab, so the workflow
+ * is what names it; `pageTitle` owns the separator and the product half, and
+ * `PRODUCT_NAME` is spelled in `data/brand.ts` and nowhere else.
+ *
+ * BELOW the destructure and not beside `workflowName`, because a `watchEffect`
+ * runs its body immediately: reading `descriptor` from above the `const` that
+ * binds it is a temporal dead zone, which is a blank page at runtime rather
+ * than a type error. The two computeds above are lazy and so may sit there.
+ */
+watchEffect(() => {
+  document.title = pageTitle(workflowName.value)
 })
 
 /**
@@ -331,20 +379,70 @@ function backToValidator(): void {
     }"
   >
     <header class="app-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true"><CircleDot :size="20" :stroke-width="1.8" /></div>
-        <div>
-          <span>M2</span>
-          <h1>Validator Studio</h1>
-        </div>
-      </div>
+      <!--
+        The lockup is a LINK to the workflow list (row U2), and the `<h1>`
+        inside it is the view's own heading, handed to the default slot. The
+        `<template #default>` wrapper looks redundant and is not: it keeps the
+        heading's line at the indentation it has always had, so the worker who
+        owns that line's TEXT and the worker who owned this block could change
+        their own halves without landing on each other.
+      -->
+      <!--
+        THE HEADING IS THE WORKFLOW (U4), AND IT IS `sr-only` (U2's ruling,
+        2026-09-06). This slot held the product's OLD name, standing where the
+        page's own heading belongs; `BrandLockup` carries `PRODUCT_NAME` in the
+        kicker beside it, so a product name here would have named the product
+        twice and the thing on screen never.
+
+        The workflow's name then appeared TWICE - here and as the breadcrumb's
+        current crumb, which U2 fixes as `Workflows / <workflow name>`. The
+        crumb is the visible one, because it is the one that also says where
+        the name sits; the heading stays in the DOM because a page about one
+        workflow should have that workflow as its `<h1>`, and taking it out
+        would leave this document with no heading at all for anyone reading it
+        by structure.
+
+        The old product name is not quoted anywhere in this file on purpose -
+        `tests/brand.spec.ts` greps `src/` for it line by line, comments
+        included, which is the only form of that check nobody can talk their
+        way past.
+      -->
+      <BrandLockup as="link">
+        <template #default>
+          <h1 class="sr-only">{{ workflowName }}</h1>
+        </template>
+      </BrandLockup>
 
       <div class="header-context">
         <!--
-          The one control this view gained in the move. `Run` is pressed because
-          you are looking at the run console; `Build` leaves for `#/build`. The
-          builder never offers the mirror image of this pair inside itself
-          (cut list item 1) - it navigates back here through the same route.
+          WHERE YOU ARE, IN TWO CRUMBS (U2). It replaces the bare
+          `.workflow-name` span that sat where the second crumb now does: the
+          name was already here, and what was missing was the fact that it is
+          one of a list and the way back to that list. `Workflows` is a real
+          `<a href="#/">`, not a button, so the browser's own affordances - a
+          status-bar target, middle-click, copy link - all work; the click is
+          intercepted so the SPA routes rather than reloading.
+        -->
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a class="breadcrumb-crumb" href="#/" @click.prevent="emit('home')">Workflows</a>
+          <span class="breadcrumb-sep" aria-hidden="true">/</span>
+          <span class="breadcrumb-crumb is-current" aria-current="page">
+            <GitBranch :size="13" aria-hidden="true" />
+            <span class="breadcrumb-name">{{ workflowName }}</span>
+          </span>
+        </nav>
+
+        <!--
+          The mode switch for the workflow the breadcrumb names: Build draws it,
+          Run runs it. Both canvases carry the same pair now, so it is the one
+          control that means the same thing in both places.
+
+          THE COMMENT HERE USED TO CITE CUT LIST ITEM 1 - "the builder offers no
+          mirror image of this pair" - and that ruling was already overturned by
+          `.agent/plans/00-architecture.md` D2 before this file was written;
+          `BuilderView.vue` has carried the same segmented pair since. It is
+          recorded rather than deleted because a stale citation is worse than
+          none: the next reader would have taken the cut list at its word.
         -->
         <div class="segmented workspace-switch" role="group" aria-label="Workspace">
           <button type="button" :aria-pressed="false" @click="emit('build')">
@@ -355,7 +453,6 @@ function backToValidator(): void {
           </button>
         </div>
 
-        <span class="workflow-name"><GitBranch :size="14" aria-hidden="true" />{{ descriptor.name }}</span>
         <span class="live-status" :class="`is-${connection}`" aria-live="polite">
           <Radio :size="13" aria-hidden="true" />
           {{ connectionLabel }}
@@ -489,9 +586,19 @@ function backToValidator(): void {
           :cast-states="castStates"
         />
 
+        <!--
+          `canvasClass` is `is-hand-tool` / `is-select-tool`, and it is on the
+          flow root rather than on a wrapper because `.vue-flow__pane` is a
+          descendant of it and the cursor rules in `studio.css` are the only
+          thing that reads it. `pan-on-drag` was ABSENT here until U3 - the
+          library's default is `true`, which is Hand, which is what the console
+          has always done; the composable's resting value for this surface is
+          that same `true`, so the first frame is unchanged.
+        -->
         <VueFlow
           id="studio-flow"
           class="validator-flow"
+          :class="canvasClass"
           :nodes="graphNodes"
           :edges="graphEdges"
           :min-zoom="0.28"
@@ -501,8 +608,9 @@ function backToValidator(): void {
           :nodes-connectable="false"
           :elements-selectable="false"
           :zoom-on-double-click="false"
+          :pan-on-drag="panOnDrag"
           :fit-view-on-init="true"
-          :fit-view-options="{ padding: 0.12, maxZoom: 0.9 }"
+          :fit-view-options="FIT_VIEW_OPTIONS"
           :aria-label="`${canvasTitle} workflow graph`"
         >
           <template #node-workflow="nodeProps">
@@ -519,19 +627,26 @@ function backToValidator(): void {
           </template>
           <Background :gap="20" :size="1" color="#777777" pattern-color="#777777" />
           <!--
-            Stock markup, named after the fact - and the DOM pass is the point
-            rather than a shortcut. `<Controls>` renders three `<button>`s
-            around bare `<svg>`s with no title and no text, which a screen
-            reader announces as "button, button, button"; they were the only
-            unnamed interactive elements on this page. Replacing them through
-            the `control-*` slots is the declarative fix and is what
-            `BuilderCanvas` does - but this canvas is under WP-A's committed
-            screenshot baseline, and swapping Vue Flow's icons for Lucide ones
-            moves pixels inside `.validator-flow`. An `aria-label` moves none.
-            The gate exists to prove the card extraction changed nothing; it
-            must not be spent on an accessibility label.
+            The declarative fix the stock markup here was waiting for, and the
+            same component the builder canvas renders (U3).
+
+            The comment this replaces named the reason the buttons were left
+            stock and labelled in `onMounted` instead: this canvas is under a
+            committed screenshot baseline, and swapping Vue Flow's icons for
+            Lucide ones moves pixels inside `.validator-flow` where an
+            `aria-label` moves none. **D4 lifts that reason for this build** -
+            `run-canvas.spec.ts`'s three PNGs and `builder-canvas.spec.ts`'s
+            sixteen are regenerated once, on the integrated branch, by RV1,
+            because the header, the brand and this cluster all move inside the
+            same frames. The gate is being spent deliberately, by the document
+            that owns it, rather than raided.
           -->
-          <Controls position="bottom-left" :show-interactive="false" />
+          <CanvasControls
+            flow-id="studio-flow"
+            :tool="tool"
+            :fit="() => flow.fitView(FIT_VIEW_OPTIONS)"
+            @update:tool="setTool"
+          />
         </VueFlow>
 
         <ReportPanel

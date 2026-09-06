@@ -88,7 +88,9 @@ const SHELL_STUBS = {
  */
 beforeEach(() => {
   flowIds.length = 0
-  window.location.hash = '#/'
+  // `#/run`, not `#/`: the console moved there on 2026-09-06 (D2), and this
+  // reset exists so a test that does not set a hash gets the console.
+  window.location.hash = '#/run'
   // Both shapes of the handoff key - the anonymous one and the signed-in user's
   // `u:<id>:` one (D-01-5) - so a record one test wrote as `u1` cannot point
   // the next test's console at a graph it never asked for.
@@ -126,18 +128,38 @@ afterEach(() => {
 })
 
 describe('the hash chooses the workspace and the gate precedes both', () => {
-  it('renders the run console at the root', () => {
+  /*
+   * RE-POINTED 2026-09-06 (`docs/ux-shell/DEFINITION-OF-DONE.md` D2): the root
+   * is the home now and the console is `#/run`. The assertion is the same
+   * question - does this hash mount that view, and only that view - asked of a
+   * route that moved, so it is amended rather than added to. `HomeView` is
+   * stubbed alongside the other two, because an unstubbed one would fire the
+   * library and graph reads this file mocks nothing for.
+   */
+  it('renders the run console at #/run', () => {
+    window.location.hash = '#/run'
     const wrapper = mount(App, {
-      global: { stubs: { StudioView: true, BuilderView: true } },
+      global: { stubs: { HomeView: true, StudioView: true, BuilderView: true } },
     })
     expect(wrapper.findComponent({ name: 'StudioView' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'BuilderView' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'HomeView' }).exists()).toBe(false)
+  })
+
+  it('renders the home at the root, and no canvas with it', () => {
+    window.location.hash = '#/'
+    const wrapper = mount(App, {
+      global: { stubs: { HomeView: true, StudioView: true, BuilderView: true } },
+    })
+    expect(wrapper.findComponent({ name: 'HomeView' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'StudioView' }).exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'BuilderView' }).exists()).toBe(false)
   })
 
   it('renders the builder with no document at #/build', () => {
     window.location.hash = '#/build'
     const wrapper = mount(App, {
-      global: { stubs: { StudioView: true, BuilderView: true } },
+      global: { stubs: { HomeView: true, StudioView: true, BuilderView: true } },
     })
     const builder = wrapper.findComponent({ name: 'BuilderView' })
     expect(builder.exists()).toBe(true)
@@ -147,14 +169,14 @@ describe('the hash chooses the workspace and the gate precedes both', () => {
   it('renders the builder with a document at #/build/:documentId', () => {
     window.location.hash = '#/build/ug_0a1b2c3d'
     const wrapper = mount(App, {
-      global: { stubs: { StudioView: true, BuilderView: true } },
+      global: { stubs: { HomeView: true, StudioView: true, BuilderView: true } },
     })
     expect(wrapper.findComponent({ name: 'BuilderView' }).props('documentId')).toBe('ug_0a1b2c3d')
   })
 
   it('switches views when the hash changes under it', async () => {
     const wrapper = mount(App, {
-      global: { stubs: { StudioView: true, BuilderView: true } },
+      global: { stubs: { HomeView: true, StudioView: true, BuilderView: true } },
     })
     window.location.hash = '#/build'
     window.dispatchEvent(new HashChangeEvent('hashchange'))

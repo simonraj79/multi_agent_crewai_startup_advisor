@@ -830,7 +830,7 @@ async function openDocument(id: DocumentId): Promise<void> {
     await persistence.open(id)
     await afterAdopt()
   } catch (error) {
-    say(error instanceof Error ? error.message : 'that graph could not be opened.', { kind: 'error' })
+    say(error instanceof Error ? error.message : 'that workflow could not be opened.', { kind: 'error' })
   }
 }
 
@@ -948,7 +948,7 @@ function storedIsCurrent(verb: string): boolean {
   // by the critic, because a refusal that does not look like one is exactly
   // what "no persistent surface to re-read it" hides.
   if (persistence.documentId.value === null) {
-    say(`save this graph first — ${verb} works on the stored version.`, { kind: 'error' })
+    say(`save this workflow first — ${verb} works on the stored version.`, { kind: 'error' })
     return false
   }
   if (persistence.saveState.value !== 'clean') {
@@ -1068,7 +1068,7 @@ async function duplicateDocument(): Promise<void> {
     say(`duplicated as “${copy.document.name}”.`, { kind: 'success' })
     emit('openDocument', copy.id as DocumentId)
   } catch (error) {
-    say(messageOf(error, 'the graph could not be duplicated.'), { kind: 'error' })
+    say(messageOf(error, 'the workflow could not be duplicated.'), { kind: 'error' })
   }
 }
 
@@ -1145,7 +1145,7 @@ async function unpublishDocument(): Promise<void> {
     void refreshLibrary()
     say(`unpublished “${doc.value.name}” — it no longer answers launches.`, { kind: 'success' })
   } catch (error) {
-    const message = messageOf(error, 'the graph could not be unpublished.')
+    const message = messageOf(error, 'the workflow could not be unpublished.')
     if (deleteAsk.value) deleteProblem.value = message
     else say(message, { kind: 'error' })
   } finally {
@@ -1189,7 +1189,7 @@ async function confirmDelete(): Promise<void> {
     emit('closeDocument')
     say(`deleted “${name}”.`, { kind: 'success' })
   } catch (error) {
-    deleteProblem.value = messageOf(error, 'the graph could not be deleted.')
+    deleteProblem.value = messageOf(error, 'the workflow could not be deleted.')
     deleteRefused.value = error instanceof BuilderConflictError
   } finally {
     deleteInFlight.value = false
@@ -1797,7 +1797,7 @@ watch(
 </script>
 
 <template>
-  <a class="skip-link" href="#builder-canvas">Skip to the graph</a>
+  <a class="skip-link" href="#builder-canvas">Skip to the canvas</a>
   <div
     class="studio-shell is-builder"
     :class="{
@@ -2345,6 +2345,7 @@ watch(
             :run-problems="flowTest.runProblems.value"
             :labels="anchorLabels"
             :viewing-version="readOnlyVersion"
+            :published="persistence.publishedVersion.value !== null"
             @focus="onEdgeSelectFromPanel"
           />
         </template>

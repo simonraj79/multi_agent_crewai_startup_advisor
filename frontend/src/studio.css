@@ -1371,6 +1371,16 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
   margin: 0 auto;
 }
 
+/* The product sentence, under the header's brand and above everything the page
+   holds (ROUND-2 X2). `--space-6` OFF the page's `--space-8` row gap rather
+   than a rule of its own: it is the brand's second line, so it must read as
+   attached to the header and not as the first of the page's four blocks. */
+.home-lede {
+  margin: calc(var(--space-6) * -1) 0 0;
+  color: var(--text-muted);
+  font: var(--type-body);
+}
+
 .home-resuming,
 .home-empty {
   display: flex;
@@ -1398,6 +1408,27 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 }
 
 .home-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
+
+/* The sentence under a section heading. One per section, never one per card. */
+.home-section-lede {
+  max-width: 56ch;
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font: var(--type-body);
+}
+
+/* A template card's action, pinned to the bottom of the card so the row lines
+   up across cards whose blurbs are different lengths. */
+.home-card-action {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--on-accent-cyan);
+  font: 600 var(--fs-12)/1.2 var(--font-body);
+}
+
+.home-card:hover .home-card-action { color: var(--text-title); }
 .home-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
 
 /* The finished run, above everything. It is the one card on this page about a

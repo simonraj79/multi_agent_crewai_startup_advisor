@@ -247,7 +247,7 @@ async function publish(): Promise<void> {
       failure.value = error.message
       emit('refused', error.problems)
     } else {
-      failure.value = error instanceof Error ? error.message : 'the graph could not be published.'
+      failure.value = error instanceof Error ? error.message : 'the workflow could not be published.'
     }
   } finally {
     publishing.value = false
@@ -374,10 +374,10 @@ function trap(event: KeyboardEvent): void {
             </dd>
           </div>
           <div>
-            <dt>Graph version</dt>
+            <dt>Workflow version</dt>
             <dd>
               <code>{{ result.graph_version }}</code>
-              <span class="contract-note">Document v{{ result.version }}. The graph's ETag body.</span>
+              <span class="contract-note">Version v{{ result.version }}. The workflow's ETag body.</span>
             </dd>
           </div>
           <div>
@@ -391,7 +391,7 @@ function trap(event: KeyboardEvent): void {
             <dt>Refused input keys</dt>
             <dd>
               <span class="contract-note">
-                A run request carrying any of these is answered 422 — they are this graph's own
+                A run request carrying any of these is answered 422 — they are this workflow's own
                 control keys.
               </span>
               <ul class="reserved-keys">
@@ -419,7 +419,7 @@ function trap(event: KeyboardEvent): void {
           </button>
         </div>
         <p v-else class="gated-note">
-          A human gate stops this graph before it spends anything, so anyone with the link can
+          A human gate stops this workflow before it spends anything, so anyone with the link can
           launch it.
         </p>
 
@@ -443,7 +443,7 @@ function trap(event: KeyboardEvent): void {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(10, 10, 10, 0.62);
+  background: var(--scrim);
   -webkit-backdrop-filter: var(--blur-panel);
   backdrop-filter: var(--blur-panel);
 }
@@ -458,7 +458,7 @@ function trap(event: KeyboardEvent): void {
   background: var(--surface-overlay);
   border: 1px solid var(--border-default);
   border-radius: var(--r-2xl);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-overlay);
 }
 
 .publish-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

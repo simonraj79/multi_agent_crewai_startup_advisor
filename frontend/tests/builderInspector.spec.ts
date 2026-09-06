@@ -336,7 +336,7 @@ describe('renaming a node states what it moves before it moves it', () => {
 
     // Two edges name it, and the output node's `source` reads `out__scoper`.
     expect(wrapper.get('[data-field="id"] .field-help').text()).toBe(
-      'This rename updates 3 references elsewhere in the graph.',
+      'This rename updates 3 references elsewhere in the workflow.',
     )
     expect(wrapper.emitted('commit')).toBeUndefined()
   })

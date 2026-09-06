@@ -3,7 +3,7 @@
   "id": "blank",
   "document": {
     "schema": "builder.flow/v1",
-    "name": "Untitled graph",
+    "name": "Untitled workflow",
     "version": 1,
     "input_field": "idea",
     "nodes": [

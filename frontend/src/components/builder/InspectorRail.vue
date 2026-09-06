@@ -708,7 +708,7 @@ defineExpose({ focusField })
             :control-id="`insp-${node.id}-node-id`"
             field="id"
             :references="referencesMoved"
-            help="What every edge, join and state key in this graph calls this node."
+            help="What every edge, join and state key in this workflow calls this node."
             @commit="commitId"
           />
         </section>
@@ -1042,10 +1042,10 @@ defineExpose({ focusField })
       <!-- 4. Nothing selected. Graph settings, never blank space. -->
       <template v-else>
         <header class="rail-head">
-          <span class="rail-kicker">GRAPH</span>
+          <span class="rail-kicker">WORKFLOW</span>
           <h2>{{ doc.name }}</h2>
         </header>
-        <section class="rail-section" aria-label="Graph settings">
+        <section class="rail-section" aria-label="Workflow settings">
           <GraphSettings :doc="doc" :vocabulary="vocabulary" @commit="emit('commit', $event)" />
         </section>
       </template>

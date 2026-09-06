@@ -11,6 +11,7 @@
  */
 import { LoaderCircle, ShieldCheck } from 'lucide-vue-next'
 import BrandLockup from './BrandLockup.vue'
+import { PRODUCT_SENTENCE } from '../data/brand'
 
 defineProps<{
   signingIn: boolean
@@ -33,6 +34,13 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
       <!--
         The lede describes the PRODUCT, not one of its workflows.
 
+        IT IS NOW A CONSTANT, and this wall is one of its two readers. The
+        signed-in home carried no sentence at all until ROUND-2 §5 ruling 2, so
+        the only screen that said what the product is was the one you stop
+        seeing the moment you have an account. `PRODUCT_SENTENCE` in
+        `data/brand.ts` is the single spelling; `brand.spec.ts` asserts both
+        surfaces read it.
+
         It read "A six-agent crew that scores a startup idea against real
         market, sentiment and feasibility evidence" until 2026-09-06 - a
         description of the Idea validator, which is now one row of the home's
@@ -43,10 +51,7 @@ const emit = defineEmits<{ (event: 'signIn'): void }>()
         already say; the product's name is the `<h1>` above this and is not
         repeated here.
       -->
-      <p class="signin-lede">
-        Draw a workflow on a canvas in Build, then Run it as a real CrewAI
-        flow and watch every agent work &mdash; live.
-      </p>
+      <p class="signin-lede" data-testid="product-sentence">{{ PRODUCT_SENTENCE }}</p>
 
       <button
         class="google-button"

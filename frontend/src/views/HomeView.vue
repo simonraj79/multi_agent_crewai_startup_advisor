@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Clock3, FilePlus2, GitBranch, Loader, Play, TriangleAlert } from 'lucide-vue-next'
+import { ArrowRight, Clock3, FilePlus2, GitBranch, Loader, Play, TriangleAlert } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
 import BrandLockup from '../components/BrandLockup.vue'
 import GraphThumbnail from '../components/builder/GraphThumbnail.vue'
-import { PRODUCT_NAME } from '../data/brand'
+import { PRODUCT_NAME, PRODUCT_SENTENCE } from '../data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../data/builderTemplates'
 import { readRunHandoff } from '../data/builderRunHandoff'
 import { scopedKey } from '../data/identityStorage'
@@ -318,6 +318,23 @@ onBeforeUnmount(() => window.clearInterval(ticker))
 
     <main class="home-main">
       <div class="home-page">
+        <!--
+          WHAT THIS IS, before what is in it (ROUND-2 X2, §5 ruling 2).
+
+          The sentence is not new and it is not written here: `PRODUCT_SENTENCE`
+          is the sign-in wall's own lede, and until now the wall was the only
+          place it appeared - so a person who had an account never read the one
+          line that says what the product does. AUDIT-R2 H1 measured that as the
+          highest-value change in the document and the cheapest: it is a move,
+          not a write.
+
+          It sits under the header's brand rather than inside it. The header is
+          the shell's, shared with every other surface; this line is about this
+          page, and a lockup that grew a subtitle on one route only would be a
+          second lockup.
+        -->
+        <p class="home-lede" data-testid="product-sentence">{{ PRODUCT_SENTENCE }}</p>
+
         <p v-if="checkingPointer" class="home-resuming" role="status">
           <Loader :size="14" aria-hidden="true" />
           Checking a run you left open…
@@ -426,9 +443,17 @@ onBeforeUnmount(() => window.clearInterval(ticker))
 
         <section class="home-section" aria-labelledby="home-templates-title">
           <header class="home-heading">
+            <!--
+              The gallery's three strings, verbatim (ROUND-2 §5 ruling 4). The
+              home's template shelf and the builder's ARE the same shelf, and
+              the audit's C3 table named "two copies of the same section with
+              different words" as the reason a reader cannot tell the two pages
+              apart.
+            -->
             <div>
-              <span class="home-kicker">START FROM</span>
-              <h2 id="home-templates-title">A shape that already works</h2>
+              <span class="home-kicker">TEMPLATES</span>
+              <h2 id="home-templates-title">Start from a working example</h2>
+              <p class="home-section-lede">Click one to copy it onto the canvas as a new workflow.</p>
             </div>
           </header>
 
@@ -448,6 +473,12 @@ onBeforeUnmount(() => window.clearInterval(ticker))
                   <span class="home-card-count">
                     <GitBranch :size="12" aria-hidden="true" />{{ template.document.nodes.length }} nodes
                   </span>
+                </span>
+                <!-- X2: every card names its action. A span, because the card
+                     is the button - see TemplateGallery for the whole reason. -->
+                <span class="home-card-action">
+                  Use this template
+                  <ArrowRight :size="13" aria-hidden="true" />
                 </span>
               </button>
             </li>

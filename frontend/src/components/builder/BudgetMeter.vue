@@ -227,7 +227,7 @@ function money(value: number | undefined): string {
         </span>
       </p>
 
-      <ul class="budget-pips" aria-label="Headroom against the graph bounds">
+      <ul class="budget-pips" aria-label="Headroom against the workflow bounds">
         <li v-for="row in pipRows" :key="row.key" class="budget-pip-row" :class="pipTone(row)">
           <span class="budget-pip-label">{{ row.label }}</span>
           <span v-if="pipsFor(row).length" class="budget-pip-track" aria-hidden="true">

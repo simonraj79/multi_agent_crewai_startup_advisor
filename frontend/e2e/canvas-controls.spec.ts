@@ -249,7 +249,7 @@ function describeCanvas(
       const zoomed = await transformOf(page)
       expect(zoomed).not.toBe(before)
 
-      await page.getByRole('button', { name: 'Fit the graph to the view', exact: true }).click()
+      await page.getByRole('button', { name: 'Fit the workflow to the view', exact: true }).click()
       await page.waitForTimeout(700)
       expect(await transformOf(page)).not.toBe(zoomed)
 

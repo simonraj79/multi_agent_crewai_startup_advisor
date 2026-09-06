@@ -102,10 +102,10 @@ const acceptable = computed(() => changed.value && wellFormed.value && !collides
  */
 const consequence = computed(() => {
   if (!acceptable.value || props.references == null) return undefined
-  if (props.references === 0) return 'Nothing else in this graph names it.'
+  if (props.references === 0) return 'Nothing else in this workflow names it.'
   return props.references === 1
-    ? 'This rename updates 1 reference elsewhere in the graph.'
-    : `This rename updates ${props.references} references elsewhere in the graph.`
+    ? 'This rename updates 1 reference elsewhere in the workflow.'
+    : `This rename updates ${props.references} references elsewhere in the workflow.`
 })
 
 function tryCommit(): void {

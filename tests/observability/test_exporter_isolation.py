@@ -29,6 +29,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from brief_crew import config as project_config
 from brief_crew.observability import build_exporter
 from brief_crew.observability.langfuse_exporter import LangfuseExporter, NullExporter
 from brief_crew.observability.policy import ExporterPolicy
@@ -90,7 +91,31 @@ def _run_once(exporter) -> tuple[_RunOutcome, str]:
 
     with patch("brief_crew.observability.build_exporter", return_value=exporter):
         app = create_app(synthetic=True)
-    with TestClient(app) as client:
+
+    # `gates="auto"` below is refused with 403 for an anonymous caller unless
+    # the deployment has opted in. That guard is right and is not being
+    # weakened here: `tests/service/test_gates_mode.py` owns it and asserts
+    # both halves - the refusal for a caller nobody can bill, and the opt-in.
+    # These tests are about the EXPORTER, and every one of them needs a run
+    # that goes end to end with nobody there to answer a gate, so the opt-out
+    # is DECLARED here rather than inherited from whatever machine is running.
+    #
+    # `create_run` reads it as `project_config.VALIDATOR_ALLOW_AUTO_GATES` - a
+    # module attribute looked up per request - so patching the attribute is
+    # what reaches it. Patching here rather than in three `setUp`s because
+    # this helper is the only place in the module that posts a run, and a test
+    # class added later gets the opt-out without having to remember it.
+    #
+    # It has to be declared because it cannot be relied on, and this suite is
+    # the proof: it passed on this machine and failed on CI for a week.
+    # `.env` sets the knob. `brief_crew/__init__.py` resolves `.env` from its
+    # own file, so a git worktree ought to see none - but `crewai` calls
+    # python-dotenv's bare `load_dotenv()`, and `find_dotenv()` walks up from
+    # `site-packages/crewai/`, which for an in-repository virtualenv lands
+    # back in the repository and loads its `.env` regardless. A CI runner has
+    # no `.env` at all, so there the knob is False and the POST is a 403.
+    auto_gates = patch.object(project_config, "VALIDATOR_ALLOW_AUTO_GATES", True)
+    with auto_gates, TestClient(app) as client:
         response = client.post(
             "/api/sessions/isolation/runs",
             json={

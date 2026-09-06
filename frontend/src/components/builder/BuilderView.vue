@@ -1367,6 +1367,14 @@ function runPublished(workflowId: string, inputField: string): void {
  *                        404 for this graph - a refusal the author can do
  *                        nothing about from there. The remedy is one button
  *                        away and the disabled control names it.
+ * BOTH DOORS COME HERE (RV4 follow-up 2). `DocumentBar`'s `⋮ > Run` - which at
+ * 390 is the ONLY route, because `.workspace-switch` is `display: none` there -
+ * was still wired to a bare `emit('runWorkspace')`, the pre-R3 path, so the
+ * phone route landed on the built-in validator while the desktop route carried
+ * the workflow correctly. Measured: a published `News to social post` gave
+ * breadcrumb `Idea Validator`. The menu item is handed `runSwitchBlocked` as
+ * well, so the unpublished state reads `Publish to run` in both places.
+ *
  *   the gallery          unchanged: `emit('runWorkspace')`, which reaches the
  *                        console's own built-in workflow. There is no open
  *                        document to carry, the pair is kept here for a
@@ -2008,6 +2016,7 @@ watch(
             :versions-open="versionsOpen"
             :read-only="persistence.viewingVersion.value"
             :head-version="persistence.headVersion.value"
+            :run-blocked="runSwitchBlocked"
             @rename="store.setName"
             @save="() => void persistence.save()"
             @undo="undo"
@@ -2021,7 +2030,7 @@ watch(
             @import="importFile"
             @duplicate="duplicateDocument"
             @unpublish="unpublishDocument"
-            @run-workspace="emit('runWorkspace')"
+            @run-workspace="runWorkflow"
             @delete="askDelete"
             @menu-extent="onMenuExtent"
           >

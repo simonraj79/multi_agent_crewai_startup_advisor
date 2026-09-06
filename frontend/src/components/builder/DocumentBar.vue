@@ -102,8 +102,26 @@ const props = withDefaults(
   readOnly?: boolean
   /** Head, for the Publish tooltip while `readOnly`. */
   headVersion?: number
+  /**
+   * Whether Run would land on a workflow no registry holds (R3, RV4 follow-up 2).
+   *
+   * The header switch's own `runSwitchBlocked`, handed down rather than
+   * re-derived: a run resolves a REGISTERED version, so an unpublished document
+   * has nothing to run and the refusal is the SAME refusal in both places. A
+   * second derivation here would be a second opinion, and the two doors
+   * disagreeing about whether a workflow is runnable is exactly what
+   * follow-up 2 was.
+   */
+  runBlocked?: boolean
   }>(),
-  { documentId: null, versionsOpen: false, readOnly: false, headVersion: 0, theme: 'dark' },
+  {
+    documentId: null,
+    versionsOpen: false,
+    readOnly: false,
+    headVersion: 0,
+    theme: 'dark',
+    runBlocked: false,
+  },
 )
 
 const emit = defineEmits<{
@@ -608,16 +626,31 @@ function cancelRename(): void {
             second handler. Grouped with the safe items, ABOVE the separator,
             so D-15-6's rule ("Delete is the only one after the separator")
             still holds.
+
+            AND IT IS THE SAME HANDLER, WHICH IT WAS NOT (RV4 follow-up 2). The
+            emit reached `BuilderView`'s bare `emit('runWorkspace')` - the
+            pre-R3 path - so at 390, where this is the ONLY route, pressing Run
+            landed on a console showing the built-in validator: measured, a
+            published `News to social post` gave breadcrumb `Idea Validator`,
+            kicker `RUN - BUILT IN` and the same name in the WORKFLOW well over
+            the button that spends money. `runBlocked` is the header switch's
+            own `runSwitchBlocked`, so the two doors now say and do the same
+            thing in both of the states R3 defines.
           -->
           <button
             class="document-menu-item"
             type="button"
             role="menuitem"
+            :disabled="runBlocked"
+            :title="runBlocked
+              ? 'Publish this workflow before you can run it — use the Publish button in the bar below'
+              : undefined"
             data-testid="menu-run"
+            :data-run-state="runBlocked ? 'blocked' : 'ready'"
             @click="choose(() => emit('runWorkspace'))"
           >
             <Play :size="14" aria-hidden="true" />
-            Run
+            {{ runBlocked ? 'Publish to run' : 'Run' }}
           </button>
           <!--
             Round 2, D-15-6: Delete sat 34px under Duplicate in the same colour

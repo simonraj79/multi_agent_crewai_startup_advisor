@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 /**
  * 390x844 - the capture and inspect viewport (02-canvas.md D9, criterion 13).
@@ -35,6 +35,77 @@ function watchConsole(page: Page): string[] {
   })
   page.on('pageerror', (error) => record(`uncaught: ${error.message}`))
   return unexpected
+}
+
+const PHONE_WORKFLOW_NAME = 'A workflow reached from a phone'
+
+/**
+ * The smallest workflow that both validates and PUBLISHES, saved through the
+ * API (RV4 follow-up 2).
+ *
+ * A run resolves a REGISTERED version, so the route this file's new test is
+ * about does not exist for a gallery draft - and publishing at 390 is a
+ * keyboard shortcut and a dialog on a viewport D9 rules out of authoring. The
+ * shape is `failure-modes.spec.ts`'s, restated rather than imported for the
+ * reason every helper in this suite is restated: importing a spec file
+ * registers its tests a second time.
+ *
+ * The model is named and never called - `SYNTHETIC=1` replaces the crew
+ * factories, so nothing here reaches OpenRouter.
+ */
+async function publishRunnable(request: APIRequestContext, name: string): Promise<string> {
+  const created = await request.post('/api/builder/workflows', {
+    data: {
+      document: {
+        schema: 'builder.flow/v1',
+        name,
+        version: 1,
+        input_field: 'idea',
+        nodes: [
+          {
+            id: 'idea',
+            kind: 'input',
+            label: 'Idea',
+            position: { x: 0, y: 0 },
+            config: { field: 'idea', label: null, max_chars: 2000, required: true },
+          },
+          {
+            id: 'writer',
+            kind: 'agent',
+            label: 'Writer',
+            position: { x: 260, y: 0 },
+            config: {
+              role: 'note taker',
+              goal: 'write the note',
+              backstory: 'years of it',
+              task: { description: 'work from ${state.out__idea}', expected_output: 'a paragraph' },
+              llm: { model: 'google/gemini-3.8-flash' },
+              tier: 'cheap',
+              on_error: 'fail',
+            },
+          },
+          {
+            id: 'report',
+            kind: 'output',
+            label: 'Report',
+            position: { x: 520, y: 0 },
+            config: { body_key: 'markdown_body', source: '${state.out__writer}' },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'idea', source_port: 'out', target: 'writer', target_port: 'in' },
+          { id: 'e2', source: 'writer', source_port: 'out', target: 'report', target_port: 'in' },
+        ],
+        joins: {},
+      },
+      expected_version: null,
+    },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const id = (await created.json()).id as string
+  const published = await request.post(`/api/builder/workflows/${id}/publish`)
+  expect(published.status(), await published.text()).toBe(200)
+  return id
 }
 
 /** The document horizontal overflow, in CSS pixels. Zero, or the page scrolls sideways. */
@@ -237,6 +308,14 @@ test.describe('the builder at 390x844', () => {
    * no route to the run console at all short of typing `#/run`. `menu-run`
    * emits the SAME `runWorkspace` event the header button does - this test
    * proves the door, not a new room behind it.
+   *
+   * AMENDED for RV4 follow-up 2. This template is opened from the gallery and
+   * never published, and R3's rule for an unpublished document is that Run is
+   * REFUSED VISIBLY rather than taken - a run resolves a registered version, so
+   * following it would land on a console that answers 404 for this graph. The
+   * assertion moved from "it navigates" to "it says why it will not", which is
+   * what the header switch has said since R3 and what this door said nothing
+   * about. The navigating half is the test below, on a published workflow.
    */
   test('still offers a route to Run mode, through the document menu', async ({ page }) => {
     const errors = watchConsole(page)
@@ -259,10 +338,53 @@ test.describe('the builder at 390x844', () => {
     )
     expect(hitsRun, 'Run is reachable at its own centre').toBe(true)
 
-    await runItem.click()
-    await expect(page).toHaveURL(/#\/run/)
+    await expect(runItem).toHaveAttribute('data-run-state', 'blocked')
+    await expect(runItem).toBeDisabled()
+    await expect(runItem).toHaveText(/Publish to run/)
 
     expect(errors).toEqual([])
+  })
+
+  /**
+   * RV4 FOLLOW-UP 2 - the menu's Run lands on THIS workflow's console.
+   *
+   * `menu-run` emitted a bare `runWorkspace`, which is the route that predates
+   * R3, so at 390 - where it is the only route there is - pressing Run landed
+   * on the built-in validator. Measured before the fix on a published
+   * `News to social post`: `#/run` with breadcrumb `Idea Validator`, kicker
+   * `RUN - BUILT IN` and the same name in the WORKFLOW well over the button
+   * that spends money. The header switch, on the same document, was correct.
+   *
+   * The breadcrumb is the assertion because it is the one surface that names
+   * the workflow and says where it sits, and it is the one RV4 read.
+   *
+   * Published through the API rather than through the canvas: publishing at 390
+   * is a keyboard shortcut and a dialog on a viewport this file has ruled out
+   * of authoring scope (D9), and the subject here is the ROUTE.
+   */
+  test('the document menu’s Run carries the workflow to the console', async ({ page, request }) => {
+    const errors = watchConsole(page)
+    const id = await publishRunnable(request, PHONE_WORKFLOW_NAME)
+    try {
+      await page.goto(`/#/build/${id}`)
+      await expect(page.locator('.document-bar')).toBeVisible()
+      await expect(page.locator('.workspace-switch')).toBeHidden()
+
+      await page.getByTestId('document-menu-button').click()
+      const runItem = page.getByTestId('menu-run')
+      await expect(runItem).toHaveAttribute('data-run-state', 'ready')
+      await expect(runItem).toHaveText(/^\s*Run\s*$/)
+      await runItem.click()
+
+      await expect(page).toHaveURL(/#\/run/)
+      await expect(page.locator('.breadcrumb-name')).toHaveText(PHONE_WORKFLOW_NAME)
+      await expect(page.locator('.canvas-kicker')).toHaveText('RUN — YOUR WORKFLOW')
+
+      expect(errors).toEqual([])
+    } finally {
+      await request.post(`/api/builder/workflows/${id}/unpublish`).catch(() => undefined)
+      await request.delete(`/api/builder/workflows/${id}`).catch(() => undefined)
+    }
   })
 })
 

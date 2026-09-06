@@ -155,6 +155,11 @@ test.describe('the unified shell', () => {
     await expect(row).toContainText('draft')
     await expect(row.locator('svg.graph-thumbnail')).toHaveCount(1)
 
+    // The home's own lockup is STATIC: there is nowhere to go back to from
+    // here, so an anchor to `#/` would point at the page it is on.
+    await expect(page.locator('a.brand-lockup')).toHaveCount(0)
+    await expect(page.locator('.brand-lockup h1')).toHaveText('Crew Studio')
+
     // All nine, both of the gallery's rows flattened into one list - the
     // gallery collapses two of them, and a list that hides two of nine is not
     // a list.
@@ -267,6 +272,13 @@ test.describe('the unified shell', () => {
     await expect(crumbs).toContainText('Workflows')
     await expect(crumbs).toContainText('Idea Validator')
 
+    // The lockup is the OTHER way home (U2, and W3's `BrandLockup as="link"`).
+    // Two affordances, one destination: this asserts the selector that
+    // component's own docblock names, so a change to either lands here.
+    const lockup = page.locator('a.brand-lockup[href="#/"]')
+    await expect(lockup).toHaveCount(1)
+    await expect(lockup).toContainText('Idea Validator')
+
     await crumbs.getByRole('link', { name: 'Workflows' }).click()
     await expect.poll(() => new URL(page.url()).hash).toBe('#/')
     await expect(page.locator('.home-page')).toBeVisible()
@@ -292,6 +304,10 @@ test.describe('the unified shell', () => {
     const crumbs = page.locator('.app-header .breadcrumb')
     await expect(crumbs).toContainText('Workflows')
     await expect(crumbs).toContainText(SAVED_GRAPH_NAME)
+
+    const lockup = page.locator('a.brand-lockup[href="#/"]')
+    await expect(lockup).toHaveCount(1)
+    await expect(lockup).toContainText(SAVED_GRAPH_NAME)
 
     await crumbs.getByTestId('breadcrumb-home').click()
     await expect.poll(() => new URL(page.url()).hash).toBe('#/')

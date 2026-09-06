@@ -150,14 +150,15 @@ test.describe('Validator Studio', () => {
     await openStudio(page)
 
     /*
-     * RE-POINTED 2026-09-06 (U4): the tab is named after the workflow on a
-     * canvas, then the product - `pageTitle()` in `data/brand.ts` owns the
+     * RE-POINTED 2026-09-06 (U4 and U5). The tab is named after the workflow on
+     * a canvas, then the product - `pageTitle()` in `data/brand.ts` owns the
      * separator and `PRODUCT_NAME` is spelled there and nowhere else. The `h1`
-     * below still reads `Validator Studio` because the wordmark is W3's row
-     * (U5), not this one; when it lands, this line follows it.
+     * is the WORKFLOW rather than the product: the lockup beside it carries the
+     * product name in its kicker, so a product name in the heading would have
+     * named the product twice and the thing on screen never.
      */
     await expect(page).toHaveTitle('Idea Validator · Crew Studio')
-    await expect(page.getByRole('heading', { name: 'Validator Studio', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Idea Validator', level: 1 })).toBeVisible()
 
     // The graph is fixed by contract: `service/graph.py` derives it from the
     // CrewAI Flow topology and the frontend renders exactly what it is served.

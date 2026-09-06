@@ -2267,6 +2267,7 @@ watch(
             :run-problems="flowTest.runProblems.value"
             :labels="anchorLabels"
             :viewing-version="readOnlyVersion"
+            :published="persistence.publishedVersion.value !== null"
             @focus="onEdgeSelectFromPanel"
           />
         </template>

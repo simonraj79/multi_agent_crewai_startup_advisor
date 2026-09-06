@@ -440,6 +440,8 @@ function mountPanel(props: {
   labels?: Record<string, string>
   /** The stored version on screen, or null while head is being edited (D-15-17). */
   viewingVersion?: number | null
+  /** Whether a version is registered and runnable (N8). */
+  published?: boolean
 }) {
   return mount(ProblemsPanel, {
     props: { phase: 'fresh' as const, publishProblems: [], labels: {}, ...props },
@@ -515,6 +517,55 @@ describe('the panel shows every problem at once, worst first', () => {
 
     expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
     expect(wrapper.text()).toContain('Warnings never block; errors always do.')
+  })
+
+  /* ── N8: the dock does not tell a published workflow to publish ──────────
+   *
+   * The defect was MEASURED, not reasoned: with the bar reading
+   * `saved · v1 · v1 is live` and its button reading `Republish`, this headline
+   * answered `Ready to publish` (`AUDIT-R2` N8). Two statements about one fact,
+   * ten centimetres apart, disagreeing - and the one a reader acts on is the
+   * one that reads like a to-do.
+   *
+   * What changes is the SENTENCE and not the verdict: the list is the same
+   * list, `is-clean` is the same class, and the dot is the same dot. The dock
+   * reports problems; whether publishing is still ahead is the toolbar's fact,
+   * and this is the dock borrowing it back rather than contradicting it.
+   */
+  describe('a clean list says the right thing about a published workflow', () => {
+    it('reads `No problems` once a version is live', () => {
+      const wrapper = mountPanel({ problems: [], published: true })
+
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('No problems')
+      expect(wrapper.text()).not.toContain('Ready to publish')
+      expect(wrapper.text()).toContain('No problems.')
+      // Still the clean state, and still says the rule. Only the claim about
+      // what to do next was wrong.
+      expect(wrapper.get('[data-testid="problems-headline"]').classes()).toContain('is-clean')
+      expect(wrapper.text()).toContain('Warnings never block; errors always do.')
+    })
+
+    it('still reads `Ready to publish` while nothing is registered', () => {
+      const wrapper = mountPanel({ problems: [], published: false })
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Ready to publish')
+    })
+
+    it('says the errors, not the publish state, when there are errors', () => {
+      // Publishing is refused either way, so the count is the only useful
+      // sentence and `published` must not reach the headline at all.
+      const wrapper = mountPanel({ problems: [problem('node-count')], published: true })
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('1 error')
+    })
+
+    it('is outranked by a stored version, which is a fact about what you can do', () => {
+      const wrapper = mountPanel({ problems: [], published: true, viewingVersion: 1 })
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('viewing v1 · read-only')
+    })
+
+    it('is outranked by an unchecked document, which is not a verdict yet', () => {
+      const wrapper = mountPanel({ problems: [], published: true, phase: 'idle' })
+      expect(wrapper.get('[data-testid="problems-headline"]').text()).toBe('Not checked yet')
+    })
   })
 
   describe('a stored version is never "ready to publish" (D-15-17)', () => {

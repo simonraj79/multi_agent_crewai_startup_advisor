@@ -64,29 +64,14 @@ describe('L4: every action is pinned to a commit SHA', () => {
   })
 })
 
-describe('L4: a pin without an update channel is a decision to never update', () => {
-  const CONFIG = path.join(REPO, '.github/dependabot.yml')
-
-  it('declares a Dependabot configuration', () => {
-    expect(existsSync(CONFIG)).toBe(true)
-  })
-
-  it('covers the three ecosystems this repository actually has, weekly', () => {
-    const text = readFileSync(CONFIG, 'utf8')
-    for (const ecosystem of ['github-actions', 'pip', 'npm']) {
-      expect(text, ecosystem).toContain(`package-ecosystem: ${ecosystem}`)
-    }
-    // One `interval:` per ecosystem and all of them weekly.
-    const intervals = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith('interval:'))
-    expect(intervals).toEqual(['interval: weekly', 'interval: weekly', 'interval: weekly'])
-  })
-
-  it('points npm at frontend/, which is the only package.json in the repository', () => {
-    const text = readFileSync(CONFIG, 'utf8')
-    const npmAt = text.indexOf('package-ecosystem: npm')
-    expect(npmAt).toBeGreaterThan(-1)
-    expect(text.slice(npmAt, npmAt + 200)).toContain('directory: "/frontend"')
-    expect(existsSync(path.join(REPO, 'frontend/package.json'))).toBe(true)
-    expect(existsSync(path.join(REPO, 'package.json'))).toBe(false)
+describe('L4: the update channel is a decision the owner made by hand', () => {
+  // Dependabot was configured with the pins on 2026-09-07 and REMOVED the
+  // next day at the owner's request: its first scan opened eight pull
+  // requests, six of them major bumps (two failed CI), and weekly review of
+  // those is not wanted yet. The pins above still hold; bumping one is a
+  // deliberate edit - resolve the SHA with `git ls-remote`, never guess it -
+  // and this test only asserts that the removal was deliberate, not partial.
+  it('has no Dependabot configuration left behind', () => {
+    expect(existsSync(path.join(REPO, '.github/dependabot.yml'))).toBe(false)
   })
 })

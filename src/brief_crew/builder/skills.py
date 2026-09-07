@@ -46,6 +46,7 @@ from __future__ import annotations
 import io
 import os
 import pathlib
+import shutil
 import zipfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -213,6 +214,25 @@ def _first_sentence(exc: BaseException) -> str:
     `service/credentials_api.py` parses by hand specifically to avoid.
     """
 
+    # SECURITY: never `str()` a pydantic ValidationError over author input.
+    # Rendering it materialises `input_value`, and for frontmatter built out
+    # of YAML aliases (`a1: &a1 [*a0,*a0,...]`, twelve deep) that walk is
+    # exponential: measured 0.1 s at 349 bytes, 0.9 s at 391, 7.8 s at 433,
+    # and MAX_SKILL_BYTES admits far deeper - on the event loop, so one
+    # request stalls the whole process. `errors()` with the input elided
+    # answers in microseconds and yields the same sentence.
+    try:
+        from pydantic import ValidationError
+    except ImportError:  # pragma: no cover - pydantic is a hard dependency
+        ValidationError = ()  # type: ignore[assignment,misc]
+    if isinstance(exc, ValidationError):
+        for error in exc.errors(
+            include_url=False, include_input=False, include_context=False
+        ):
+            field = ".".join(str(part) for part in error.get("loc", ()))
+            message = str(error.get("msg", "is not valid"))
+            return (f"{field}: {message}" if field else message)[:200]
+        return "the frontmatter is not valid"
     lines = [line.rstrip() for line in str(exc).strip().splitlines()]
     for index, line in enumerate(lines):
         stripped = line.strip()
@@ -345,11 +365,19 @@ def pack_directory(pack: SkillPack) -> pathlib.Path:
 
     if pack.owner == "builtin" or pack.user_id is None:
         return builtin_root() / pack.name
-    return skills_root() / "users" / _safe_segment(pack.user_id) / pack.name
+    # `_safe_segment` on the NAME as well as on the user id (audit L2). The
+    # name is checked against CrewAI's own pattern at parse, which is the only
+    # validator - so this is belt to that brace rather than a second rule, and
+    # it is here because a directory name is not the place to find out that a
+    # compiled pattern let something through: `re` anchors `$` before a
+    # trailing newline, so a name ending in one matched the pattern and would
+    # have made a directory whose name ended in a newline. One segment, no
+    # separators, no newline, bounded.
+    return skills_root() / "users" / _safe_segment(pack.user_id) / _safe_segment(pack.name)
 
 
 def _safe_segment(value: str) -> str:
-    """A user id as one path segment. Ids are opaque and can hold anything."""
+    """One path segment. A user id is opaque and a pack name is author input."""
 
     return "".join(
         character if character.isalnum() or character in "-_" else "_"
@@ -378,9 +406,62 @@ def materialise(pack: SkillPack) -> pathlib.Path:
                 return directory
         except OSError:  # pragma: no cover - unreadable file is rewritten
             pass
-    directory.mkdir(parents=True, exist_ok=True)
-    target.write_text(pack.body, encoding="utf-8")
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target.write_text(pack.body, encoding="utf-8")
+    except OSError as exc:
+        # A SENTENCE, not a 500 (audit L2). The filesystem is the one part of
+        # this path the author does not control: a full disk, a read-only
+        # mount, a name this platform will not take. `SkillError` is what every
+        # other refusal here raises and the route already answers it with a
+        # 422 the author can read; the errno is named and the path is not,
+        # because the path is the deployment's business.
+        raise SkillError(
+            f"this skill's {SKILL_FILENAME} could not be written ({exc.strerror or exc})"
+        ) from exc
     return directory
+
+
+#: How deep under `skills_root()` a removable pack directory sits:
+#: `users/<user_id>/<name>`. Stated as a number so the guard below refuses
+#: `users/<user_id>` - which holds every pack that person owns - as loudly as
+#: it refuses the root itself.
+_PACK_DEPTH = 3
+
+
+def remove_pack_directory(directory: pathlib.Path) -> bool:
+    """Delete a materialised pack directory. True if it went, False if refused.
+
+    The row is the index and the FILE is the pack, so a `DELETE` that removed
+    only the row left the author's 64 KiB on disk where the 32-row ceiling
+    could not see it: create-then-delete in a loop is unbounded storage under
+    `data/skills/users/<uid>/`. Render's disk is ephemeral, which bounds it in
+    production and does not make it right.
+
+    **It refuses to delete anything that is not a pack directory**, and the
+    check is structural rather than a promise: the resolved path must sit under
+    the resolved `skills_root()` and be exactly `_PACK_DEPTH` segments deep or
+    more. That refuses the root, refuses `users/`, and refuses `users/<uid>/`,
+    which is the one that would take every pack a person owns. It answers
+    False rather than raising, because a `DELETE` whose row is already gone
+    must not become a 500 over a directory.
+    """
+
+    root = skills_root().resolve()
+    try:
+        target = directory.resolve()
+    except OSError:  # pragma: no cover - depends on the filesystem
+        return False
+    if not _is_rooted(target, root):
+        return False
+    try:
+        depth = len(target.relative_to(root).parts)
+    except ValueError:  # pragma: no cover - `_is_rooted` already said yes
+        return False
+    if depth < _PACK_DEPTH:
+        return False
+    shutil.rmtree(target, ignore_errors=True)
+    return True
 
 
 def search_path(pack: SkillPack) -> pathlib.Path:
@@ -567,6 +648,7 @@ __all__ = [
     "parse_pack",
     "loaded_skill",
     "read_pack_zip",
+    "remove_pack_directory",
     "resolve_stored_path",
     "SKILL_LOAD_ERROR_CLASS",
     "skill_frame_details",

@@ -232,6 +232,16 @@ class WebSearchProviderTests(unittest.TestCase):
 class DmlLockTests(unittest.TestCase):
     """Criterion 5: `postgres_query` cannot be writable from any document value."""
 
+    def setUp(self) -> None:
+        # The factory now vets the host before constructing the tool, and
+        # `db.example.test` resolves to nothing. A public answer, injected.
+        patcher = mock.patch(
+            "brief_crew.builder.tools._default_resolver",
+            return_value=["93.184.216.34"],
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _record(self) -> tuple[Any, list[dict[str, Any]]]:
         seen: list[dict[str, Any]] = []
 
@@ -447,6 +457,111 @@ class FlaggedEntryTests(unittest.TestCase):
         with mock.patch.object(project_config, "BUILDER_CODE_INTERPRETER_ENABLED", True):
             self.assertTrue(entry_enabled(entry))
             self.assertIn("code_interpreter", [row.id for row in catalogue()])
+
+
+class PostgresHostVettingTests(unittest.TestCase):
+    """Audit H2: `postgres_query` dials a public PostgreSQL host or nothing.
+
+    The credential store accepts a DSN and the `/test` probe vetted it; the RUN
+    path did not, so an author could store `postgresql://u:p@10.0.0.5/app` - or
+    `sqlite:///output/validator-studio.db`, which SQLAlchemy accepts with no
+    driver installed and which on a deployment with no `DATABASE_URL` is this
+    service's own store - attach it to a `postgres_query` node, and ask the
+    agent to select every row. The rows and the connection errors (an internal
+    port-scan oracle in their own right) came back in the run's frames.
+
+    Every host here is answered by an INJECTED resolver, so nothing in this
+    class touches DNS: a literal resolves to itself, and the one public name
+    resolves to a fixed public address.
+    """
+
+    #: The one public answer, the same literal `tests/service/test_credential
+    #: _probe_hosts.py` uses so the two halves of H2 read alike.
+    PUBLIC_V4 = "93.184.216.34"
+
+    def _built(self, dsn: str) -> dict[str, Any]:
+        """Build `postgres_query` over `dsn`, returning the recorded kwargs."""
+
+        import crewai_tools
+
+        seen: list[dict[str, Any]] = []
+
+        class Recorder:
+            def __init__(self, **kwargs: Any) -> None:
+                seen.append(kwargs)
+                self.allow_dml = False
+
+        entry = builtin("postgres_query")
+        assert entry is not None
+        with mock.patch.object(crewai_tools, "NL2SQLTool", Recorder):
+            entry.factory(entry.default_params(), {"dsn": dsn}, "warn")
+        return seen[0]
+
+    def _refusal(self, dsn: str) -> str:
+        import crewai_tools
+
+        def never(**_kwargs: Any) -> Any:  # pragma: no cover - proves it is not reached
+            raise AssertionError(f"{dsn!r} reached the NL2SQLTool constructor")
+
+        entry = builtin("postgres_query")
+        assert entry is not None
+        with mock.patch.object(crewai_tools, "NL2SQLTool", never):
+            with self.assertRaises(ToolBuildError) as caught:
+                entry.factory(entry.default_params(), {"dsn": dsn}, "warn")
+        return str(caught.exception)
+
+    def test_H2_a_non_postgres_dsn_is_refused_before_anything_is_constructed(self) -> None:
+        detail = self._refusal("sqlite:///x.db")
+        self.assertIn("PostgreSQL only", detail)
+        self.assertIn("sqlite", detail)
+
+    def test_H2_loopback_private_and_link_local_hosts_are_refused_by_class(self) -> None:
+        cases = {
+            "postgresql://u:p@127.0.0.1/db": "loopback",
+            "postgresql://u:p@10.0.0.5/db": "private",
+            "postgresql://u:p@169.254.169.254/db": "link-local",
+        }
+        # A literal resolves to itself; the point is that the CLASS is named,
+        # not that a name was looked up.
+        with mock.patch.object(
+            tools_module, "_default_resolver", lambda host: [host]
+        ):
+            for dsn, word in cases.items():
+                with self.subTest(dsn=dsn):
+                    detail = self._refusal(dsn)
+                    self.assertIn("public database hosts only", detail)
+                    self.assertIn(word, detail)
+
+    def test_H2_a_dsn_with_no_host_is_refused_because_libpq_would_dial_a_socket(self) -> None:
+        detail = self._refusal("postgresql:///db")
+        self.assertIn("names no host", detail)
+        self.assertIn("local socket", detail)
+
+    def test_H2_localhost_by_name_is_refused_as_loopback(self) -> None:
+        def never_resolve(host: str) -> list[str]:  # pragma: no cover
+            raise AssertionError(f"DNS was consulted for {host!r}")
+
+        with mock.patch.object(tools_module, "_default_resolver", never_resolve):
+            detail = self._refusal("postgresql://u:p@localhost/db")
+        self.assertIn("loopback", detail)
+
+    def test_H2_a_name_that_resolves_private_is_refused_by_address_not_spelling(self) -> None:
+        with mock.patch.object(
+            tools_module, "_default_resolver", lambda _host: ["10.1.2.3"]
+        ):
+            detail = self._refusal("postgresql://u:p@db.example.test/app")
+        self.assertIn("resolves to a private address", detail)
+
+    def test_H2_a_public_host_is_built_with_hostaddr_pinned_to_the_vetted_answer(self) -> None:
+        """The dial cannot land somewhere the check did not look."""
+
+        with mock.patch.object(
+            tools_module, "_default_resolver", lambda _host: [self.PUBLIC_V4]
+        ):
+            call = self._built("postgresql+psycopg://user:pw@db.example.test/app")
+        self.assertIn(f"hostaddr={self.PUBLIC_V4}", call["db_uri"])
+        self.assertIn("db.example.test", call["db_uri"])
+        self.assertIs(call["allow_dml"], False)
 
 
 if __name__ == "__main__":

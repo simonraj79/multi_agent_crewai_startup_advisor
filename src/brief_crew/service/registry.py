@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor, wait as wait_for_futures
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -2862,9 +2863,19 @@ class RunRegistry:
             combined[frame.seq] = frame.to_dict()
         return [combined[seq] for seq in sorted(combined)[:limit]]
 
-    def all_frames(self, run_id: str) -> list[dict[str, Any]]:
-        frames: list[dict[str, Any]] = []
+    def iter_frames(
+        self, run_id: str, *, limit: int | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """Every frame of a run, one page at a time and at most ``limit`` of them.
+
+        A GENERATOR, because the log export used to materialise the whole run
+        before it wrote a byte (audit M13) and `replay_frames` was already
+        paging - so the paging was there and its only consumer threw the
+        benefit away. ``limit`` is applied across pages rather than per page;
+        None means every frame, which is what the in-process callers want.
+        """
         after = 0
+        yielded = 0
         while True:
             page = self.replay_frames(
                 run_id,
@@ -2872,11 +2883,20 @@ class RunRegistry:
                 limit=MAX_REPLAY_LIMIT,
             )
             if not page:
-                return frames
-            frames.extend(page)
+                return
+            for frame in page:
+                if limit is not None and yielded >= limit:
+                    return
+                yield frame
+                yielded += 1
             after = int(page[-1]["seq"])
             if len(page) < MAX_REPLAY_LIMIT:
-                return frames
+                return
+
+    def all_frames(
+        self, run_id: str, *, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        return list(self.iter_frames(run_id, limit=limit))
 
     def wait(self, run_id: str, timeout: float | None = None) -> Any:
         with self._lock:

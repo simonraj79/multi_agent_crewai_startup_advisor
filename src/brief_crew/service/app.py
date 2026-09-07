@@ -6,7 +6,7 @@ calling ``create_app`` reports the exact installation blocker.
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from io import BytesIO
@@ -27,6 +27,7 @@ from pydantic import Field, ValidationError
 
 from brief_crew import config as project_config
 from brief_crew.config import (
+    MAX_EXPORT_FRAMES,
     RUN_RATE_LIMIT_KEY_MAX_CHARS,
     WS_MAX_GATE_FIELD_CHARS,
     WS_MAX_GATE_FIELDS,
@@ -766,7 +767,9 @@ def create_app(
     try:
         from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
         from fastapi import WebSocket, WebSocketDisconnect
+        from fastapi.concurrency import run_in_threadpool
         from fastapi.middleware.cors import CORSMiddleware
+        from fastapi.responses import StreamingResponse
     except ModuleNotFoundError as exc:
         raise ServiceDependencyError(
             "FastAPI is not installed; install the existing project service extra"
@@ -2122,44 +2125,78 @@ def create_app(
         format: str = "ndjson",
         user: AuthenticatedUser | None = Depends(current_user),
     ) -> Response:
+        """Export one run's frames, bounded and off the event loop - audit M13.
+
+        This route used to join EVERY frame of a run into one string inline in
+        an ``async def``, and for ``format=zip`` then DEFLATE it in a
+        ``BytesIO`` there too. ``all_frames`` pages the database, not the
+        2,000-frame ring, so that string is the size of the run's whole durable
+        history; and only ``POST .../runs`` is rate limited, so nothing bounded
+        how often an owner could ask. Both halves held the interpreter lock.
+
+        Now: NDJSON is a ``StreamingResponse`` over a generator, which Starlette
+        iterates in a worker thread, so the paging, the serialising and the
+        socket writes all happen off the loop and no page outlives its
+        ``yield``. The ZIP still has to be one buffer - the format needs its
+        central directory - but it is built in a threadpool, and both are
+        capped at ``MAX_EXPORT_FRAMES``.
+        """
         require_own_run(run_id, user)
         if format not in {"ndjson", "zip"}:
             raise HTTPException(status_code=400, detail="format must be ndjson or zip")
-        frames_content = "".join(
-            json.dumps({"type": "frame", "data": frame}, separators=(",", ":"))
-            + "\n"
-            for frame in registry.all_frames(run_id)
-        ).encode("utf-8")
+
+        def frame_lines() -> Iterator[bytes]:
+            for frame in registry.iter_frames(run_id, limit=MAX_EXPORT_FRAMES):
+                yield (
+                    json.dumps({"type": "frame", "data": frame}, separators=(",", ":"))
+                    + "\n"
+                ).encode("utf-8")
+
         if format == "zip":
-            status = RunStatusResponse.model_validate(
-                registry.status_payload(run_id)
-            ).model_dump(mode="json")
-            archive_buffer = BytesIO()
-            with zipfile.ZipFile(
-                archive_buffer,
-                mode="w",
-                compression=zipfile.ZIP_DEFLATED,
-            ) as archive:
-                archive.writestr("frames.ndjson", frames_content)
-                archive.writestr(
-                    "run.json",
-                    json.dumps(status, ensure_ascii=False, indent=2).encode("utf-8"),
-                )
-                archive.writestr(
-                    "node-metrics.json",
-                    json.dumps(
-                        status["node_usage"], ensure_ascii=False, indent=2
-                    ).encode("utf-8"),
-                )
+
+            def build_archive() -> bytes:
+                status = RunStatusResponse.model_validate(
+                    registry.status_payload(run_id)
+                ).model_dump(mode="json")
+                frames_content = b"".join(frame_lines())
+                # The export's own count, which is what tells a reader whether
+                # the cap bit. `status["frames"]` is the run's, and after a
+                # truncation the two disagree on purpose.
+                exported = frames_content.count(b"\n")
+                status.setdefault("frames", {})
+                if isinstance(status.get("frames"), dict):
+                    status["frames"]["exported"] = exported
+                    status["frames"]["truncated"] = exported >= MAX_EXPORT_FRAMES
+                archive_buffer = BytesIO()
+                with zipfile.ZipFile(
+                    archive_buffer,
+                    mode="w",
+                    compression=zipfile.ZIP_DEFLATED,
+                ) as archive:
+                    archive.writestr("frames.ndjson", frames_content)
+                    archive.writestr(
+                        "run.json",
+                        json.dumps(status, ensure_ascii=False, indent=2).encode(
+                            "utf-8"
+                        ),
+                    )
+                    archive.writestr(
+                        "node-metrics.json",
+                        json.dumps(
+                            status["node_usage"], ensure_ascii=False, indent=2
+                        ).encode("utf-8"),
+                    )
+                return archive_buffer.getvalue()
+
             return Response(
-                content=archive_buffer.getvalue(),
+                content=await run_in_threadpool(build_archive),
                 media_type="application/zip",
                 headers={
                     "Content-Disposition": f'attachment; filename="run-{run_id}.zip"'
                 },
             )
-        return Response(
-            content=frames_content,
+        return StreamingResponse(
+            frame_lines(),
             media_type="application/x-ndjson",
             headers={
                 "Content-Disposition": f'attachment; filename="run-{run_id}.ndjson"'

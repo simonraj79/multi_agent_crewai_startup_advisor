@@ -1596,6 +1596,32 @@ def user_spend_cap_usd(user_id: str | None, email: str | None = None) -> float |
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
 
 # --------------------------------------------------------------------------
+# The most frames one log export will read, serialise and return.
+#
+# SECURITY (audit M13). `GET /api/runs/{id}/logs` used to join EVERY frame of a
+# run into one string on the event loop, and for `format=zip` then DEFLATE it
+# in a BytesIO there too. `all_frames` pages the DATABASE, not the 2,000-frame
+# in-memory ring, so the size of that string is the size of the run's whole
+# durable history - and the endpoint carries no rate limit of its own, because
+# only `POST .../runs` is limited. One caller could therefore hold the
+# interpreter lock for as long as the largest run they own takes to compress.
+#
+# A CONSTANT, not an environment knob, and that is the same call `config.py`
+# already makes for `MAX_REQUEST_BODY_BYTES` and `MAX_RUN_INPUT_CHARS`: it is a
+# safety bound on the shape of a response, not a deployment preference, and a
+# knob is a thing an operator can raise back to the defect.
+#
+# 50,000 is a margin, not a guess. The in-memory ring is 2,000
+# (`events/buffer.py::DEFAULT_RING_CAPACITY`); the largest real run anyone here
+# has measured wrote 102 frames, and the observability programme's paired
+# comparison ran to 95 rows. So this is ~25x the ring and ~500x the largest
+# observed run, while still bounding one response at order 50 MB of NDJSON
+# rather than at whatever the database holds. An export that reaches it is
+# truncated, never refused: a partial log is worth more to whoever is debugging
+# than a 500, and `frames.truncated` in the ZIP's `run.json` says it happened.
+MAX_EXPORT_FRAMES = 50_000
+
+# --------------------------------------------------------------------------
 # C6's three frame ceilings - .agent/plans/10-runtime.md D6
 #
 # Separate constants rather than one, because each bounds a different thing and

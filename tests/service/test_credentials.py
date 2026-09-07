@@ -262,5 +262,87 @@ class ProbeRateLimitTests(AuthenticatedTwoUserCase):
         self.assertEqual(self.client.post(f"{CREDENTIALS}/{his}/test", headers=self.as_bob()).status_code, 200)
 
 
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class PostgresDsnAtPasteTimeTests(AuthenticatedTwoUserCase):
+    """Audit H2, the store half: a DSN nothing may dial is refused when PASTED.
+
+    The run path refuses it too (`builder/tools._postgres_query`), and that is
+    the check that actually closes the SSRF. This one exists because a store
+    that accepts `postgresql://u:p@10.0.0.5/app` and then refuses it at the
+    author's first paid node has taught them nothing, and because a row that
+    can never be used should never have been written.
+
+    The DSN password is a greppable literal and every assertion here checks it
+    is not in the response, the way every other refusal in this file does.
+    """
+
+    PASSWORD = "hunter2-NEVER-IN-A-SENTENCE"
+    PUBLIC_V4 = "93.184.216.34"
+
+    def _dsn(self, host: str) -> str:
+        return f"postgresql://alice:{self.PASSWORD}@{host}:5432/app"
+
+    def _post(self, dsn: str, *, label: str = "pg") -> Any:
+        return self.client.post(
+            CREDENTIALS,
+            json={"kind": "postgres", "label": label, "fields": {"dsn": dsn}},
+            headers=self.as_alice(),
+        )
+
+    def test_H2_a_loopback_private_or_link_local_dsn_is_422_at_create(self) -> None:
+        def literal(host: str) -> list[str]:
+            return [host]
+
+        cases = {
+            self._dsn("127.0.0.1"): "loopback",
+            self._dsn("10.0.0.5"): "private",
+            self._dsn("169.254.169.254"): "link-local",
+            self._dsn("localhost"): "loopback",
+        }
+        with patch("brief_crew.service.credentials._default_resolve_host", literal):
+            for dsn, word in cases.items():
+                with self.subTest(dsn=dsn):
+                    response = self._post(dsn)
+                    self.assertEqual(response.status_code, 422, response.text)
+                    detail = response.json()["detail"]
+                    self.assertIn("public database hosts only", detail)
+                    self.assertIn(word, detail)
+                    self.assertNotIn(self.PASSWORD, response.text)
+
+    def test_H2_a_host_less_dsn_is_422_because_libpq_would_dial_a_local_socket(self) -> None:
+        response = self._post("postgresql:///app")
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("names no host", response.json()["detail"])
+
+    def test_H2_a_name_that_resolves_private_is_refused_by_address(self) -> None:
+        with patch(
+            "brief_crew.service.credentials._default_resolve_host",
+            lambda _host: ["10.1.2.3"],
+        ):
+            response = self._post(self._dsn("db.example.test"))
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("resolves to a private address", response.json()["detail"])
+        self.assertNotIn(self.PASSWORD, response.text)
+
+    def test_H2_the_refusal_is_worded_for_the_moment_the_dsn_was_pasted(self) -> None:
+        """Not "the postgres probe dials...": nobody probed anything."""
+
+        response = self._post("postgresql:///app")
+        self.assertTrue(
+            response.json()["detail"].startswith("a postgres credential names"),
+            response.text,
+        )
+
+    def test_H2_a_public_dsn_is_still_stored(self) -> None:
+        with patch(
+            "brief_crew.service.credentials._default_resolve_host",
+            lambda _host: [self.PUBLIC_V4],
+        ):
+            response = self._post(self._dsn("db.example.test"), label="remote pg")
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["kind"], "postgres")
+        self.assertNotIn(self.PASSWORD, response.text)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

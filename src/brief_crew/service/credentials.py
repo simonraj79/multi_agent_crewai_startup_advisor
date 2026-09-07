@@ -103,6 +103,7 @@ __all__ = [
     "parse_master_key",
     "POSTGRES_PROBE_REFUSAL",
     "postgres_probe_target",
+    "POSTGRES_STORED_REFUSAL",
     "probe_credential",
     "ProbeResult",
     "resolve_credential",
@@ -507,12 +508,36 @@ class CredentialStore:
 
     # ----------------------------------------------------------------- write
     def create(
-        self, user_id: str, *, kind: str, label: Any, fields: Any
+        self,
+        user_id: str,
+        *,
+        kind: str,
+        label: Any,
+        fields: Any,
+        resolve_host: HostResolver | None = None,
     ) -> CredentialSummary:
         key = self._require_key()
         owner = _checked_user(user_id)
         clean_label = _checked_label(label)
         clean_fields = normalize_fields(kind, fields)
+        # SECURITY: a postgres DSN is vetted at the moment it is PASTED, not
+        # only when something dials it. The run path vets it too
+        # (`builder/tools._postgres_query`), and that is the check that
+        # actually stops the SSRF - but a store that accepts
+        # `postgresql://u:p@10.0.0.5/app` and then refuses it at the first
+        # paid node teaches the author nothing, and a row that can never be
+        # used is a row that should never have been written. Same function as
+        # the probe, so there is one definition of "public database host";
+        # `resolve_host` is injectable for the same reason it is on
+        # `probe_credential` - a test must never touch DNS.
+        if kind == "postgres":
+            refusal, _target = postgres_probe_target(
+                clean_fields["dsn"], resolve_host or _default_resolve_host
+            )
+            if refusal is not None:
+                raise CredentialInvalid(
+                    refusal.replace(POSTGRES_PROBE_REFUSAL, POSTGRES_STORED_REFUSAL, 1)
+                )
         now = utcnow()
         for attempt in range(_MINT_ATTEMPTS):
             credential_id = new_credential_id()
@@ -724,6 +749,12 @@ HostResolver = Callable[[str], list[str]]
 #: The first clause of every refusal the postgres probe writes. The second
 #: clause names the host and its class, never the DSN.
 POSTGRES_PROBE_REFUSAL = "the postgres probe dials public database hosts only"
+
+#: The same refusal, worded for the moment a DSN is stored rather than dialled.
+#: `CredentialStore.create` swaps the first clause so the sentence describes
+#: what the author just did; the clause after the `;` is the probe's own and is
+#: never rewritten, because it names the host and its class.
+POSTGRES_STORED_REFUSAL = "a postgres credential names public database hosts only"
 
 
 def _default_http_get(url: str, headers: Mapping[str, str], timeout: float) -> tuple[int, str]:

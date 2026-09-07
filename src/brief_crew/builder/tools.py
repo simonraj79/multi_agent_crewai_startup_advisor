@@ -526,10 +526,83 @@ def _postgres_query(
 
     if credential is None:
         raise ToolBuildError("postgres_query needs a postgres credential")
+    # SECURITY: the host is vetted HERE, where the connection is actually made.
+    # `POST /credentials/{id}/test` already refuses loopback, private, link-local
+    # and metadata addresses; nothing on the run path did, so a signed-in author
+    # could store `postgresql://...@10.0.0.5/` (or `sqlite:///output/x.db`) and
+    # have the run dial it and hand the rows back. Parsed the way SQLAlchemy
+    # will parse it, refused unless it is PostgreSQL to a public host, and
+    # `hostaddr` pinned to the vetted answer so libpq cannot re-resolve the
+    # name to something else a moment later (the same pin the probe applies).
+    from sqlalchemy.engine import make_url
+
+    from brief_crew.service.credentials import _address_class
+
+    dsn = credential["dsn"]
+    try:
+        url = make_url(dsn)
+    except Exception as exc:  # noqa: BLE001 - any parse failure is a refusal
+        raise ToolBuildError(
+            "postgres_query needs a postgresql:// connection string"
+        ) from exc
+    if not str(url.drivername).lower().startswith("postgresql"):
+        raise ToolBuildError(
+            f"postgres_query dials PostgreSQL only; {url.drivername!r} is not that"
+        )
+    host = (url.host or "").strip().lower()
+    # Three distinct causes, three sentences, because an author reading one of
+    # them needs to know which mistake they made: a DSN with no host at all
+    # makes libpq dial a local Unix socket under peer/trust auth, a host that
+    # IS a socket path does the same by another spelling, and `localhost` is
+    # loopback by name rather than by address. The probe's own refusals split
+    # them the same way (`credentials.postgres_probe_target`).
+    if not host:
+        raise ToolBuildError(
+            "postgres_query dials public database hosts only; this DSN names no "
+            "host, so libpq would dial a local socket"
+        )
+    if host.startswith("/") or host.startswith("@"):
+        raise ToolBuildError(
+            f"postgres_query dials public database hosts only; {host!r} is a "
+            "Unix socket path"
+        )
+    if host.rstrip(".") == "localhost" or host.rstrip(".").endswith(".localhost"):
+        raise ToolBuildError(
+            f"postgres_query dials public database hosts only; {host!r} is a "
+            "loopback address"
+        )
+    literal = url.query.get("hostaddr")
+    if literal:
+        addresses = [part.strip() for part in str(literal).split(",") if part.strip()]
+    else:
+        try:
+            addresses = _default_resolver(host)
+        except OSError:
+            addresses = []
+    if not addresses:
+        raise ToolBuildError(
+            f"postgres_query dials public database hosts only; {host!r} could not "
+            "be resolved"
+        )
+    for address in addresses:
+        try:
+            address_class = _address_class(address)
+        except ValueError as exc:
+            raise ToolBuildError(
+                f"postgres_query dials public database hosts only; {host!r} "
+                "resolved to something that is not an IP address"
+            ) from exc
+        if address_class is not None:
+            raise ToolBuildError(
+                f"postgres_query dials public database hosts only; {host!r} "
+                f"{'is' if literal else 'resolves to'} a {address_class} address"
+            )
+    pinned = url.update_query_dict({"hostaddr": addresses[0]})
+    db_uri = pinned.render_as_string(hide_password=False)
     tables = params.get("tables") or []
     with _forced_env({"CREWAI_NL2SQL_ALLOW_DML": "false"}):
         tool = crewai_tools.NL2SQLTool(
-            db_uri=credential["dsn"],
+            db_uri=db_uri,
             tables=list(tables),
             allow_dml=False,
             tool_failure_policy=_policy(policy),

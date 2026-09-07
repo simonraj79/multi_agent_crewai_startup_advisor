@@ -795,7 +795,7 @@ const orderedLibrary = computed(() =>
      pixel above the first card is a pixel the card's action needs to clear the
      fold, and a last row flush against the end of the scroller reads as a
      clipped page. */
-  padding: var(--space-6) var(--space-8) calc(var(--space-8) + var(--space-6));
+  padding: var(--space-5) var(--space-8) calc(var(--space-8) + var(--space-6));
   margin: 0 auto;
 }
 
@@ -804,7 +804,7 @@ const orderedLibrary = computed(() =>
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-6);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-3);
 }
 
 .gallery-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
@@ -843,7 +843,7 @@ const orderedLibrary = computed(() =>
      first section heading it does not: the chips sat directly on "Start here"
      and read as that section's own controls. */
   margin-top: calc(-1 * var(--space-4));
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .gallery-jump-link {

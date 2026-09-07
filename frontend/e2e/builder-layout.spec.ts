@@ -998,7 +998,34 @@ test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)'
     expect(watch.unexpected).toEqual([])
   })
 
-  test('keeps the caveat card within reach of its siblings', async ({ page }) => {
+  /*
+   * AMENDED 2026-09-07 (plan 16 refine round 2), and it REVERSES D-15-27's
+   * three-line cap rather than adjusting it.
+   *
+   * D-15-27 was measured when ONE card of nine carried a caveat: the grid row
+   * is as tall as its tallest card, so that block ran to 177px of a 232px
+   * column and its three neighbours ended their content 206px above their own
+   * bottom edge and read as unfinished. The answer was a 3-line box with an
+   * inner scroller, and this test pinned it - box <= 80px, and `scrollHeight`
+   * greater than the box, which was the proof the whole sentence was still in
+   * the DOM.
+   *
+   * SIX of thirteen carry one now, and a cold reader given only this gallery
+   * found the cap first and hardest: every tan box clipped mid-word behind a
+   * scrollbar they had to discover, and what was hidden inside the fallback
+   * card's was the small print they most needed - that a poor answer is not a
+   * failure, and that `max_retries` under 1 makes the fallback unreachable.
+   * Meanwhile the evenness the cap was buying is now bought by five card
+   * fields that did not exist then: the measured tallest-to-shortest content
+   * ratio is 1.43 with the caveats rendered in full, against the 2.0 below.
+   *
+   * So the two halves swap. The box bound is gone, and in its place is the
+   * claim it used to make impossible: the caveat is NOT clipped -
+   * `scrollHeight` fits inside `clientHeight`, which is R14's "verbatim" with
+   * the one loophole a box can still leave. The ratio guard is unchanged and
+   * is what stops this becoming one tall card beside five short ones again.
+   */
+  test('renders every caveat in full without unbalancing its siblings', async ({ page }) => {
     const watch = watchConsole(page)
     await page.setViewportSize({ width: 1440, height: 900 })
     await stubEmptyLibrary(page)
@@ -1009,7 +1036,7 @@ test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)'
     await expect(caveat).toBeVisible()
 
     const measured = await page.evaluate(() => {
-      const block = document.querySelector('.template-caveat') as HTMLElement
+      const blocks = [...document.querySelectorAll('.template-caveat')] as HTMLElement[]
       const cards = [...document.querySelectorAll('.template-card')] as HTMLElement[]
       const contentOf = (card: HTMLElement) => {
         const bottom = Math.max(
@@ -1018,21 +1045,29 @@ test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)'
         return Math.round(bottom - card.getBoundingClientRect().top)
       }
       return {
-        caveatHeight: Math.round(block.getBoundingClientRect().height),
-        // The whole caveat is still in the DOM; only its box is bounded.
-        caveatScroll: block.scrollHeight,
+        // Every caveat on the page, not the first: six cards carry one, and a
+        // cap that came back on one of them is the defect.
+        caveats: blocks.map((block) => ({
+          height: Math.round(block.getBoundingClientRect().height),
+          scroll: block.scrollHeight,
+        })),
         content: cards.map(contentOf),
       }
     })
 
-    // Three lines plus padding, not nine. The critic measured 177px.
-    expect
-      .soft(measured.caveatHeight, `the caveat box is ${measured.caveatHeight}px`)
-      .toBeLessThanOrEqual(80)
-    // R14: verbatim and complete. The text is longer than its box, which is
-    // what "scroll inside the block" means and what clamping would have lost.
-    expect.soft(measured.caveatScroll).toBeGreaterThan(measured.caveatHeight)
-    // And the row is no longer one tall card beside three short ones.
+    // R14, and the loophole a box can leave in it: the whole sentence is in the
+    // DOM either way, and this is the assertion that it is also on the SCREEN.
+    expect.soft(measured.caveats.length, 'no caveat rendered at all').toBeGreaterThan(0)
+    for (const [index, caveat] of measured.caveats.entries()) {
+      expect
+        .soft(
+          caveat.scroll,
+          `caveat ${index} is clipped: ${caveat.scroll}px of text in a ${caveat.height}px box`,
+        )
+        .toBeLessThanOrEqual(caveat.height + 1)
+    }
+    // And the row is still not one tall card beside five short ones - the guard
+    // D-15-27 was really about, and the half of it that survives unchanged.
     const tallest = Math.max(...measured.content)
     const shortest = Math.min(...measured.content)
     expect

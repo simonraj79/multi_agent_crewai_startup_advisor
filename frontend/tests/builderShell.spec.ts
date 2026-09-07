@@ -538,8 +538,8 @@ describe('the gallery is the empty state and the way back into saved work', () =
     // The flagship is last in the first row, which is where D7 puts it.
     const validatorCard = wrapper.findAll('.template-card')[BUILDER_TEMPLATES.length - 1]
     const facts = validatorCard.findAll('.template-facts dd')
-    // Nodes, Edges, Billable, Est. run. `Edges` joined the row with plan 14, so
-    // the billable count moved from index 1 to index 2.
+    // Nodes, Edges, Billable, Est. per run. `Edges` joined the row with plan 14,
+    // so the billable count moved from index 1 to index 2.
     expect(facts[2].text()).toBe('8')
     // Both figures: the published floor and the enforced one. The inflated
     // figure alone reads as an error beside anyone's arithmetic.

@@ -122,10 +122,10 @@ const provenance = computed(() => PROVENANCE[props.template.pattern.source])
     </dl>
 
     <!--
-      Rendered verbatim (R14). It is the difference between a template and a
-      booby trap, and paraphrasing it on a card is how the difference gets lost.
-      Lifted above the action's stretched overlay so its own scroller still
-      answers a wheel - see the style block.
+      Rendered verbatim AND IN FULL (R14). It is the difference between a
+      template and a booby trap, and a box that clips it mid-word is the same
+      loss by a slower route - see the style block for the measurement that
+      reversed D-15-27's cap.
     -->
     <p v-if="template.caveat" class="template-caveat">{{ template.caveat }}</p>
 
@@ -147,7 +147,11 @@ const provenance = computed(() => PROVENANCE[props.template.pattern.source])
         </dd>
       </div>
       <div>
-        <dt>Est. run</dt>
+        <!-- "Est. run" said nothing about per WHAT, and a cold reader stopped
+             on exactly that: one ticket, or one day? It is one run of the
+             workflow, so the label says so. The figures and their source are
+             untouched - both come from `POST /api/builder/validate`. -->
+        <dt>Est. per run</dt>
         <dd
           :title="
             price
@@ -261,15 +265,21 @@ const provenance = computed(() => PROVENANCE[props.template.pattern.source])
  * spine and a stretched one is a different picture of the same workflow.
  *
  * The height is CAPPED rather than left to the 240x90 viewBox, which resolved
- * to 83px at this column width - a big field with two dots on it for half the
- * templates, and 30px of the height the `Use this template` action needed to
- * clear the fold. The class lands on the `<svg>` itself, so this is the svg's
- * own box; `preserveAspectRatio` scales the whole drawing down and nothing is
- * cropped.
+ * to 83px at this column width. The class lands on the `<svg>` itself, so this
+ * is the svg's own box; `preserveAspectRatio="xMidYMid meet"` fits the whole
+ * viewBox inside it and nothing is cropped.
+ *
+ * 80px, RAISED FROM 56 on a measurement rather than a preference. `meet` on a
+ * 2.67:1 viewBox inside a 3.95:1 box scales to the HEIGHT, so 56px drew the
+ * picture 149px wide in a 221px box - a third of the slot empty on either side
+ * and, on `fan-out-join`, three branches stacked inside 14px that no longer
+ * read as three. At 80px the drawing is 213px of the 221 and the branches are
+ * 20px apart. It costs 24px of card height against the 139px of headroom the
+ * first shelf measured, so the fold is still clear.
  */
 .template-spine {
   flex: none;
-  height: 56px;
+  height: 80px;
   padding: var(--space-2) 0;
   background: var(--surface-well);
   border: 1px solid var(--border-default);
@@ -330,7 +340,7 @@ const provenance = computed(() => PROVENANCE[props.template.pattern.source])
   border-radius: var(--r-md);
 }
 
-.template-rules > div { padding: var(--space-2) var(--space-3); }
+.template-rules > div { padding: var(--space-1) var(--space-3); }
 .template-rules > div + div { border-top: 1px solid var(--border-default); }
 
 .template-rules dt {
@@ -358,31 +368,31 @@ const provenance = computed(() => PROVENANCE[props.template.pattern.source])
  * Warn colours, not error. Nothing is wrong with the template; there is
  * something about it the picture cannot say.
  *
- * D-15-27: one card carries this block and its neighbours do not, so the grid
- * row - as tall as its tallest card - made the block 177px of a 232px column
- * and the siblings read as unfinished. The answer is "equalise heights and
- * scroll inside the block", which keeps R14 intact where clamping would not:
- * the caveat is in the DOM verbatim and in full, and read in full by a screen
- * reader. What changes is how much of the card's height it spends.
+ * D-15-27'S THREE-LINE CAP IS REVERSED HERE, and the reason is that the state
+ * it was written for is gone. It was written when ONE card of nine carried a
+ * caveat: the grid row is as tall as its tallest card, so that one block ran to
+ * 177px of a 232px column and its neighbours read as unfinished. The answer was
+ * "equalise heights and scroll inside the block".
+ *
+ * SIX of thirteen carry one now, they are the sentences a cold reader said they
+ * most needed, and the equalising is being done by five other fields the card
+ * did not have then - the measured tallest-to-shortest content ratio is 1.25,
+ * against the 2.0 the E2E guard allows. So the cap was buying an evenness the
+ * card already has, and paying for it by clipping the fallback template's small
+ * print mid-word behind a scrollbar a reader had to discover. A cold reader
+ * found exactly that and named what was hidden: that a bad answer is not a
+ * failure, and that `max_retries` under 1 makes the whole thing inert.
+ *
+ * In full, then, at the same size as the rest of the card's prose. No
+ * `max-height`, no scroller, and no `z-index` - the block does not scroll, so
+ * it does not need to sit above the action's stretched overlay, and a click on
+ * it opens the template like a click anywhere else on the card.
  */
 .template-caveat {
-  /* Above the action's stretched overlay, or a wheel over the block would
-     scroll the gallery behind it and the rest of the sentence would be
-     unreachable. The cost is that a click here does not open the template,
-     which is the right trade for a warning you are meant to read. */
-  position: relative;
-  z-index: 1;
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  /* Three lines plus the padding. The block was nine. */
-  max-height: calc(3 * 1.5 * var(--fs-11) + 18px);
-  overflow-y: auto;
-  /* Or a wheel over the caveat scrolls the gallery once the block reaches its
-     end, which reads as the page jumping. */
-  overscroll-behavior: contain;
   color: var(--warn-text);
-  font-size: var(--fs-11);
-  line-height: 1.5;
+  font: var(--type-label);
   background: var(--warn-bg);
   border: 1px solid var(--warn-border);
   border-radius: var(--r-md);
@@ -443,17 +453,20 @@ const provenance = computed(() => PROVENANCE[props.template.pattern.source])
 /*
  * The card's own action, and its only focusable control.
  *
- * `margin-top: auto` pins it to the bottom of the column so the row lines up
- * across cards of different heights - a floating action reads as several
- * different controls. The stretched `::after` is what makes the whole tile
- * clickable while exactly one thing sits in the tab order carrying the name
- * `Use this template`.
+ * It carries NO `margin-top: auto` of its own: `.template-facts` above it
+ * already takes the column's slack, so the facts, the disclosure and the
+ * action travel together as one tail pinned to the card's bottom edge. Give
+ * the action its own `auto` as well and the slack is split in two - a card
+ * with no caveat then shows its facts floating mid-card with a second gap
+ * under the disclosure, which is what the review shelf looked like on
+ * 2026-09-07 once caveats rendered in full. The stretched `::after` is what
+ * makes the whole tile clickable while exactly one thing sits in the tab
+ * order carrying the name `Use this template`.
  */
 .template-action {
   display: inline-flex;
   gap: var(--space-2);
   align-items: center;
-  margin-top: auto;
   padding: var(--space-1) 0 0;
   color: var(--on-accent-cyan);
   font: 600 var(--fs-12)/1.2 var(--font-body);

@@ -187,6 +187,19 @@ describe('the home lists every workflow this account can open', () => {
    * is an instance of. Read off `templateCategories.ts` rather than restated,
    * so a category renamed in the contract fails here by name.
    */
+  it('hides the pattern pill on the two cards named after their pattern', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    // Named, because a derived assertion that matched nothing would pass.
+    for (const id of ['single-agent', 'tiered-routing']) {
+      const card = wrapper.get(`[data-testid="home-template-${id}"]`)
+      expect(card.find('.home-pill.is-pattern').exists(), id).toBe(false)
+    }
+    // And it still draws where it earns its place.
+    const chaining = wrapper.get('[data-testid="home-template-sequential-pipeline"]')
+    expect(chaining.get('.home-pill.is-pattern').text()).toBe('Prompt chaining')
+  })
+
   it('names the shelf and the pattern on every template card', async () => {
     const wrapper = mountHome(false)
     await settle(10)
@@ -198,15 +211,23 @@ describe('the home lists every workflow this account can open', () => {
       // that has three lines of label.
       expect(kicker.classes(), template.id).toContain('home-kicker')
 
-      // The pattern is a PILL beside `template`, not a line under the title,
-      // where it repeated it ("Single agent / Single agent"). The two scaffolds
-      // are not patterns and get no pill rather than an invented one.
+      /*
+       * The pattern is a PILL beside `template`, not a line under the title
+       * where it repeated it - and it is drawn only when it says something the
+       * title has not. Two rules, both about not saying one thing twice:
+       * `source: 'none'` is the two scaffolds, which are not patterns; and a
+       * pattern whose name IS the title, case-insensitively, was the title in
+       * capitals. The second rule hides exactly two cards today,
+       * `single-agent` and `tiered-routing`, and the assertion below is
+       * derived rather than listing them, so a third one renaming into that
+       * state is covered by the same line.
+       */
+      const shows =
+        template.pattern.source !== 'none' &&
+        template.pattern.name.toLowerCase() !== template.title.toLowerCase()
       const pattern = card.find('.home-pill.is-pattern')
-      if (template.pattern.source === 'none') {
-        expect(pattern.exists(), template.id).toBe(false)
-      } else {
-        expect(pattern.text(), template.id).toBe(template.pattern.name)
-      }
+      expect(pattern.exists(), template.id).toBe(shows)
+      if (shows) expect(pattern.text(), template.id).toBe(template.pattern.name)
     }
   })
 

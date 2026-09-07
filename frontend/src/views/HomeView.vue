@@ -328,6 +328,19 @@ function categoryTitle(template: BuilderTemplate): string {
   return templateCategory(template.category).title
 }
 
+/**
+ * Whether the pattern pill says anything the title has not said already.
+ *
+ * A scaffold has no pattern to name, and two cards are named after the pattern
+ * they are an instance of - `Single agent` and `Tiered routing` - so the pill
+ * beside them was the title in capitals. Case-insensitive, because that is the
+ * only difference between the two strings on those two cards.
+ */
+function showsPattern(template: BuilderTemplate): boolean {
+  if (template.pattern.source === 'none') return false
+  return template.pattern.name.toLowerCase() !== template.title.toLowerCase()
+}
+
 async function loadValidator(): Promise<void> {
   try {
     await studioApi.initialize()
@@ -627,11 +640,15 @@ onBeforeUnmount(() => window.clearInterval(ticker))
                     title, where it repeated it: "Single agent / Single agent",
                     "Blank canvas / Empty canvas". Beside `template` it is
                     plainly a label about the card and not a second name for it.
-                    Omitted for `source: 'none'` - the two scaffolds are not
-                    patterns, and a pill reading EMPTY CANVAS would invent one.
+                    Two rules, and both are about not saying one thing twice:
+                    omitted for `source: 'none'`, because the two scaffolds are
+                    not patterns and a pill reading EMPTY CANVAS would invent
+                    one; and omitted when the pattern IS the title, which on
+                    `single-agent` and `tiered-routing` had the card printing
+                    "Single agent / SINGLE AGENT".
                   -->
                   <span
-                    v-if="template.pattern.source !== 'none'"
+                    v-if="showsPattern(template)"
                     class="home-pill is-pattern"
                   >{{ template.pattern.name }}</span>
                   <span class="home-card-count">

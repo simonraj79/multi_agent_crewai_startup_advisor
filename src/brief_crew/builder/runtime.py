@@ -49,6 +49,7 @@ import yaml
 from brief_crew.builder.gates import gate_decision, gate_payload
 from brief_crew.builder.max_iter import install_max_iter_nudge
 from brief_crew.config import (
+    BUILDER_DEFAULT_AGENT_SECONDS,
     BUILDER_DEFAULT_TOOL_FAILURE_POLICY,
     AGENT_CREDENTIAL_KIND,
     BUILDER_ROUTER_COMPARISONS,
@@ -694,6 +695,24 @@ class DefaultCrewFactories:
         from crewai import Agent
 
         advanced = dict(spec.advanced)
+        # BEFORE the None-dropping in `_present` below, and that ordering is
+        # the whole fix (audit M11). `Agent.max_execution_time` defaults to
+        # None in CrewAI, which is no wall clock: an authored agent whose model
+        # or tool never answers held the one worker thread RUN_CONCURRENCY
+        # gives this service, and every run queued behind it waited. A library
+        # agent has never had this problem - `agents.yaml` gives every one of
+        # them 120-300 s. `setdefault`, so an author who named a value keeps
+        # it; `document.py` bounds that value at BUILDER_MAX_AGENT_SECONDS.
+        #
+        # An `is None` test and NOT `setdefault`, which the audit's suggested
+        # patch used and which would have been a silent no-op:
+        # `compiler._authored_agent_with` writes every one of the six `advanced`
+        # keys unconditionally, so `max_execution_time` is always PRESENT and is
+        # `None` when the author said nothing. `setdefault` only fills an absent
+        # key, so the default would never have been applied and this fix would
+        # have shipped doing nothing at all.
+        if advanced.get("max_execution_time") is None:
+            advanced["max_execution_time"] = BUILDER_DEFAULT_AGENT_SECONDS
         expert = dict(spec.expert)
         bound = bind_attachments(
             spec.attachment_list(),

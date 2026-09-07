@@ -130,6 +130,21 @@ CREW_MEMBERS_OUT_OF_RANGE = "crew-members-out-of-range"
 CREW_TASK_ORDER_MISMATCH = "crew-task-order-mismatch"
 CREW_HIERARCHICAL_NEEDS_MANAGER = "crew-hierarchical-needs-manager"
 
+# A THIRD of the same shape, added 2026-09-07 with the crew pricing repair
+# (security audit M7).
+#
+# `crew-max-iter-ignored` - `runtime.authored_crew` builds one
+# `Agent(max_iter=member.max_iter)` per member and one
+# `Task(guardrail_max_retries=member.guardrail_max_retries)` per member, and
+# hands `Crew(...)` NEITHER of the crew node's own two numbers. So an authored
+# crew's retry ceilings configure nothing at all: the inspector renders two
+# spinners whose value the runtime discards, which is the same forbidden shape
+# as `crew-task-order-mismatch` in a second pair of fields. It is a WARNING and
+# not an error because the document is legal and runs - it simply runs at
+# numbers other than the ones on screen - and because the fix an author wants
+# is to change the members, not the crew.
+CREW_MAX_ITER_IGNORED = "crew-max-iter-ignored"
+
 # 09-compiler.md's four, added 2026-09-04 with the authored compile path.
 #
 # The first two are about `document.state` (D6): the compiler OWNS `out__*`,
@@ -336,6 +351,31 @@ def back_edge_indices(document: BuilderDocument) -> tuple[int, ...]:
     """
 
     return tuple(index for index, _ in _back_edges_with_index(document))
+
+
+def cycle_multiplier(cycles: int) -> int:
+    """How many times a node inside `cycles` nested loops may legally run.
+
+    ONE ARITHMETIC FOR ONE BOUND. `compiler._Plan.max_method_calls` sizes
+    CrewAI's per-method runaway backstop with this figure, and `budget.py`
+    multiplies an on-cycle node's price by it; before the 2026-09-07 audit
+    (M8) the compiler used `(1 + MAX_CYCLE_ITERATIONS) ** cycles` and the
+    budget used `1 + MAX_CYCLE_ITERATIONS` ONCE however many loops there were.
+    Three router-closed back edges therefore metered 108 calls against a
+    runtime that permits 1,728 - the meter and the backstop describing
+    different graphs, which is the one thing a static price may not do. It
+    lives here because both callers already import this module and neither
+    imports the other.
+
+    The exponent is not a flourish: a router-closed loop has no per-cycle
+    counter at run time (only a gate's own `max_turns` is enforced), so a node
+    inside two nested cycles really can run `(1 + MAX_CYCLE_ITERATIONS)` times
+    per iteration of the outer one. `max(1, cycles)` is what makes a graph
+    with no loop at all still get a backstop above zero; nothing multiplies by
+    it in the budget, because with no back edge no node is on a cycle.
+    """
+
+    return (1 + MAX_CYCLE_ITERATIONS) ** max(1, cycles)
 
 
 def back_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
@@ -633,7 +673,19 @@ def _count_problems(document: BuilderDocument) -> list[Problem]:
             )
         )
 
-    escalation = [node for node in billable if node.tier == "escalation"]
+    # MEMBERS ARE COUNTED HERE, and deliberately not above. The billable COUNT
+    # is a bound on shape and a member is not a step, so it stays excluded
+    # there; the escalation count is a bound on what the graph RUNS ON, and a
+    # member agent runs on its own tier whatever word the crew around it
+    # carries. Reading only the crew's word let an author put any number of
+    # escalation agents past MAX_ESCALATION_NODES by drawing them one level in -
+    # a `tier: cheap` crew of six escalation members counted as zero (audit M7).
+    # `budget.tiers_run_by` folds the same two sources together for the price.
+    escalation = [
+        node
+        for node in document.nodes
+        if node.kind in BILLABLE_KINDS and node.tier == "escalation"
+    ]
     if len(escalation) > MAX_ESCALATION_NODES:
         problems.append(
             Problem(
@@ -981,11 +1033,20 @@ def _membership_problems(document: BuilderDocument) -> list[Problem]:
                 )
             )
         if authored:
-            problems += _crew_field_problems(node, tuple(members.get(node.id, ())))
+            team = tuple(members.get(node.id, ()))
+            problems += _crew_field_problems(
+                node,
+                team,
+                tuple(nodes[member_id] for member_id in team if member_id in nodes),
+            )
     return problems
 
 
-def _crew_field_problems(node: BuilderNode, members: tuple[str, ...]) -> list[Problem]:
+def _crew_field_problems(
+    node: BuilderNode,
+    members: tuple[str, ...],
+    member_nodes: tuple[BuilderNode, ...] = (),
+) -> list[Problem]:
     """Two authored-crew fields whose value the runtime would silently discard.
 
     Both are checked HERE and not in `document.py` for the same reason
@@ -1047,6 +1108,36 @@ def _crew_field_problems(node: BuilderNode, members: tuple[str, ...]) -> list[Pr
                 ),
                 node_id=node.id,
                 field="manager_agent",
+            )
+        )
+
+    # The crew's own two retry ceilings, which `Crew(...)` never receives.
+    differing = sorted(
+        {
+            member.id
+            for member in member_nodes
+            if getattr(member.config, "max_iter", None) != config.max_iter
+            or getattr(member.config, "guardrail_max_retries", None)
+            != config.guardrail_max_retries
+        }
+    )
+    if differing:
+        problems.append(
+            Problem(
+                code=CREW_MAX_ITER_IGNORED,
+                severity="warning",
+                message=(
+                    f"the crew {node.id!r} sets max_iter {config.max_iter} and "
+                    f"guardrail_max_retries {config.guardrail_max_retries}, and neither "
+                    "reaches anything: an authored crew builds one agent and one task per "
+                    "MEMBER, each at that member's own two numbers, and the crew's own pair "
+                    f"is dropped. {', '.join(repr(name) for name in differing)} "
+                    f"{'runs' if len(differing) == 1 else 'run'} at different numbers from "
+                    "the ones shown here, and the price is estimated at theirs. Set the "
+                    "ceilings on the members"
+                ),
+                node_id=node.id,
+                field="max_iter",
             )
         )
     return problems

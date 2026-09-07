@@ -16,6 +16,7 @@
     "budget-unpriced-model",
     "credential-missing",
     "crew-hierarchical-needs-manager",
+    "crew-max-iter-ignored",
     "crew-members-out-of-range",
     "crew-task-order-mismatch",
     "crew-tier-not-honoured",
@@ -192,6 +193,18 @@
         "code": "crew-hierarchical-needs-manager",
         "severity": "error",
         "message": "the hierarchical crew 'team' names 'ghost' as its manager, and that node is not one of its members. A manager is resolved against the crew's own agents ('worker'), so this crew would reach CrewAI with no manager at all and raise at construction - after every node upstream of it has already billed. Draw a member edge from that agent, name one that is a member, or set a manager model instead",
+        "node_id": "team",
+        "edge_id": null
+      }
+    },
+    {
+      "code": "crew-max-iter-ignored",
+      "scenario": "an authored crew whose own max_iter is not its members'",
+      "why": "The third instance of plan 12's shape, found by the 2026-09-07 security audit (M7). `runtime.authored_crew` builds one `Agent(max_iter=member.max_iter)` and one `Task(guardrail_max_retries=member.guardrail_max_retries)` per MEMBER, and hands `Crew(...)` neither of the crew node's own two numbers - so the crew form renders two spinners that configure nothing. It priced the same discarded field: a `tier: cheap` crew at `max_iter: 1` over six escalation members at `max_iter: 8` metered 12 calls and zero escalation nodes against a runtime making 54, all on the escalation tier. A WARNING rather than an error because the document is legal and runs - it simply runs at numbers other than the ones on screen.",
+      "problem": {
+        "code": "crew-max-iter-ignored",
+        "severity": "warning",
+        "message": "the crew 'team' sets max_iter 2 and guardrail_max_retries 2, and neither reaches anything: an authored crew builds one agent and one task per MEMBER, each at that member's own two numbers, and the crew's own pair is dropped. 'worker' runs at different numbers from the ones shown here, and the price is estimated at theirs. Set the ceilings on the members",
         "node_id": "team",
         "edge_id": null
       }
@@ -4740,6 +4753,113 @@
           "source_port": "out",
           "target": "report",
           "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "an authored crew whose own max_iter is not its members'": {
+      "schema": "builder.flow/v1",
+      "id": "ug_0a1b2c3d",
+      "name": "crew ceilings that reach nothing",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "idea",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "Idea",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "team",
+          "kind": "crew",
+          "label": "team",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "on_error": "fail",
+            "process": "sequential",
+            "task_order": [
+              "worker"
+            ]
+          }
+        },
+        {
+          "id": "worker",
+          "kind": "agent",
+          "label": "worker",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 8,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {},
+            "role": "Market analyst",
+            "goal": "Find who already sells this",
+            "backstory": "You have priced twenty categories and been wrong about three.",
+            "task": {
+              "description": "Research the market for ${state.idea}",
+              "expected_output": "Three competitors with URLs"
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "report",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "team",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "worker",
+          "source_port": "out",
+          "target": "team",
+          "target_port": "member"
         }
       ],
       "joins": {},

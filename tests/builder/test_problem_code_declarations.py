@@ -256,6 +256,14 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
         `crew-hierarchical-needs-manager`. Neither adds a declaring FILE, which
         is why the file count below did not move with them - they are the first
         addition since 03 that did not.
+
+        **Fifty-seven until 2026-09-07**, when the security audit's M7 added
+        `bounds.py`'s third crew code, `crew-max-iter-ignored`. It is the same
+        defect as plan 12's two in a third pair of fields: an authored crew's
+        own `max_iter` and `guardrail_max_retries` reach `Crew(...)` nowhere,
+        because `runtime.authored_crew` builds one agent and one task per
+        MEMBER at that member's numbers. The budget now prices the members and
+        this code says so on the canvas. No declaring file moved with it.
         """
 
         codes: set[str] = set()
@@ -264,7 +272,7 @@ class ProblemCodeDeclarationTests(unittest.TestCase):
             codes |= {match.group(2) for match in DECLARATION.finditer(text)}
         self.assertEqual(
             len(codes),
-            57,
+            58,
             "the number of problem codes moved; frontend/src/types/builder.ts's "
             "PROBLEM_CODES and builderTypes.spec.ts's length assertion both "
             "have to move with it",

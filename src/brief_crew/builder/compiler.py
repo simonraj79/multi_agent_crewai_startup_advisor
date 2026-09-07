@@ -45,6 +45,7 @@ from brief_crew.builder.bounds import (
     attachment_edges,
     back_edge_indices,
     compiled_identifiers,
+    cycle_multiplier,
     error_router_labels,
     has_errors,
     is_routed,
@@ -1624,8 +1625,11 @@ class _Plan:
             and edge.source not in self.dropped
             and edge.target not in self.dropped
         ]
-        cycles = max(1, len(live))
-        return (1 + MAX_CYCLE_ITERATIONS) ** cycles
+        # `bounds.cycle_multiplier` is the same arithmetic `budget.py` prices
+        # an on-cycle node with. Calling it rather than restating it is audit
+        # M8's fix: the two were written out separately and had drifted, so a
+        # three-loop graph was metered at 108 calls and backstopped at 1,728.
+        return cycle_multiplier(len(live))
 
 
 #: `FlowStateField.type` -> the JSON Schema type word. Four scalars and no

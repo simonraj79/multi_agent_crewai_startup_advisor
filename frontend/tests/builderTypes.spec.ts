@@ -508,11 +508,17 @@ describe('the problem codes are the python problem codes', () => {
     // `skill-contains-scripts` an import-time refusal declared outside the seven
     // swept files) and two of which are blocked on a C1 schema change
     // (`prompt-too-long`, `retry-over-max` are parse-time constraints today).
-    expect(pythonProblemCodes()).toHaveLength(57)
-    expect(PROBLEM_CODES).toHaveLength(57)
+    //
+    // 57 until 2026-09-07, when the security audit's M7 added `bounds.py`'s
+    // third crew code, `crew-max-iter-ignored`: an authored crew's own
+    // `max_iter` and `guardrail_max_retries` reach `Crew(...)` nowhere, so the
+    // budget prices the MEMBERS' numbers and the canvas has to say the two
+    // spinners do nothing. The same four-place edit, in one commit.
+    expect(pythonProblemCodes()).toHaveLength(58)
+    expect(PROBLEM_CODES).toHaveLength(58)
   })
 
-  it('declares the five warnings, and they are codes', () => {
+  it('declares the eight warnings, and they are codes', () => {
     // `bounds.py` writes `severity="warning"` at exactly four sites and
     // `mcp.py` at one. Every other code is an error and blocks publish. The
     // fourth is `attachment-unattached`, which is a warning because it is
@@ -523,7 +529,10 @@ describe('the problem codes are the python problem codes', () => {
     for (const code of WARNING_CODES) {
       expect(PROBLEM_CODES).toContain(code)
     }
-    expect(WARNING_CODES).toHaveLength(7)
+    // The eighth is `crew-max-iter-ignored` (audit M7): a crew's own retry
+    // ceilings reach nothing, so the document is legal and runs at the
+    // members' numbers instead of the ones on screen.
+    expect(WARNING_CODES).toHaveLength(8)
   })
 
   it('anchors every FIELD_CODES entry to a real code', () => {

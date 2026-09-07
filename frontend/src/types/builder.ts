@@ -873,6 +873,14 @@ export const PROBLEM_CODES = [
   // only the `member` edges answer - and with it unresolved CrewAI raises at
   // `crew.py:729` mid-run.
   'crew-task-order-mismatch', 'crew-hierarchical-needs-manager',
+  // The THIRD of that pair's shape, added 2026-09-07 with the crew pricing
+  // repair (audit M7). `runtime.authored_crew` builds one
+  // `Agent(max_iter=member.max_iter)` per member and hands `Crew(...)` neither
+  // of the crew node's own `max_iter` and `guardrail_max_retries` - so the two
+  // spinners the crew form renders configure nothing, and the price is
+  // estimated at the members' numbers instead. A warning, because the document
+  // is legal and runs; it simply runs at numbers other than the ones on screen.
+  'crew-max-iter-ignored',
 ] as const
 export type ProblemCode = (typeof PROBLEM_CODES)[number]
 
@@ -905,6 +913,11 @@ export const WARNING_CODES = [
   // honoured` is a control that does real work in two places and not in the
   // third; refusing the document over it would refuse every registered crew.
   'error-port-unconnected', 'crew-tier-not-honoured',
+  // The eighth, added 2026-09-07 with audit M7's crew pricing repair. A crew
+  // whose own retry ceilings differ from its members' is legal and runs - at
+  // the members' numbers - so this reports the divergence rather than refusing
+  // a document over a field the author can simply stop reading.
+  'crew-max-iter-ignored',
 ] as const
 
 export interface BuilderProblem {
@@ -1026,6 +1039,10 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
   // predates the key, exactly as `model-unknown`'s is.
   'crew-task-order-mismatch': 'members',
   'crew-hierarchical-needs-manager': 'manager_agent',
+  // M7's third. It anchors to the crew's own `max_iter` spinner, which is the
+  // control whose value does nothing - the remedy is on the members, and the
+  // sentence says so, but the row belongs under the field it is about.
+  'crew-max-iter-ignored': 'max_iter',
   /*
    * `tool-param-invalid` is deliberately absent. Its field is one of the
    * catalogue's own parameter names - `params.limit`, `params.formats` - which

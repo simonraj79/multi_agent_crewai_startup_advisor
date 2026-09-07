@@ -45,6 +45,7 @@ from brief_crew.builder import (
     validate_document,
 )
 from brief_crew.builder import budget as budget_module
+from brief_crew.builder.bounds import back_edges, cycle_multiplier
 from brief_crew.config import (
     GRAPH_STATIC_BUDGET_MARGIN,
     MAX_BILLABLE_NODES,
@@ -366,11 +367,22 @@ class CycleAndDepthTests(unittest.TestCase):
         )
 
     def test_a_node_outside_the_loop_is_not_multiplied(self) -> None:
-        """The validator shape loops only the two revise agents."""
+        """The validator shape loops only the two revise agents.
+
+        The multiplier is `cycle_multiplier(len(back_edges))` and this document
+        closes TWO loops, so a node on either of them is priced at 4 ** 2 = 16
+        passes rather than at 4. It read 4 until audit M8, while the backstop
+        `compiler._Plan.max_method_calls` compiles for the same document has
+        always been 16 - the meter and the runtime describing different graphs.
+        """
 
         graph = validator_shaped_document()
+        self.assertEqual(len(back_edges(graph)), 2)
         self.assertEqual(node_call_count(graph, "scope_idea"), 3)
-        self.assertEqual(node_call_count(graph, "revise_scope"), 3 * (1 + MAX_CYCLE_ITERATIONS))
+        self.assertEqual(
+            node_call_count(graph, "revise_scope"), 3 * cycle_multiplier(2)
+        )
+        self.assertEqual(node_call_count(graph, "revise_scope"), 48)
 
     def test_the_same_nodes_cost_more_in_a_chain_than_in_a_fan_out(self) -> None:
         wide = document(
@@ -579,9 +591,19 @@ class ValidateDocumentTests(unittest.TestCase):
         self.assertEqual(validate_document(validator_shaped_document(), ceiling_usd=10.0), [])
 
     def test_the_validator_shape_prices_well_under_the_ceiling(self) -> None:
+        """60 until audit M8, and 132 because the shape closes TWO loops.
+
+        Six of its eight billable nodes sit outside both loops and are
+        unchanged; the two revise agents went from 4 passes each to 16, which
+        is 2 x 3 x (16 - 4) = 72 calls more. It is still well inside the
+        ceiling - $3.34, $4.18 with the margin - which is the point: the
+        correction costs the shipped shape nothing and closes the gate on the
+        shape that was exploiting it.
+        """
+
         estimate = estimate_budget(validator_shaped_document())
         self.assertLess(estimate.static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, 10.0)
-        self.assertEqual(estimate.modelled_calls, 60)
+        self.assertEqual(estimate.modelled_calls, 132)
 
     def test_structure_is_reported_before_price(self) -> None:
         # Sized off the bound rather than written as a literal: this used to be
@@ -642,7 +664,22 @@ def one_authored_agent(**overrides: Any) -> BuilderDocument:
     )
 
 
-def authored_crew(*, process: str, members: int, **overrides: Any) -> BuilderDocument:
+def authored_crew(
+    *,
+    process: str,
+    members: int,
+    member_config: dict[str, Any] | None = None,
+    **overrides: Any,
+) -> BuilderDocument:
+    """A crew and its members. `member_config` is what each MEMBER declares.
+
+    Parameterised for audit M7: until it was fixed, an authored crew was priced
+    at the crew's own `max_iter` times a member COUNT, so every test here held
+    with members that happened to share the crew's ceilings and none of them
+    could see the field the runtime discards. A member that differs is the only
+    shape that tells the two arithmetics apart.
+    """
+
     member_ids = [f"m{index}" for index in range(members)]
     config: dict[str, Any] = {
         "process": process,
@@ -656,7 +693,10 @@ def authored_crew(*, process: str, members: int, **overrides: Any) -> BuilderDoc
         [
             input_node("idea"),
             {"id": "team", "kind": "crew", "label": "team", "config": config},
-            *[authored_agent(member_id) for member_id in member_ids],
+            *[
+                authored_agent(member_id, **(member_config or {}))
+                for member_id in member_ids
+            ],
             raw_node("report", "output", {"body_key": "markdown_body", "source": "${state.out__team}"}),
         ],
         [
@@ -750,6 +790,252 @@ class CrewMembershipPricingTests(unittest.TestCase):
         estimate = estimate_budget(authored_crew(process="sequential", members=3))
         self.assertEqual(estimate.billable_nodes, 1)
         self.assertEqual(sorted(estimate.per_node), ["team"])
+
+
+class CrewIsPricedAtItsMembersTests(unittest.TestCase):
+    """Audit M7: a crew bills for its MEMBERS, at each member's own numbers.
+
+    `runtime.authored_crew` builds one `Agent(max_iter=member.max_iter)` and one
+    `Task(guardrail_max_retries=member.guardrail_max_retries)` per member, and
+    hands `Crew(...)` NEITHER of the crew node's own two numbers. The estimate
+    priced the crew's `max_iter` times a member count, which is the one field
+    the runtime throws away - and it priced every member at the crew's TIER
+    preset rather than at the model each one names, so an escalation team drawn
+    inside a `tier: cheap` crew counted as zero escalation nodes.
+    """
+
+    def poc(self) -> BuilderDocument:
+        """The audit's proof of concept, verbatim.
+
+        Sequential, `tier: cheap`, `max_iter: 1`; six members at `max_iter: 8`
+        on the escalation model. Before the fix this metered 12 calls and 0
+        escalation nodes; the runtime makes 54, every one of them escalation.
+        """
+
+        return authored_crew(
+            process="sequential",
+            members=6,
+            max_iter=1,
+            guardrail_max_retries=0,
+            member_config={
+                "tier": "escalation",
+                "max_iter": 8,
+                "guardrail_max_retries": 0,
+                "llm": {"model": ESCALATION_MODEL.split("openrouter/", 1)[-1]},
+            },
+        )
+
+    def test_the_proof_of_concept_prices_the_members_calls(self) -> None:
+        estimate = estimate_budget(self.poc())
+        # 6 members x (0 guardrail retries + 1 attempt) x (max_iter 8 + 1). The
+        # crew's own max_iter 1 appears nowhere, because Crew() never receives
+        # it. Before the fix: 1 attempt x (1 + 1) x 6 members = 12.
+        self.assertEqual(estimate.modelled_calls, 54)
+        self.assertEqual(estimate.per_node["team"].calls, 54)
+
+    def test_the_proof_of_concept_counts_an_escalation_node(self) -> None:
+        estimate = estimate_budget(self.poc())
+        self.assertEqual(estimate.escalation_nodes, 1)
+        self.assertEqual(
+            estimate.per_node["team"].model,
+            ESCALATION_MODEL,
+            "the members' model is what the crew's calls are billed at",
+        )
+
+    def test_the_escalation_ceiling_sees_the_members(self) -> None:
+        """MAX_ESCALATION_NODES was derived from a list that dropped them."""
+
+        # Six escalation members against a ceiling of 8: under it, so the
+        # audit's own document is not refused here - the count including them
+        # is what the next document proves, by crossing the ceiling with
+        # members alone.
+        self.assertEqual(
+            [
+                problem.code
+                for problem in structural_problems(self.poc())
+                if problem.code == "escalation-count"
+            ],
+            [],
+        )
+        crowded = authored_crew(
+            process="sequential",
+            members=MAX_ESCALATION_NODES + 1,
+            member_config={"tier": "escalation"},
+        )
+        self.assertIn(
+            "escalation-count",
+            [problem.code for problem in structural_problems(crowded)],
+        )
+
+    def test_a_members_own_max_iter_moves_the_price(self) -> None:
+        lean = estimate_budget(
+            authored_crew(process="sequential", members=2, member_config={"max_iter": 1})
+        )
+        greedy = estimate_budget(
+            authored_crew(process="sequential", members=2, member_config={"max_iter": 3})
+        )
+        # BUILDER_MAX_AGENT_ITER is the ceiling on both: 1 -> 2 calls an
+        # attempt, 3 -> 4, so the members' own field doubles the crew's price.
+        self.assertEqual(greedy.per_node["team"].calls, lean.per_node["team"].calls * 2)
+
+    def test_the_crews_own_max_iter_moves_nothing(self) -> None:
+        """It configures nothing at run time, so it must price nothing."""
+
+        one = estimate_budget(authored_crew(process="sequential", members=2, max_iter=1))
+        eight = estimate_budget(authored_crew(process="sequential", members=2, max_iter=8))
+        self.assertEqual(one.modelled_calls, eight.modelled_calls)
+
+    def test_the_crew_warns_that_its_own_ceilings_reach_nothing(self) -> None:
+        problems = structural_problems(
+            authored_crew(
+                process="sequential", members=2, max_iter=1, member_config={"max_iter": 8}
+            )
+        )
+        warned = [
+            problem for problem in problems if problem.code == "crew-max-iter-ignored"
+        ]
+        self.assertEqual(len(warned), 1)
+        self.assertEqual(warned[0].severity, "warning")
+        self.assertEqual(warned[0].node_id, "team")
+        self.assertIn("m0", warned[0].message)
+
+    def test_a_crew_whose_members_agree_with_it_is_not_warned(self) -> None:
+        self.assertEqual(
+            [
+                problem.code
+                for problem in structural_problems(
+                    authored_crew(process="sequential", members=2)
+                )
+                if problem.code == "crew-max-iter-ignored"
+            ],
+            [],
+        )
+
+    def test_a_library_crew_is_still_priced_at_its_own_ceilings(self) -> None:
+        """Its `max_iter` really is passed on, so it really does price."""
+
+        def library(max_iter: int) -> BuilderDocument:
+            return document(
+                [
+                    input_node("idea"),
+                    raw_node(
+                        "sweep",
+                        "crew",
+                        {"crew_id": "sweep", "tier": "cheap", "max_iter": max_iter},
+                    ),
+                    output_node(),
+                ],
+                [edge("e1", "idea", "sweep"), edge("e2", "sweep", "report")],
+            )
+
+        self.assertEqual(node_call_count(library(1), "sweep"), 3 * 2)
+        self.assertEqual(node_call_count(library(4), "sweep"), 3 * 5)
+
+
+def nested_loops(*, loops: int, tier: str = "cheap") -> BuilderDocument:
+    """One agent with `loops` router-closed back edges around it.
+
+    Every back edge leaves a ROUTER, which `back-edge-not-router` requires, and
+    every one of them returns to the same agent - so the agent takes `loops + 1`
+    incoming edges and is declared `joins: any`, the mode that lets one arrival
+    start it rather than waiting for all of them. That is the exact shape audit
+    M8 is about: three loops with no per-cycle counter anywhere at run time.
+    """
+
+    routers = [f"r{index}" for index in range(loops)]
+    # `scoper` rather than the node id: this document is COMPILED by one of the
+    # tests below, and `library_problems` refuses an `agent_id` that is not one
+    # of `config.py`'s registered YAML agents.
+    agent = agent_node("a", tier=tier, tools=(MARKET_TOOL,))
+    agent["config"]["agent_id"] = "scoper"
+    agent["config"]["prompt_inputs"] = {"human_override": "", "idea": "${state.idea}"}
+    nodes: list[Any] = [input_node("idea"), agent]
+    edges = [edge("e_in", "idea", "a"), edge("e_a", "a", routers[0])]
+    for index, router_id in enumerate(routers):
+        nodes.append(
+            router_node(
+                router_id,
+                branches=(
+                    {"label": "again", "op": "otherwise"},
+                    {"label": "on", "op": "gte", "key": "turns", "value": 3},
+                ),
+            )
+        )
+        edges.append(edge(f"e_back{index}", router_id, "a", source_port="again"))
+        onward = routers[index + 1] if index + 1 < len(routers) else "report"
+        edges.append(edge(f"e_on{index}", router_id, onward, source_port="on"))
+    nodes.append(
+        raw_node(
+            "report",
+            "output",
+            {"body_key": "markdown_body", "source": "${state.out__a}"},
+        )
+    )
+    graph = document(nodes, edges)
+    payload = graph.model_dump(mode="json")
+    payload["joins"] = {"a": "any"}
+    return BuilderDocument.model_validate(payload)
+
+
+class CycleMultiplierTests(unittest.TestCase):
+    """Audit M8: the meter and the runtime backstop are one arithmetic.
+
+    `budget` multiplied an on-cycle node by `1 + MAX_CYCLE_ITERATIONS` ONCE
+    however many loops a graph closed, while `compiler._Plan.max_method_calls`
+    has always sized CrewAI's per-method backstop at
+    `(1 + MAX_CYCLE_ITERATIONS) ** cycles`. A router-closed loop has no
+    per-cycle counter at run time, so three loops were metered at 4x against a
+    runtime permitting 64x - a static price describing a smaller graph than the
+    one that would run.
+    """
+
+    def test_three_back_edges_price_at_the_cube(self) -> None:
+        flat = estimate_budget(nested_loops(loops=1))
+        deep = estimate_budget(nested_loops(loops=3))
+        self.assertEqual(len(back_edges(nested_loops(loops=3))), 3)
+        self.assertEqual(
+            deep.per_node["a"].calls,
+            flat.per_node["a"].calls * (1 + MAX_CYCLE_ITERATIONS) ** 2,
+        )
+        # 3 attempts x (max_iter 2 + 1) x 4 ** 3.
+        self.assertEqual(deep.per_node["a"].calls, 9 * 64)
+
+    def test_a_single_cycle_prices_exactly_as_before(self) -> None:
+        """The one-loop case is untouched, which is what makes this safe."""
+
+        self.assertEqual(estimate_budget(nested_loops(loops=1)).modelled_calls, 9 * 4)
+        frontier = estimate_budget(frontier_document(cheap=3, escalation=5))
+        self.assertEqual(frontier.modelled_calls, FRONTIER_CALLS)
+        self.assertAlmostEqual(frontier.floor_cost_usd, FRONTIER_FLOOR_USD, places=4)
+
+    def test_the_three_loop_graph_is_refused_at_the_ceiling(self) -> None:
+        graph = nested_loops(loops=3, tier="escalation")
+        codes = [problem.code for problem in budget_problems(graph, ceiling_usd=10.0)]
+        self.assertIn(budget_module.BUDGET_OVER_CEILING, codes)
+        # And the one-loop version of the same graph is not, so the refusal is
+        # the multiplier's doing and not the tier's.
+        self.assertEqual(
+            budget_problems(nested_loops(loops=1, tier="escalation"), ceiling_usd=10.0),
+            [],
+        )
+
+    def test_the_budget_and_the_compiler_multiply_by_the_same_figure(self) -> None:
+        """One helper, asked from both sides, so they cannot drift again."""
+
+        from brief_crew.builder.compiler import compile_document
+
+        for loops in (1, 2, 3):
+            graph = nested_loops(loops=loops)
+            with self.subTest(loops=loops):
+                # The ceiling is disabled here on purpose: three loops price
+                # this graph OVER $10 - which is the finding - and the question
+                # this test asks is whether the two multipliers agree, not
+                # whether the document may be published.
+                compiled = compile_document(graph, ceiling_usd=0.0)
+                self.assertEqual(
+                    budget_module._cycle_multiplier(graph),
+                    compiled.definition["config"]["max_method_calls"],
+                )
 
 
 class NitroPricingTests(unittest.TestCase):

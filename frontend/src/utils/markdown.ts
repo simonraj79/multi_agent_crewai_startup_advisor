@@ -72,37 +72,77 @@ export function safeHref(raw: string): string | null {
   return null
 }
 
-/** Inline spans, applied to text that is ALREADY html-escaped. */
+const LINK_ATTRS = 'target="_blank" rel="noopener noreferrer nofollow"'
+
+/**
+ * Inline spans, applied to text that is ALREADY html-escaped.
+ *
+ * EVERY tag this function emits is held behind the sentinel until the very
+ * end, and that is a rule the passes below depend on rather than a tidy-up
+ * (audit L3). The passes run in sequence over one string, so anything an
+ * earlier pass emitted is input to a later one - and the later ones are the
+ * emphasis rewrites, which look for `*` and `~` without caring whether they
+ * sit inside a tag. `[c](http://x/*a*b)` used to become
+ * `<a href="http://x/<em>a</em>b">`: a URL the author never wrote, in an
+ * attribute. It was inert only because `escapeHtml` runs first, so no quote
+ * could close the attribute - a single-fact defence living in another
+ * function. Holding the tags removes the class rather than that instance.
+ *
+ * What is held is the TAG, never the label. `[**b**](http://x)` must still
+ * emphasise inside the link, and holding the whole anchor would swallow it;
+ * holding the opening `<a ...>` protects the href and leaves the label as
+ * ordinary text for the emphasis passes to see.
+ */
 function renderInline(escaped: string): string {
   let out = escaped
 
-  // Code spans first: their contents must not be re-interpreted as emphasis.
-  const codeSpans: string[] = []
-  out = out.replace(/`([^`]+)`/g, (_match, code: string) => {
-    codeSpans.push(code)
-    return `${SENTINEL}CODE${codeSpans.length - 1}${SENTINEL}`
-  })
+  /**
+   * Fragments the emphasis passes must not see, and their placeholders.
+   *
+   * The placeholder is built from `SENTINEL`, which `escapeHtml` strips from
+   * the input, so it cannot be forged by the text being rendered - the same
+   * property the code-span placeholder always had, now covering every tag.
+   */
+  const held: string[] = []
+  const hold = (fragment: string): string => `${SENTINEL}H${held.push(fragment) - 1}${SENTINEL}`
 
-  // [label](href) - the href is validated, the label stays escaped text.
+  // Code spans first: their contents must not be re-interpreted as anything.
+  out = out.replace(/`([^`]+)`/g, (_match, code: string) => hold(`<code>${code}</code>`))
+
+  // [label](href) - the href is validated and held, the label stays escaped
+  // text so emphasis inside a link keeps working.
   out = out.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (match, label: string, href: string) => {
     const safe = safeHref(href)
     if (!safe) return match
-    return `<a href="${safe}" target="_blank" rel="noopener noreferrer nofollow">${label || safe}</a>`
+    // An empty label falls back to the href, and that copy is held too: it is
+    // the same string, and emphasis rewriting the visible half of a URL while
+    // the attribute half is protected would be a stranger result than either.
+    return `${hold(`<a href="${safe}" ${LINK_ATTRS}>`)}${label || hold(safe)}${hold('</a>')}`
   })
 
-  // Bare URLs the Reporter emits without link syntax.
+  // Bare URLs the Reporter emits without link syntax. Both halves are held,
+  // for the reason above: here the visible text IS the URL.
   out = out.replace(/(^|[\s(])((?:https?:\/\/)[^\s<>()]+[^\s<>().,;:!?])/g, (_m, lead: string, url: string) => {
     const safe = safeHref(url)
     if (!safe) return `${lead}${url}`
-    return `${lead}<a href="${safe}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`
+    return `${lead}${hold(`<a href="${safe}" ${LINK_ATTRS}>`)}${hold(url)}${hold('</a>')}`
   })
 
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
   out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>')
 
-  out = out.replace(/\u0000CODE(\d+)\u0000/g, (_m, index: string) => `<code>${codeSpans[Number(index)]}</code>`)
-  return out
+  /*
+   * Restored twice, deliberately. Today one pass is enough, because only tags
+   * are held and no held tag contains a placeholder - but the obvious next
+   * edit here is to hold a composite fragment (a whole anchor, say), and a
+   * single pass would then leave the inner placeholder on screen as a stray
+   * sentinel rather than failing. Two passes is cheap and the second is a
+   * no-op when nothing is nested.
+   */
+  const restore = (text: string): string =>
+    text.replace(/\u0000H(\d+)\u0000/g, (_m, index: string) => held[Number(index)] ?? '')
+  return restore(restore(out))
 }
 
 function renderTable(rows: string[]): string {
@@ -122,7 +162,52 @@ function renderTable(rows: string[]): string {
   return `<table>${head}<tbody>${rest}</tbody></table>`
 }
 
-const TABLE_DIVIDER = /^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/
+/**
+ * A table divider row: nothing but spaces, pipes, colons and dashes, and at
+ * least one dash.
+ *
+ * Written as an anchored class test PLUS a `String.includes`, not as one
+ * regex, and the split is measured rather than stylistic. The shipped pattern
+ * was `/^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/`: two unbounded classes on either
+ * side of a dash that BOTH match a dash, so a long line that almost matches
+ * makes the engine try every split of it. The subject is reachable from model
+ * output - `markdown_body` is deliberately exempt from the 4,096-character
+ * frame clip and read at 64 KiB - and this test runs on the line after any
+ * line containing a pipe.
+ *
+ * Measured in node 24 on `' -'.repeat(32768) + 'x'`, which is 65,537
+ * characters that fail only at the last one:
+ *
+ *   /^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/   4381 ms   (shipped)
+ *   /^[\s:|-]*-[\s:|-]*$/               712 ms   (still quadratic)
+ *   /^[\s:|-]+$/ + includes('-')           <1 ms
+ *
+ * The middle line is the obvious repair and is only six times better, because
+ * merging the two classes does not remove the ambiguity - one dash still lives
+ * in both of them. Asking "which characters" and "is there a dash" separately
+ * removes it: a single anchored class has exactly one way to match, so a
+ * failure costs one pass and not one pass per split.
+ *
+ * Nothing the old pattern accepted is rejected here: `---`, `| --- | :-: |`,
+ * a bare `-`, leading and trailing whitespace all still open a table, and
+ * nothing without a dash is a divider under either. The new form is very
+ * slightly WIDER, and the widening is enumerated rather than waved at -
+ * exhaustively over every string of length <= 3 in the alphabet involved,
+ * exactly two disagree, `":|-"` and `"||-"`. Both are more than one pipe
+ * before the first dash, which the old pattern's single optional leading
+ * `\|?` could not span. Neither is a row anybody writes, and both make a
+ * degenerate line render as an empty table instead of two paragraphs.
+ *
+ * Exported for the regression test alone - `escapeHtml` and `safeHref` are
+ * exported on the same terms. The equivalence with the old pattern is a claim
+ * about a set of strings, and a test that could only see it through the
+ * renderer's output would be checking two things at once.
+ */
+const TABLE_DIVIDER_CHARS = /^[\s:|-]+$/
+
+export function isTableDivider(line: string): boolean {
+  return TABLE_DIVIDER_CHARS.test(line) && line.includes('-')
+}
 
 /**
  * Blockquotes recurse one level per `>`, and a Vue computed that throws blanks
@@ -179,7 +264,7 @@ export function renderMarkdown(source: string, depth = 0): string {
     }
 
     // Pipe table: a header row followed by a divider row.
-    if (line.includes('|') && index + 1 < lines.length && TABLE_DIVIDER.test(lines[index + 1])) {
+    if (line.includes('|') && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
       const rows: string[] = []
       while (index < lines.length && lines[index].includes('|')) {
         rows.push(lines[index])

@@ -234,10 +234,39 @@ services:
       # PLANS.md decision 9, ruled ON 2026-09-05: the platform Firecrawl key
       # backs every user's research tools, bounded by
       # BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP (default 50 per user per UTC day)
-      # and overridden by a user's own credential. Set here so a fresh apply
-      # matches the dashboard, where it was set through the API that day.
+      # and overridden by a user's own credential. It was set to "1" here so a
+      # fresh apply matched the dashboard, where it was set through the API
+      # that day.
+      #
+      # SECURITY (audit 2026-09-07, H4): OFF until that cap exists. The second
+      # half of the sentence above is not true and never has been -
+      # BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP has exactly one reader, its own
+      # definition in config.py. No counter, no store, no UTC reset:
+      #
+      #   grep -rn BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP --include=*.py       #     --include=*.ts src frontend/src tests
+      #   -> src/brief_crew/config.py, and nothing else
+      #
+      # So "1" is an UNBOUNDED grant of the owner's Firecrawl account to every
+      # signed-in user: an agent node carrying research_market_landscape with
+      # no credential of its own scrapes on the platform key. Neither spend cap
+      # can see it - MAX_RUN_COST_USD and USER_SPEND_CAP_USD are computed from
+      # LLM token events, and a Firecrawl call raises none - and the run rate
+      # limit bounds the rate, not the total.
+      #
+      # This file is the manifest and the manifest alone. Render snapshots a
+      # deploy's environment when the deploy is CREATED (deployment trap 3),
+      # and the live value was set through the API rather than from here, so
+      # the DASHBOARD VALUE MUST BE CHANGED BY HAND for this to reach the
+      # running service. CLAUDE.md item 47 already records the missing
+      # consumer; what it also says - that the flag is off and unset here - is
+      # what stopped being true on 2026-09-05.
+      #
+      # To turn it back on, build the counter first. The shape is an atomic
+      # INSERT ... ON CONFLICT DO UPDATE ... WHERE used < cap on a
+      # (user_id, utc_day) row, claimed in _market_research before the bare
+      # tool is built, raising ToolBuildError naming the cap when it is spent.
       - key: BUILDER_PLATFORM_FIRECRAWL_DEFAULT
-        value: "1"
+        value: "0"
 
       # Every credential is `sync: false`: the value is never committed. Render
       # prompts once at Blueprint creation and stores it as a dashboard secret.
@@ -295,8 +324,11 @@ services:
       # file is written should not be a manual step that can be missed.
       #
       # Set on the live service through the Render API on 2026-09-06 and
-      # recorded here so a fresh apply matches the dashboard, exactly as
-      # BUILDER_PLATFORM_FIRECRAWL_DEFAULT above says of itself. NOTE for the
+      # recorded here so a fresh apply matches the dashboard. (This block used
+      # to cite BUILDER_PLATFORM_FIRECRAWL_DEFAULT above as the same pattern;
+      # that entry is now deliberately the OTHER way round - the manifest
+      # leads and the dashboard has to follow it - so it is no longer an
+      # example of this one.) NOTE for the
       # already-applied Blueprint: Render prompts for `sync: false` values at
       # Blueprint CREATION only, and it snapshots a deploy's environment when
       # the deploy is CREATED (deployment trap 3) - so entering these in the

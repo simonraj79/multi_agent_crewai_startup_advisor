@@ -20,6 +20,28 @@ name: CI
 # developer with a real `.env` is unaffected. Keep the placeholders in that one
 # file rather than in `env:` blocks here, so a clean local checkout behaves the
 # same way CI does.
+#
+# EVERY `uses:` IS PINNED TO A COMMIT SHA, with the version it was resolved
+# from in a trailing comment (audit L4). A tag is a mutable pointer: whoever
+# controls the action's repository can move `v4` to any commit at any time, and
+# every runner that has not yet started would fetch it. That is a supply-chain
+# hole regardless of what the workflow holds, and this one runs on every push
+# to every branch. It holds no secret and runs with `contents: read`, so a
+# moved tag poisons a build rather than leaking a credential - but "poisons a
+# build" includes the build whose green tick is the only evidence anybody has
+# that the suite passes on a clean checkout with no keys.
+#
+# Each SHA was resolved from upstream with `git ls-remote`, not guessed, and
+# each is the commit the SAME major tag pointed at - this is a pin, not an
+# upgrade. `astral-sh/setup-uv`'s major tag is ANNOTATED, so its SHA is the
+# peeled `v5^{}` commit and not the tag object. Dependabot keeps both the SHA
+# and the trailing comment moving together (.github/dependabot.yml).
+#
+# Every checkout also sets `persist-credentials: false`. By default
+# actions/checkout writes the job's GITHUB_TOKEN into `.git/config` as an
+# `http.extraheader`, where every later step - including any action, pinned or
+# not - can read it. Nothing here pushes, tags or calls the API, so the token
+# has no reason to outlive the checkout step.
 
 on:
   push:
@@ -44,17 +66,19 @@ jobs:
       CREWAI_TRACING_ENABLED: "false"
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # crewai declares requires-python <3.14. 3.13 is what .python-version
       # pins and what render.yaml sets via PYTHON_VERSION.
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -113,15 +137,17 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/postgres
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -167,10 +193,12 @@ jobs:
         working-directory: frontend
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm

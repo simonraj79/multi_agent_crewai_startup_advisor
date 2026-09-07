@@ -17,9 +17,17 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { auth, baseURL } from "./auth.ts";
+import { securityHeaders } from "./headers.ts";
 import { applyMigrations } from "./migrate.ts";
 
 const app = new Hono();
+
+// Registered FIRST so it covers /healthz, /api/auth/* and every static asset.
+// `headers.ts` carries the reasoning and the per-directive evidence; what is
+// decided HERE is where the API origin comes from, and it is the same variable
+// the build inlined into the bundle rather than a literal, so `connect-src`
+// cannot drift from what the client fetches.
+app.use(securityHeaders(process.env.VITE_API_URL));
 
 // Liveness for Render's health check. Deliberately above the auth mount and the
 // static handler so it answers even if `dist/` was never built.

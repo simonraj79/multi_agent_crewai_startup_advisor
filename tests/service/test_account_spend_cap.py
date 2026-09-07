@@ -275,6 +275,124 @@ class PromisedHeadroomTests(QuietCeilingLogMixin, unittest.TestCase):
         registry.wait(first.run_id, timeout=10)
 
 
+class AuditM5ReservationSurvivesARaisedCapTests(
+    QuietCeilingLogMixin, unittest.TestCase
+):
+    """The cap must reserve what it GRANTED, not only what it tightened.
+
+    Audit M5. The promise used to be recorded only when the account cap was
+    the *tighter* of the two limits (`ceiling_kind == "account"`), and
+    `account_spend` counted only records wearing that same label. Today
+    USER_SPEND_CAP_USD is $1 against a $10 per-run ceiling, so the account is
+    always tighter and the promise is always recorded - which is why nothing
+    noticed. `config.py` invites the owner to raise the cap per deployment,
+    and at any value above MAX_RUN_COST_USD the condition flips and NO promise
+    is recorded at all.
+
+    What that buys an attacker: a run WAITING at a gate holds no admission slot
+    and is never terminal, so at ten launches a minute a hundred parked runs
+    each carrying the full per-run ceiling sit against a cap that has seen none
+    of them. Then answer the gates.
+
+    The arithmetic below is the audit's own: cap $50 over a $10 per-run
+    ceiling. Two admitted runs must commit $20; five must exhaust the cap; the
+    sixth must be refused.
+    """
+
+    CAP = 50.0
+    PER_RUN = 10.0
+
+    def _parked_registry(self) -> tuple[RunRegistry, OperatorCancelRunner]:
+        runner = OperatorCancelRunner()
+        registry = _registry(runner, max_run_cost_usd=self.PER_RUN)
+        self.addCleanup(registry.close)
+        return registry, runner
+
+    def _drain(self, registry: RunRegistry, records: list) -> None:
+        """Let every parked run go, and do not care how it stopped.
+
+        With RUN_CONCURRENCY at 1 only the first of these is inside the runner;
+        the rest are QUEUED, and cancelling a queued run cancels its future
+        outright - so ``wait`` raises ``CancelledError`` rather than returning.
+        That is correct behaviour and not what any test here is about.
+        """
+        from concurrent.futures import CancelledError
+
+        for record in records:
+            registry.cancel(record.run_id)
+        for record in records:
+            try:
+                registry.wait(record.run_id, timeout=10)
+            except CancelledError:
+                pass
+
+    def test_m5_two_admitted_runs_commit_twenty_dollars(self) -> None:
+        registry, runner = self._parked_registry()
+        records = [_launch(registry, ALICE, cap=self.CAP) for _ in range(2)]
+        self.addCleanup(self._drain, registry, records)
+        self.assertTrue(runner.started.wait(5))
+
+        # Both were admitted under the PER-RUN ceiling: the account cap is the
+        # looser limit here, which is exactly the state the old condition
+        # ignored.
+        for record in records:
+            self.assertEqual(record.ceiling_kind, "run")
+            self.assertAlmostEqual(record.max_cost_usd, self.PER_RUN)
+            self.assertAlmostEqual(record.account_cap_usd or 0.0, self.CAP)
+
+        balance = registry.account_spend(ALICE)
+        self.assertEqual(balance["spent"], 0.0)
+        self.assertAlmostEqual(
+            balance["committed"],
+            20.0,
+            msg=(
+                "two runs admitted at a $10 ceiling promised "
+                f"{balance['committed']} against a $50 account cap"
+            ),
+        )
+
+    def test_m5_the_sixth_launch_is_refused_once_the_cap_is_promised_away(
+        self,
+    ) -> None:
+        registry, runner = self._parked_registry()
+        records = [_launch(registry, ALICE, cap=self.CAP) for _ in range(5)]
+        self.addCleanup(self._drain, registry, records)
+        self.assertTrue(runner.started.wait(5))
+
+        # 5 x $10 is the whole $50, with nothing actually spent yet.
+        balance = registry.account_spend(ALICE)
+        self.assertEqual(balance["spent"], 0.0)
+        self.assertAlmostEqual(balance["committed"], self.CAP)
+
+        with self.assertRaises(AccountSpendCapError) as refused:
+            _launch(registry, ALICE, cap=self.CAP)
+        self.assertAlmostEqual(refused.exception.spent, self.CAP)
+        self.assertAlmostEqual(refused.exception.cap, self.CAP)
+
+    def test_m5_another_account_is_untouched_by_the_promises(self) -> None:
+        """The promise is per owner, or one busy account would refuse everyone."""
+        registry, runner = self._parked_registry()
+        records = [_launch(registry, ALICE, cap=self.CAP) for _ in range(5)]
+        self.addCleanup(self._drain, registry, records)
+        self.assertTrue(runner.started.wait(5))
+
+        self.assertEqual(registry.account_spend(BOB)["committed"], 0.0)
+        bob = _launch(registry, BOB, cap=self.CAP)
+        records.append(bob)
+        self.assertEqual(bob.ceiling_kind, "run")
+
+    def test_m5_a_terminal_run_releases_its_promise(self) -> None:
+        """A promise is money the account can still spend, not money it spent."""
+        registry, runner = self._parked_registry()
+        records = [_launch(registry, ALICE, cap=self.CAP) for _ in range(2)]
+        self.assertTrue(runner.started.wait(5))
+        self.assertAlmostEqual(registry.account_spend(ALICE)["committed"], 20.0)
+
+        self._drain(registry, records)
+
+        self.assertEqual(registry.account_spend(ALICE)["committed"], 0.0)
+
+
 class SpendSurvivesARestartTests(QuietCeilingLogMixin, unittest.TestCase):
     """The durable rows are what the cap is summed over."""
 

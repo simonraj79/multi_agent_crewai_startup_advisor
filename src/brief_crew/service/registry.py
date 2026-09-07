@@ -1675,7 +1675,10 @@ class RunRegistry:
                 spent += run_spent
                 if (
                     record.status not in TERMINAL_STATUSES
-                    and record.ceiling_kind == "account"
+                    # Every capped admission, not only the ones the account
+                    # cap happened to be the tighter of: see create_run.
+                    and record.account_cap_usd is not None
+                    and float(record.max_cost_usd) > 0
                 ):
                     committed += max(0.0, float(record.max_cost_usd) - run_spent)
             for owner, headroom in self._reserved_headroom.values():
@@ -1756,8 +1759,17 @@ class RunRegistry:
                 if max_cost_usd <= 0 or headroom < max_cost_usd:
                     max_cost_usd = headroom
                     ceiling_kind = "account"
-                if ceiling_kind == "account":
-                    self._reserved_headroom[run_id] = (user_id, headroom)
+                # SECURITY: reserve the amount GRANTED, not only the amount
+                # granted when the account was the tighter limit. A run admitted
+                # under the per-run ceiling still spends this account's money,
+                # and with USER_SPEND_CAP_USD raised above MAX_RUN_COST_USD the
+                # old condition recorded no promise at all - so N runs parked
+                # at gates each carried the full per-run ceiling against a cap
+                # that never saw them.
+                self._reserved_headroom[run_id] = (
+                    user_id,
+                    headroom if ceiling_kind == "account" else max_cost_usd,
+                )
             active = self._active_slots()
             if active >= self.max_queued_runs:
                 self._refused_runs += 1

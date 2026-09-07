@@ -979,6 +979,8 @@
       "max_cycles": 3.0,
       "max_cycle_iterations": 3.0,
       "max_agent_iter": 8.0,
+      "default_agent_seconds": 300.0,
+      "max_agent_seconds": 900.0,
       "max_guardrail_retries": 2.0,
       "max_label_chars": 40.0,
       "max_name_chars": 80.0,
@@ -998,7 +1000,7 @@
     "valid": true,
     "problems": [],
     "budget": {
-      "static_cost_usd": 0.39205992,
+      "static_cost_usd": 0.54065712,
       "floor_cost_usd": 0.30199944,
       "modelled_calls": 24,
       "billable_nodes": 3,

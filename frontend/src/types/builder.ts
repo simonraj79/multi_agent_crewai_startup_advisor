@@ -1055,15 +1055,17 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
 
 export interface BuilderBudget {
   /**
-   * What admission ENFORCES: `NITRO_PRICE_FACTOR` (1.8) applied to every
-   * cheap-tier node. Higher than any figure an invoice will show, because
-   * `:nitro` routes to the fastest provider rather than the cheapest and the
-   * recorded cheap price is a floor - eight endpoints serve the cheap model
-   * from $0.15/$1.25 to $0.54/$4.50.
+   * What admission ENFORCES: every model priced at its DEAREST endpoint under
+   * the $1.00/M ceiling, as measured in the registry (`cost_in_max_endpoint`
+   * over `cost_in`; audit M14). The request states only a maximum price and no
+   * provider sort, so any endpoint under the ceiling may serve a call - eight
+   * serve the cheap model from $0.15/$1.25 to $0.54/$4.50, and one plain slug
+   * spreads 9.5x. `NITRO_PRICE_FACTOR` (1.8) is now only the fallback for a
+   * model the registry has not measured.
    */
   static_cost_usd: number
   /**
-   * The same graph at published prices, with no nitro inflation. Shown beside
+   * The same graph at published prices, with no endpoint spread. Shown beside
    * the enforced figure rather than instead of it: this is the number a real
    * run's `compute_cost_usd` total is comparable with, and showing the inflated
    * one alone reads as an error.
@@ -1123,6 +1125,21 @@ export interface BuilderBounds {
   max_cycles: number
   max_cycle_iterations: number
   max_agent_iter: number
+  /**
+   * `BUILDER_DEFAULT_AGENT_SECONDS` (300) - what an EMPTY execution-time box
+   * actually means, and the one entry in this interface that is not a bound.
+   *
+   * Every other nullable number on the authored agent is "let CrewAI decide",
+   * and `NumberRow`'s placeholder says so. `max_execution_time` stopped being
+   * one of those at the M11 fix: `runtime._authored_agent` fills this figure in
+   * before the None-dropping, so an empty box is 300 seconds and a placeholder
+   * reading "no limit" was a statement about the runtime that had stopped being
+   * true. Served rather than restated here, per R6 - a client-side 300 is a
+   * number that goes on being shown after the server's moves.
+   */
+  default_agent_seconds: number
+  /** `BUILDER_MAX_AGENT_SECONDS` (900) - the ceiling `document.py` refuses past. */
+  max_agent_seconds: number
   max_guardrail_retries: number
   max_label_chars: number
   max_name_chars: number

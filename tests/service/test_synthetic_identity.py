@@ -27,6 +27,7 @@ from tests.service.identities import (
     CREDENTIALS,
     SECRET,
     SYNTHETIC_USER_HEADER,
+    TEST_MASTER_KEY,
 )
 
 try:  # pragma: no cover
@@ -52,6 +53,12 @@ def build(*, synthetic: bool, auth: str, verify: object | None = None, case: uni
         patch.object(config, "AUTH_BASE_URL", auth),
         patch.object(config, "VALIDATOR_REQUIRE_AUTH", False),
     ]
+    if auth:
+        # Audit L4: with an auth server configured, the published
+        # placeholder key `tests/__init__.py` exports is refused at boot.
+        # With `auth=""` it is exactly what this deployment shape is
+        # allowed to run on, so the patch is conditional and says so.
+        patches.append(patch.object(config, "CREDENTIALS_MASTER_KEY", TEST_MASTER_KEY))
     if verify is not None:
         patches.append(patch("brief_crew.service.app.verify_token", verify))
     for item in patches:

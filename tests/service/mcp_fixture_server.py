@@ -14,7 +14,7 @@ Two shapes, one tool set:
   the flag whose docstring names this fixture.
 * running this module as `python -m tests.service.mcp_fixture_server` (or by
   path) serves the same tools over **stdio**, for the arm behind
-  `MCP_STDIO_ENABLED` and `MCP_ALLOWED_COMMANDS`.
+  `MCP_STDIO_ENABLED` and `MCP_ALLOWED_ARGV`.
 
 `fetch`'s description carries an injection phrase ON PURPOSE. The sanitiser is
 supposed to mark it `suspicious` and keep it selectable (decision 8), and a

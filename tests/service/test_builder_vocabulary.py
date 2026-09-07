@@ -297,6 +297,8 @@ class VocabularyShapeTests(unittest.TestCase):
             "max_cycles": project_config.MAX_CYCLES,
             "max_cycle_iterations": project_config.MAX_CYCLE_ITERATIONS,
             "max_agent_iter": project_config.BUILDER_MAX_AGENT_ITER,
+            "default_agent_seconds": project_config.BUILDER_DEFAULT_AGENT_SECONDS,
+            "max_agent_seconds": project_config.BUILDER_MAX_AGENT_SECONDS,
             "max_guardrail_retries": project_config.BUILDER_MAX_GUARDRAIL_RETRIES,
             "max_label_chars": project_config.BUILDER_MAX_LABEL_CHARS,
             "max_name_chars": project_config.BUILDER_MAX_NAME_CHARS,
@@ -312,6 +314,37 @@ class VocabularyShapeTests(unittest.TestCase):
             "ceiling_usd_per_m_input": project_config.MODEL_PRICE_CEILING_IN,
         }
         self.assertEqual(self.payload["bounds"], {k: float(v) for k, v in expected.items()})
+
+    def test_m11_the_authored_agent_s_wall_clock_travels_to_the_client(self) -> None:
+        """Audit M11 follow-up: the form could not tell the truth without these.
+
+        The M11 fix is entirely server-side - `runtime._authored_agent` fills in
+        `BUILDER_DEFAULT_AGENT_SECONDS` before the None-dropping, `document.py`
+        refuses anything over `BUILDER_MAX_AGENT_SECONDS` - and it left the
+        authored-agent form drawing `placeholder="no limit"` with no `max` on an
+        input whose empty state is 300 seconds and whose ceiling is 900. The
+        client is forbidden from restating either figure (R6: a client copy of a
+        server bound drifts silently), so the only way for the box to say what it
+        does is for the vocabulary to carry both.
+
+        Asserted against the CONSTANTS and not against 300 and 900, so moving
+        either one moves this test with it. The literals below are the separate
+        claim - that neither constant has quietly become the other's value, and
+        that a `default` is genuinely inside its own ceiling - which the equality
+        assertions cannot make on their own.
+        """
+
+        bounds = self.payload["bounds"]
+        self.assertEqual(
+            bounds["default_agent_seconds"],
+            float(project_config.BUILDER_DEFAULT_AGENT_SECONDS),
+        )
+        self.assertEqual(
+            bounds["max_agent_seconds"],
+            float(project_config.BUILDER_MAX_AGENT_SECONDS),
+        )
+        self.assertLess(bounds["default_agent_seconds"], bounds["max_agent_seconds"])
+        self.assertGreater(bounds["default_agent_seconds"], 0)
 
     def test_the_five_c2_v2_bounds_the_palette_had_nothing_to_read(self) -> None:
         """The client build's own finding: the counters had no source."""

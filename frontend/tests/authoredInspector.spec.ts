@@ -980,3 +980,60 @@ describe('conversion, attachments and the docked rule', () => {
     expect(wrapper.find('dialog').exists()).toBe(false)
   })
 })
+
+describe('the execution-time box says what an empty box means - audit M11 follow-up', () => {
+  /**
+   * WHAT THIS GUARDS, and why it is a test rather than a review note.
+   *
+   * The M11 fix is server-side and invisible from here: since it landed,
+   * `runtime._authored_agent` writes `BUILDER_DEFAULT_AGENT_SECONDS` into the
+   * agent before the None-dropping, so an authored agent that says nothing has
+   * a 300-second wall clock, and `document.py` refuses anything over
+   * `BUILDER_MAX_AGENT_SECONDS`. The form was left saying the opposite - the
+   * box read `no limit` and carried no `max` - which is worse than an unstyled
+   * control: an author reads a promise about the runtime that has stopped being
+   * true, and a paste of 3600 into an unbounded box is a save the server 422s.
+   *
+   * ASSERTED AGAINST THE VOCABULARY'S OWN FIGURES, not against 300 and 900.
+   * The fixture and the server agree because `test_builder_vocabulary.py` pins
+   * the served bounds to the config constants; restating the numbers here would
+   * be the third copy of one fact and the one nobody would update.
+   */
+  const bounds = vocabularyFixture().bounds
+
+  it('places the real default in the placeholder rather than "no limit"', async () => {
+    const { wrapper } = mountRail(authoredAgentNode())
+    await nextTick()
+
+    const input = wrapper.get('[data-field="max_execution_time"] input[type="number"]')
+    expect(input.attributes('placeholder')).toContain(String(bounds.default_agent_seconds))
+    // The exact string that was the half-truth. `NumberRow`'s contract is that
+    // a nullable field's placeholder says what the absence MEANS, and here the
+    // absence means a number.
+    expect(input.attributes('placeholder')).not.toContain('no limit')
+  })
+
+  it('carries the ceiling on the input, so a paste is clamped rather than 422d', async () => {
+    const { wrapper, commits } = mountRail(authoredAgentNode())
+    await nextTick()
+
+    const input = wrapper.get('[data-field="max_execution_time"] input[type="number"]')
+    expect(input.attributes('max')).toBe(String(bounds.max_agent_seconds))
+
+    // The clamp is `NumberRow`'s and it only bites when `max` is present, which
+    // is the half of this the attribute alone does not prove.
+    await input.setValue(String(bounds.max_agent_seconds + 2700))
+    await input.trigger('change')
+    const written = authoredOf(commits.at(-1)!.next.nodes[0])
+    expect(written.max_execution_time).toBe(bounds.max_agent_seconds)
+  })
+
+  it('states the ceiling in the help text', async () => {
+    const { wrapper } = mountRail(authoredAgentNode())
+    await nextTick()
+
+    const help = wrapper.get('[data-field="max_execution_time"] .field-help').text()
+    expect(help).toContain(String(bounds.default_agent_seconds))
+    expect(help).toContain(String(bounds.max_agent_seconds))
+  })
+})

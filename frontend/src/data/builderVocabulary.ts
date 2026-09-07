@@ -315,6 +315,16 @@ function readBounds(raw: unknown): BuilderBounds | string {
     max_cycles: count('max_cycles'),
     max_cycle_iterations: count('max_cycle_iterations'),
     max_agent_iter: count('max_agent_iter'),
+    /*
+     * The authored agent's wall clock (audit M11 follow-up). Read like every
+     * other count, and required like every other key - the check below rejects
+     * the whole vocabulary when one is missing, which is the honest answer for
+     * a client whose form would otherwise draw a ceiling it invented. The
+     * FIRST of these is a default rather than a bound; `types/builder.ts`
+     * records why that distinction had to reach the client at all.
+     */
+    default_agent_seconds: count('default_agent_seconds'),
+    max_agent_seconds: count('max_agent_seconds'),
     max_guardrail_retries: count('max_guardrail_retries'),
     max_label_chars: count('max_label_chars'),
     max_name_chars: count('max_name_chars'),

@@ -82,6 +82,33 @@ def run_mode(value: Any) -> str:
 
     text = str(value or "").strip()
     return text or DEFAULT_RUN_MODE
+
+
+#: What a `runs.ceiling_kind` of NULL means (audit H1 follow-up). Same shape and
+#: same reason as `DEFAULT_RUN_MODE` above: the column is additive and nullable,
+#: so a row written before it existed and a row written by a run admitted under
+#: the ordinary per-run ceiling are the same NULL and nothing is backfilled.
+DEFAULT_CEILING_KIND = "run"
+
+
+def run_ceiling_kind(value: Any) -> str:
+    """One `runs.ceiling_kind` column value as the word the registry uses."""
+
+    text = str(value or "").strip()
+    return text or DEFAULT_CEILING_KIND
+
+
+def run_ceiling_usd(value: Any) -> float | None:
+    """One NUMERIC money column as a float, or None for "not recorded".
+
+    None is load-bearing and is NOT zero: `max_cost_usd` of 0 means "no per-run
+    ceiling", so folding a missing value into 0 would turn an unrecorded
+    ceiling into an unlimited one. The caller supplies the process default.
+    """
+
+    return None if value is None else float(value)
+
+
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 # Statuses that assert "a worker somewhere is supposed to be doing this".
 # `waiting` is deliberately absent: it is durably anchored by run_gates and
@@ -170,6 +197,28 @@ runs = Table(
     # _ADDITIVE_COLUMNS below for why a NOT NULL here would never reach the
     # live table at all.
     Column("mode", String(16)),
+    # The spend ceiling this run was ADMITTED under, and which limit it is.
+    #
+    # SECURITY (audit H1 follow-up). `create_run` decides all three at
+    # admission - the per-run ceiling, or the owner's remaining account
+    # headroom when that is tighter - and until these columns existed they
+    # lived only on the in-memory `RunRecord`. A record is evicted six hours
+    # after it finishes and on every restart, and both Render services carry
+    # `autoDeploy: yes`, so a $1-capped account's run came back after any push
+    # under the global $10 ceiling, contributed nothing to `account_spend`'s
+    # `committed` figure, and stopped with the wrong sentence.
+    #
+    # All three are NULLable and all three read as "the process defaults" -
+    # `MAX_RUN_COST_USD`, `ceiling_kind="run"`, no account cap - which is
+    # EXACTLY the behaviour of every row written before this shipped. Nothing
+    # is backfilled and nothing can be: the cap in force at a legacy row's
+    # admission was not recorded, and `config.user_spend_cap_usd` exempts by
+    # e-mail as well as by id, so recomputing one from the row would silently
+    # cap an exempt owner. Numeric rather than Float for the same reason
+    # `run_node_metrics.cost_usd` is: money is compared, not approximated.
+    Column("max_cost_usd", Numeric(12, 6)),
+    Column("ceiling_kind", String(16)),
+    Column("account_cap_usd", Numeric(12, 6)),
     Column("inputs", _json_type(), nullable=False),
     Column("usage", _json_type(), nullable=False),
     Column("result", _json_type()),
@@ -718,6 +767,16 @@ class PostgresFlowPersistence(FlowPersistence):
         # this is the second column to reach a deployed table by this path.
         # NULL reads as `stored`; nothing is backfilled.
         ("builder_document_versions", "source", "VARCHAR(64)"),
+        # Audit H1 follow-up: the ceiling a run was ADMITTED under, so it
+        # survives the eviction and the restart that H1's owner fix already
+        # survives. The reasoning is on the columns themselves, above `runs`.
+        # NULL on all three reads as the process defaults - `MAX_RUN_COST_USD`,
+        # `ceiling_kind="run"`, no account cap - which is exactly what a row
+        # written before this shipped meant, so no backfill is owed and none is
+        # possible. NUMERIC(12,6) is spelled the same on SQLite and PostgreSQL.
+        ("runs", "max_cost_usd", "NUMERIC(12, 6)"),
+        ("runs", "ceiling_kind", "VARCHAR(16)"),
+        ("runs", "account_cap_usd", "NUMERIC(12, 6)"),
     )
 
     def _add_missing_columns(self) -> None:
@@ -948,6 +1007,9 @@ class PostgresFlowPersistence(FlowPersistence):
         status: Any = "queued",
         created_at: datetime | None = None,
         mode: str | None = None,
+        max_cost_usd: float | Decimal | None = None,
+        ceiling_kind: str | None = None,
+        account_cap_usd: float | Decimal | None = None,
     ) -> dict[str, Any]:
         run_id = _identifier(run_id or uuid.uuid4(), label="run_id")
         session_id = _identifier(session_id, label="session_id")
@@ -972,6 +1034,23 @@ class PostgresFlowPersistence(FlowPersistence):
             if mode in (None, "", DEFAULT_RUN_MODE)
             else _identifier(mode, label="mode", limit=16)
         )
+        # The admitted ceiling (audit H1 follow-up). `Decimal(str(...))` is the
+        # spelling `record_node_metrics` already uses for the other NUMERIC
+        # column here: binding a float straight to NUMERIC leaves the rounding
+        # to the driver, and this one is money that a cap is compared against.
+        # None stays None - the read side maps it to the process default, so a
+        # caller that has no opinion writes a row indistinguishable from one
+        # written before the columns existed.
+        ceiling_value = None if max_cost_usd is None else Decimal(str(max_cost_usd))
+        # `run` is the default and is stored as NULL, for `mode`'s reason: a
+        # fresh default row and a legacy one must be indistinguishable, or the
+        # additive column quietly invents a distinction the data never had.
+        kind_value = (
+            None
+            if ceiling_kind in (None, "", DEFAULT_CEILING_KIND)
+            else _identifier(ceiling_kind, label="ceiling_kind", limit=16)
+        )
+        cap_value = None if account_cap_usd is None else Decimal(str(account_cap_usd))
 
         with self._begin() as connection:
             connection.execute(
@@ -984,6 +1063,9 @@ class PostgresFlowPersistence(FlowPersistence):
                     graph_version=graph_version,
                     status=status_value,
                     mode=mode_value,
+                    max_cost_usd=ceiling_value,
+                    ceiling_kind=kind_value,
+                    account_cap_usd=cap_value,
                     inputs=safe_inputs,
                     usage={},
                     captured_frames=0,
@@ -1874,6 +1956,15 @@ class PostgresFlowPersistence(FlowPersistence):
             # `GET /api/runs/{id}` on a run this process never held both read,
             # so the mapping has to happen HERE rather than at either caller.
             "mode": run_mode(row["mode"]),
+            # The ceiling this run was admitted under (audit H1 follow-up).
+            # `max_cost_usd` and `account_cap_usd` keep None for "not recorded"
+            # rather than being defaulted here: 0 is a legitimate value for the
+            # first (it means "no per-run ceiling") and only the registry knows
+            # what this process's default is. `ceiling_kind` CAN be defaulted,
+            # because `run` is the only thing a NULL ever meant.
+            "max_cost_usd": run_ceiling_usd(row["max_cost_usd"]),
+            "ceiling_kind": run_ceiling_kind(row["ceiling_kind"]),
+            "account_cap_usd": run_ceiling_usd(row["account_cap_usd"]),
         }
 
     @staticmethod

@@ -10,8 +10,10 @@ retrieval quality just quietly degrades.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pathlib
+import shlex
 from collections.abc import Iterable
 from typing import NamedTuple
 from urllib.parse import urlsplit
@@ -163,6 +165,14 @@ class RegistryModel(NamedTuple):
     #: preserves it across a price refresh rather than guessing it from
     #: NITRO_PRICE_FACTOR, because the measured per-model ratios run 1.0x to
     #: 9.5x and no single constant was ever going to be right.
+    #:
+    #: Since audit M14 this is not merely descriptive: `budget._endpoint_
+    #: multiplier` prices EVERY model at `cost_in_max_endpoint / cost_in`,
+    #: because the request states `provider.max_price` and no `provider.sort`,
+    #: so any endpoint under the ceiling may serve any slug. There is no
+    #: `cost_out_max_endpoint` column, so that one ratio is applied to both
+    #: halves of the price; add the column here if the completion spread ever
+    #: needs to be measured separately.
     cost_in_max_endpoint: float
     speed_tier: str
     recommended_for: tuple[str, ...]
@@ -2487,18 +2497,36 @@ MAX_CREW_MEMBERS = 6
 # being admitted on the strength of that one calibration.
 GRAPH_STATIC_BUDGET_MARGIN = 1.25
 
-# `:nitro` routes to the FASTEST provider, not the cheapest, so the cheap
-# tier's entry in PRICES is a floor rather than a bound - the note above
-# CHEAP_MODEL says exactly that. Measured against the live catalogue: eight
-# endpoints serve `gemini-3.5-flash-lite`, from $0.15/$1.25 to $0.54/$4.50,
-# with the configured $0.30/$2.50 sitting in the middle. 1.8 is that spread's
-# top over the recorded price, applied to every cheap-tier node in the STATIC
-# estimate only.
+# ⚠️ NO LONGER THE STATIC ESTIMATE'S MULTIPLIER - audit M14 demoted it to a
+# fallback, and the number is kept rather than deleted because two live readers
+# still name it.
 #
-# Interim, and it says so: drop the factor once a provider is pinned. It is
-# deliberately NOT applied inside `compute_cost_usd`, which reports what a call
-# is believed to have actually cost and must not inflate a figure an operator
-# reads as a measurement.
+# What it was: `:nitro` routes to the FASTEST provider, not the cheapest, so
+# the cheap tier's entry in PRICES is a floor rather than a bound - the note
+# above CHEAP_MODEL says exactly that. Measured against the live catalogue:
+# eight endpoints serve `gemini-3.5-flash-lite`, from $0.15/$1.25 to
+# $0.54/$4.50, with the configured $0.30/$2.50 sitting in the middle. 1.8 is
+# that spread's top over the recorded price.
+#
+# What M14 found: the SAME argument applies to a plain slug. This file states
+# `provider.max_price` and deliberately no `provider.sort` on an authored node
+# (`openrouter_authored_params`), so any endpoint under the ceiling may serve
+# any slug - and `openai/gpt-oss-120b` spreads 9.5x between its headline
+# ($0.037/M) and its dearest endpoint ($0.350/M). One constant was wrong for
+# nine of the ten roster rows in one direction or the other, so
+# `builder/budget.py::_endpoint_multiplier` now reads the registry's own
+# MEASURED `cost_in_max_endpoint / cost_in` per model, for every slug, and
+# `:nitro` is no longer a special case.
+#
+# Why it is still here. Two readers: `_endpoint_multiplier` returns it for a
+# model with NO registry row - an unmeasured spread, where 1.0 is the one
+# reading the evidence contradicts - and
+# `frontend/src/components/builder/BudgetMeter.vue` mirrors it as a client-side
+# constant that `frontend/tests/budgetMeter.spec.ts` pins against this value.
+# Deleting it would be a frontend change in a commit that owns no frontend
+# file. It is still deliberately NOT applied inside `compute_cost_usd`, which
+# reports what a call is believed to have actually cost and must not inflate a
+# figure an operator reads as a measurement.
 NITRO_PRICE_FACTOR = 1.8
 
 # The two token terms in the static estimate, both taken from the first paid
@@ -3120,6 +3148,34 @@ AUTH_JWT_ALGORITHMS = ("EdDSA",)
 # --------------------------------------------------------------------------
 CREDENTIALS_MASTER_KEY = os.getenv("CREDENTIALS_MASTER_KEY", "").strip()
 
+# SECURITY (audit L4). Keys that are PUBLISHED, and are therefore not keys.
+#
+# `tests/__init__.py` exports the entry below so that ~30 test modules can
+# patch `AUTH_BASE_URL` on and still pass the boot check above, and the E2E
+# recipe in CLAUDE.md pastes the same string into a shell. It is a perfectly
+# valid 32-byte key - base64-decode it and it reads
+# `ci-placeholder-not-a-master-key!` - which is exactly the problem: a
+# deployment that copy-pasted the recipe would boot cleanly, encrypt every
+# user's API keys with a value anyone can read in this repository, and say
+# nothing. AES-256-GCM with a known key is an encoding, not encryption.
+#
+# So it is refused where it would matter and nowhere else. The boot check in
+# `service/app.py` (`_assert_credential_vault_startup_safety`) raises only when
+# `AUTH_BASE_URL` is set - people can sign in, so there are real credentials to
+# keep - and a keyless or auth-off deployment (the suites, SYNTHETIC mode, the
+# E2E backend, a bare checkout) keeps working with it untouched.
+#
+# A frozenset rather than one constant so that retiring a leaked key later is
+# an append, and so the check reads as membership rather than as equality with
+# one magic string. Nothing here is a credential: every member is public by
+# construction and is listed BECAUSE it is public.
+KNOWN_PLACEHOLDER_MASTER_KEYS = frozenset(
+    {
+        # tests/__init__.py, and CLAUDE.md's E2E recipe.
+        "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=",
+    }
+)
+
 # One credential is one encrypted JSON object of its fields. 4 KiB is a
 # PostgreSQL DSN with room to spare and refuses a pasted PEM by an order of
 # magnitude; the POST answers 413 over it.
@@ -3516,17 +3572,68 @@ MCP_MAX_SERVERS_PER_USER = 16
 # and stdio is behind this flag, which is OFF. An arbitrary stdio command would
 # let an author's document name a process to run on the server, which is the one
 # thing BUILDER_ACTION_REFS' closed set exists to prevent. With the flag off
-# every stdio server is refused at create, whatever MCP_ALLOWED_COMMANDS says.
+# every stdio server is refused at create, whatever the allow-lists below say.
 MCP_STDIO_ENABLED = _env_flag("MCP_STDIO_ENABLED", False)
-#: The allow-list a stdio command must be on even once the flag is lifted.
-#: EMPTY by default, so the flag alone opens nothing. Flowise arrived at the
-#: same shape (`CUSTOM_MCP_ALLOWED_COMMANDS`); a local developer may set
-#: `npx,uvx`, and `render.yaml` sets neither this nor the flag.
+#: **AUDIT M12 - this is the control.** Complete stdio command LINES, one per
+#: entry, separated by a newline or by `;;` (a one-line env var in a dashboard
+#: cannot hold a newline, and `render.yaml` sets neither knob). Each line is
+#: parsed with `shlex.split` and matched EXACTLY against `(command, *args)`.
+#:
+#: The knob it replaces matched the COMMAND and let the arguments through on a
+#: shell-metacharacter check alone - and `npx -y attacker-pkg` contains no
+#: metacharacter. With `MCP_STDIO_ENABLED=1` and `npx` on the old list, any
+#: signed-in author's MCP row therefore ran arbitrary npm code in the API
+#: container: **a package name in an argument is as much code as the command
+#: is**, so the unit the allow-list is written in has to be the whole line.
+#:
+#: EMPTY by default, so the flag alone still opens nothing. A deployment that
+#: wants one server writes the line it wants:
+#:
+#:     MCP_ALLOWED_ARGV="npx -y @modelcontextprotocol/server-filesystem /srv/docs"
+try:
+    MCP_ALLOWED_ARGV: tuple[tuple[str, ...], ...] = tuple(
+        tuple(shlex.split(line))
+        for chunk in os.getenv("MCP_ALLOWED_ARGV", "").split(";;")
+        for line in chunk.splitlines()
+        if line.strip()
+    )
+except ValueError as _exc:  # an unbalanced quote, and nothing else raises here
+    raise ValueError(
+        "MCP_ALLOWED_ARGV is not parseable as shell words - each entry is one "
+        f"complete command line, split with shlex: {_exc}"
+    ) from _exc
+#: **DEMOTED by audit M12, and kept only so an existing deployment does not
+#: silently change meaning.** Still read, still refuses everything not on it -
+#: but while `MCP_ALLOWED_ARGV` is empty a command on this list is now permitted
+#: only with **no arguments at all**, because that is the only case in which
+#: matching the command really did match the code. When `MCP_ALLOWED_ARGV` is
+#: set it decides alone and this list is not consulted.
+#:
+#: Flowise arrived at the older shape (`CUSTOM_MCP_ALLOWED_COMMANDS`) and has
+#: the same hole. `render.yaml` sets neither this, nor the argv list, nor the
+#: flag above.
 MCP_ALLOWED_COMMANDS: tuple[str, ...] = tuple(
     part.strip()
     for part in os.getenv("MCP_ALLOWED_COMMANDS", "").split(",")
     if part.strip()
 )
+if MCP_ALLOWED_COMMANDS and not MCP_ALLOWED_ARGV:
+    # One line, at import, naming the migration - because the demotion changes
+    # what an existing MCP_ALLOWED_COMMANDS deployment can dial, and a server
+    # that stops working with no sentence anywhere is the worse failure.
+    logging.getLogger(__name__).warning(
+        "MCP_ALLOWED_COMMANDS is set and MCP_ALLOWED_ARGV is empty: since the "
+        "audit M12 fix a command on MCP_ALLOWED_COMMANDS is permitted only "
+        "with no arguments, because an argument is code too "
+        "(`npx -y attacker-pkg` names a package, not a flag). Move each server "
+        "to MCP_ALLOWED_ARGV as a complete command line, newline- or "
+        "`;;`-separated."
+    )
+#: A stdio refusal quotes the whole command line back, and that line is AUTHOR
+#: data - a stored `args` tuple has no length bound of its own, and the sentence
+#: reaches a 422 body, a log line and the canvas. 200 characters is enough to
+#: recognise the line that was refused (audit M12).
+MCP_REFUSED_ARGV_MAX_CHARS = 200
 #: The environment keys a stdio server may be handed. Empty by default; a key
 #: outside this set is refused rather than dropped, so an author is told.
 MCP_ALLOWED_ENV_VARS: tuple[str, ...] = tuple(

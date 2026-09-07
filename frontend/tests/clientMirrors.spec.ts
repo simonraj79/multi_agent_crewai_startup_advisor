@@ -298,11 +298,20 @@ describe('the vocabulary fixture is what this build would serve', () => {
 
   it('carries every bound the handler publishes, at the value config.py declares', () => {
     const mapping = boundsMapping()
-    expect(mapping.size, 'the bounds block moved shape').toBe(21)
+    expect(mapping.size, 'the bounds block moved shape').toBe(23)
 
     /*
-     * FOUR of the twenty-one are served and not yet read, and naming them is the
-     * point rather than an omission.
+     * FOUR of the twenty-three are served and not yet read, and naming them is
+     * the point rather than an omission.
+     *
+     * 21 until 2026-09-07, when the security audit's M11 follow-up added
+     * `default_agent_seconds` and `max_agent_seconds`. Both are read on arrival
+     * - the authored agent's execution-time box draws its placeholder from the
+     * first and its `max` from the second - so both are checked against
+     * `config.py` by the loop below rather than listed as a gap. The first is
+     * also the only entry in the block that is a DEFAULT and not a bound, which
+     * costs this test nothing: what it asserts is that a served key equals the
+     * constant it names, and that is as true of a default as of a ceiling.
      *
      * C2 v2 grew the bounds block on 2026-09-04 with the attachment family's
      * three counts and the authored node's two ceilings, plus the owner's price

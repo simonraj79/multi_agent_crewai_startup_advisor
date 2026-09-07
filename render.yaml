@@ -169,12 +169,26 @@ services:
       - key: USER_SPEND_CAP_USD
         value: "1.00"
       # The accounts the cap skips: the owner's. A Better Auth user id or an
-      # email, comma-separated; the email is matched case-insensitively. An
-      # email in a public manifest is a small disclosure - swap it for the
-      # opaque user id once that is known (SELECT id FROM "user" WHERE email
-      # = ... on the Render database), and this line keeps working.
+      # email, comma-separated; the email is matched case-insensitively.
+      #
+      # `sync: false`, NOT a literal, and this is the one env var here that is
+      # not a credential and is still withheld (audit L4). This repository is
+      # PUBLIC, and until 2026-09-07 this line committed the owner's e-mail
+      # address into it - a small disclosure, but a free one to close and one
+      # that is worth nothing to the deployment: the value is read by
+      # `config.USER_SPEND_CAP_EXEMPT` and nothing about it has to be legible
+      # in a manifest. An opaque Better Auth user id (SELECT id FROM "user"
+      # WHERE email = ... on the Render database) is the better value still,
+      # and this line takes one without an edit.
+      #
+      # NOTE for the ALREADY-APPLIED Blueprint, and it is the good half: a
+      # `sync: false` key that already has a dashboard value KEEPS it - Render
+      # prompts at Blueprint CREATION only - so the exemption that is live
+      # today survives this change untouched, and a fresh Blueprint prompts
+      # for it like every other withheld value. Unset, the cap applies to
+      # every account including the owner's, which fails closed.
       - key: USER_SPEND_CAP_EXEMPT
-        value: "simoraj@gmail.com"
+        sync: false
 
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"

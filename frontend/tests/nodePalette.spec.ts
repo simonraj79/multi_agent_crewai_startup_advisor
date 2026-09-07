@@ -118,6 +118,8 @@ function vocabularyV2(overrides: Partial<BuilderVocabulary> = {}): BuilderVocabu
       max_cycles: 3,
       max_cycle_iterations: 3,
       max_agent_iter: 8,
+      default_agent_seconds: 300,
+      max_agent_seconds: 900,
       max_guardrail_retries: 2,
       max_label_chars: 40,
       max_name_chars: 80,

@@ -15,16 +15,25 @@ multiplies - one of these fails, and the failure names a published number rather
 than a fixture nobody can check.
 
 One consequence was recorded here rather than smoothed over, and it has since
-been acted on: with NITRO_PRICE_FACTOR applied, that same 8-node pathological
-corner prices at $8.44, and $10.55 once the 1.25x margin is added - so the very
-worst graph the counts permitted was ALREADY refused on price. The two figures
-above are FLOOR prices and the enforced figure is the other one, which means
-the count never was the money bound. It bound the cheap graph instead: a
-9-node chain with no tools and no cycle prices at $0.99 and was refused anyway.
-MAX_BILLABLE_NODES is 13 now and `config.py` carries the arithmetic. The
-relationship the paragraph was always describing is unchanged and is what the
-tests here assert: the layers are INDEPENDENT, and a graph is not legal because
-it fits the counts, it is legal because it fits all of them.
+been acted on: with the endpoint inflation applied, that same 8-node
+pathological corner prices at $13.25, and $16.57 once the 1.25x margin is
+added - so the very worst graph the counts permitted was ALREADY refused on
+price. The two figures above are FLOOR prices and the enforced figure is the
+other one, which means the count never was the money bound. It bound the cheap
+graph instead: a 9-node chain with no tools and no cycle prices at $0.99 and
+was refused anyway. MAX_BILLABLE_NODES is 13 now and `config.py` carries the
+arithmetic. The relationship the paragraph was always describing is unchanged
+and is what the tests here assert: the layers are INDEPENDENT, and a graph is
+not legal because it fits the counts, it is legal because it fits all of them.
+
+EVERY ENFORCED FIGURE ON THIS PAGE MOVED WITH AUDIT M14, and each one says so
+where it sits. $8.44 became $13.25 because the inflation stopped being a
+`:nitro` special case: this project states `provider.max_price` and
+deliberately no `provider.sort`, so any endpoint under the ceiling may serve
+any slug, and every model is now priced at the registry's own measured
+`cost_in_max_endpoint / cost_in`. The two FLOOR figures above did NOT move,
+and that is the check worth naming - M14 changed what is enforced, not how a
+graph is counted or what its published price is.
 """
 
 from __future__ import annotations
@@ -58,6 +67,7 @@ from brief_crew.config import (
     CHEAP_MODEL,
     ESCALATION_MODEL,
     MODEL_BY_ID,
+    MODEL_REGISTRY,
 )
 from tests.builder.test_document import (
     agent_node,
@@ -273,14 +283,24 @@ class PerModelPricingTests(unittest.TestCase):
         self.assertGreater(dear / cheap, min(r1.cost_in / qwen.cost_in, r1.cost_out / qwen.cost_out) - 0.01)
         self.assertLess(dear / cheap, max(r1.cost_in / qwen.cost_in, r1.cost_out / qwen.cost_out) + 0.01)
 
-    def test_a_plain_id_is_not_inflated_by_the_nitro_factor(self) -> None:
-        """D5: the factor applies to a `:nitro` id and to nothing else.
+    def test_a_slug_served_at_one_price_is_not_inflated(self) -> None:
+        """AMENDED BY AUDIT M14: the figure did not move, the REASON did.
 
-        Applying 1.8 to a plain id would invent a number in both directions -
-        the three OpenAI first-party rows spread 1.1x and `openai/gpt-oss-120b`
-        spreads 9.5x - so a plain slug is priced at what it publishes.
+        This read `test_a_plain_id_is_not_inflated_by_the_nitro_factor` and
+        asserted that being a PLAIN id was what left the total at its headline.
+        It passed for the wrong reason. `qwen/qwen3.7-flash` publishes $0.03/M
+        and its dearest endpoint is also $0.03/M, so its measured spread is
+        1.0x and it is unchanged under either rule - while its own docstring
+        cited `openai/gpt-oss-120b` at 9.5x as the reason not to inflate a
+        plain slug, which is the row that proves the opposite.
+
+        What the document here can support is the narrow claim: a slug with one
+        price has nothing to inflate. `EndpointSpreadTests` below carries the
+        general rule and the 9.5x row that tells the two rules apart.
         """
 
+        row = MODEL_BY_ID["qwen/qwen3.7-flash"]
+        self.assertEqual(row.cost_in_max_endpoint, row.cost_in)
         estimate = estimate_budget(self.frontier("qwen/qwen3.7-flash"))
         self.assertAlmostEqual(estimate.static_cost_usd, estimate.floor_cost_usd, places=6)
 
@@ -303,22 +323,37 @@ class PerModelPricingTests(unittest.TestCase):
             node_model(graph.nodes_by_id()["a0"]), "openrouter/qwen/qwen3.7-flash"
         )
 
-    def test_the_nitro_factor_for_the_cheap_preset_is_the_measured_ratio(self) -> None:
-        """1.8 is a MEASUREMENT for this one slug and a guess for every other.
+    def test_both_presets_are_priced_at_their_own_measured_ratio(self) -> None:
+        """1.8 is a MEASUREMENT for two slugs and a guess for every other.
 
         `google/gemini-3.5-flash-lite` is $0.30 headline and $0.54 on its two
-        `priority` endpoints - 1.8 to the cent, measured 2026-09-04. That is
-        where the constant came from, and it is why replacing the blanket factor
-        with the per-model ratio left `MeasuredFrontierTests`' published figures
-        untouched. Any other roster row would have moved them.
+        `priority` endpoints - 1.8 to the cent, measured 2026-09-04 - and
+        `google/gemini-3.8-flash` spreads $0.75 to $1.35, which is also 1.8.
+        That coincidence is where NITRO_PRICE_FACTOR came from, and it is why
+        the cheap preset's own figures never moved when the blanket factor was
+        replaced by the per-model ratio.
+
+        AMENDED BY AUDIT M14. The last line asserted the ESCALATION preset sat
+        at 1.0 because it carries no `:nitro` suffix. That was the finding: the
+        suffix is not what decides which endpoint serves a request -
+        `provider.max_price` with no pinned endpoint is - so the escalation
+        preset now answers its own measured 1.8, exactly as the cheap one
+        always did.
         """
 
-        row = MODEL_BY_ID["google/gemini-3.5-flash-lite"]
-        self.assertAlmostEqual(row.cost_in_max_endpoint / row.cost_in, NITRO_PRICE_FACTOR, places=6)
+        cheap_row = MODEL_BY_ID["google/gemini-3.5-flash-lite"]
+        dear_row = MODEL_BY_ID["google/gemini-3.8-flash"]
         self.assertAlmostEqual(
-            budget_module._nitro_multiplier(CHEAP_MODEL), NITRO_PRICE_FACTOR, places=6
+            cheap_row.cost_in_max_endpoint / cheap_row.cost_in, NITRO_PRICE_FACTOR, places=6
         )
-        self.assertEqual(budget_module._nitro_multiplier(ESCALATION_MODEL), 1.0)
+        self.assertAlmostEqual(
+            budget_module._endpoint_multiplier(CHEAP_MODEL), NITRO_PRICE_FACTOR, places=6
+        )
+        self.assertAlmostEqual(
+            budget_module._endpoint_multiplier(ESCALATION_MODEL),
+            dear_row.cost_in_max_endpoint / dear_row.cost_in,
+            places=6,
+        )
 
 
 class MeasuredFrontierTests(unittest.TestCase):
@@ -353,8 +388,14 @@ class MeasuredFrontierTests(unittest.TestCase):
         self.assertEqual([problem.code for problem in problems], [budget_module.BUDGET_OVER_CEILING])
         message = problems[0].message
         self.assertIn(str(FRONTIER_CALLS), message)
-        self.assertIn("8.44", message)
-        self.assertIn("10.55", message)
+        # $8.44 / $10.55 until audit M14. The graph's FLOOR is unchanged at
+        # $7.3625 and its call count is unchanged at 288; what moved is that
+        # its five escalation nodes are now inflated by their own measured 1.8x
+        # endpoint spread instead of by 1.0. It was refused before and it is
+        # refused now, which is what this test is about - the arithmetic below
+        # is pinned so the refusal cannot start quoting a stale figure.
+        self.assertIn("13.25", message)
+        self.assertIn("16.57", message)
 
 
 class CycleAndDepthTests(unittest.TestCase):
@@ -472,8 +513,15 @@ class CallCountTests(unittest.TestCase):
         self.assertEqual(estimate.billable_nodes, 0)
 
 
-class NitroFactorTests(unittest.TestCase):
-    """The interim answer to `:nitro` pricing on speed rather than price."""
+class TierInflationTests(unittest.TestCase):
+    """What each library tier is ENFORCED at, above its published headline.
+
+    `NitroFactorTests` until audit M14, when the answer stopped depending on
+    which of the two presets carries a `:nitro` suffix. Both are priced at
+    their own registry-measured endpoint spread now, and both spreads are 1.8 -
+    so the cheap arm below is unchanged to ten decimal places and the
+    escalation arm is the one the finding moved.
+    """
 
     def _single(self, tier: str) -> BuilderDocument:
         return document(
@@ -481,19 +529,182 @@ class NitroFactorTests(unittest.TestCase):
             [edge("e1", "idea", "a"), edge("e2", "a", "report")],
         )
 
-    def test_the_cheap_tier_is_inflated_by_the_factor(self) -> None:
+    def _spread(self, model_id: str) -> float:
+        row = MODEL_BY_ID[model_id]
+        return row.cost_in_max_endpoint / row.cost_in
+
+    def test_the_cheap_tier_is_inflated_by_its_measured_spread(self) -> None:
         estimate = estimate_budget(self._single("cheap"))
         self.assertAlmostEqual(
-            estimate.static_cost_usd, estimate.floor_cost_usd * NITRO_PRICE_FACTOR, places=9
+            estimate.static_cost_usd,
+            estimate.floor_cost_usd * self._spread("google/gemini-3.5-flash-lite"),
+            places=9,
         )
 
-    def test_the_escalation_tier_is_not(self) -> None:
+    def test_the_escalation_tier_is_too(self) -> None:
+        """`test_the_escalation_tier_is_not` until audit M14 - it now IS.
+
+        The escalation preset is a plain slug and was left at its headline, on
+        the reading that only `:nitro` routes away from the published price.
+        `openrouter_escalation_params` sends `provider.max_price` and a
+        throughput `sort` and pins no endpoint, so a $1.35/M endpoint may serve
+        it - and an estimate that is not an upper bound is not a bound.
+        """
+
         estimate = estimate_budget(self._single("escalation"))
-        self.assertAlmostEqual(estimate.static_cost_usd, estimate.floor_cost_usd, places=9)
+        self.assertAlmostEqual(
+            estimate.static_cost_usd,
+            estimate.floor_cost_usd * self._spread("google/gemini-3.8-flash"),
+            places=9,
+        )
+        self.assertGreater(estimate.static_cost_usd, estimate.floor_cost_usd)
 
     def test_the_enforced_figure_is_never_below_the_published_floor(self) -> None:
         estimate = estimate_budget(frontier_document(cheap=3, escalation=5))
         self.assertGreater(estimate.static_cost_usd, estimate.floor_cost_usd)
+
+
+class EndpointSpreadTests(unittest.TestCase):
+    """Audit M14: EVERY model is priced at the dearest endpoint serving it.
+
+    THE DEFECT. `budget._nitro_multiplier` inflated a `:nitro` slug by the
+    registry's measured endpoint spread and returned 1.0 for every other
+    spelling, on the stated reading that "a plain slug is not routed on speed,
+    so its headline is what it bills". The request this project actually sends
+    says otherwise: `config.openrouter_authored_params` states
+    `provider.max_price` and DELIBERATELY no `provider.sort`, so OpenRouter may
+    serve an authored node's plain slug from ANY endpoint under the $1.00/M
+    ceiling. `openai/gpt-oss-120b` publishes $0.037/M and its dearest endpoint
+    is $0.350/M - 9.5x - so a graph of those nodes was admitted against a ninth
+    of what it could bill. An estimate that is not an upper bound is not a
+    bound, which is the same failure as the run reported at $0.00 over 128,069
+    genuinely billed tokens.
+
+    THE FOUR TESTS BELOW ARE THE FINDING, ITS CONTROL, ITS RULE AND ITS
+    CONSEQUENCE - in that order, and each names what it read before the fix.
+    """
+
+    #: The roster's widest spread, 9.5x, and the finding's own evidence.
+    WIDE_SPREAD_MODEL = "openai/gpt-oss-120b"
+    #: A slug served at ONE price, 1.0x - the control that must not move.
+    FLAT_MODEL = "qwen/qwen3.7-flash"
+
+    def _spread(self, model_id: str) -> float:
+        row = MODEL_BY_ID[model_id]
+        return row.cost_in_max_endpoint / row.cost_in
+
+    def test_M14_a_plain_slug_is_priced_at_its_dearest_endpoint(self) -> None:
+        """The finding. A plain id with a wide spread is now inflated by it.
+
+        FAILS on the unfixed module: `_nitro_multiplier` answered 1.0 for any
+        spelling without a `:nitro` suffix, so `static_cost_usd` equalled
+        `floor_cost_usd` here and the enforced figure was $0.0072 against a
+        graph that could bill $0.0679 - the same 9.4595x the registry records
+        between this row's headline and its dearest endpoint.
+        """
+
+        spread = self._spread(self.WIDE_SPREAD_MODEL)
+        self.assertGreater(
+            spread, 9.0, "the roster row this test rests on has been re-measured"
+        )
+
+        estimate = estimate_budget(one_authored_agent(llm={"model": self.WIDE_SPREAD_MODEL}))
+        self.assertAlmostEqual(
+            estimate.static_cost_usd, estimate.floor_cost_usd * spread, places=12
+        )
+        # To the cent, and past it, because a single agent is cents. The floor
+        # is what this document cost before M14 AND after it - only the
+        # enforced figure moved.
+        self.assertAlmostEqual(estimate.floor_cost_usd, 0.00717309, places=8)
+        self.assertAlmostEqual(estimate.static_cost_usd, 0.06785355, places=8)
+
+    def test_M14_a_slug_whose_two_figures_are_equal_is_unchanged(self) -> None:
+        """The control. A model with one endpoint price has nothing to inflate.
+
+        Passes before and after, and that is the point: the fix must not be a
+        blanket multiplier wearing a new name. `qwen/qwen3.7-flash` publishes
+        $0.03/M, its dearest endpoint is $0.03/M, and its enforced figure is
+        still its floor to twelve places.
+        """
+
+        row = MODEL_BY_ID[self.FLAT_MODEL]
+        self.assertEqual(row.cost_in_max_endpoint, row.cost_in)
+        self.assertEqual(
+            budget_module._endpoint_multiplier(f"openrouter/{self.FLAT_MODEL}"), 1.0
+        )
+
+        estimate = estimate_budget(one_authored_agent(llm={"model": self.FLAT_MODEL}))
+        self.assertGreater(estimate.floor_cost_usd, 0.0)
+        self.assertAlmostEqual(estimate.static_cost_usd, estimate.floor_cost_usd, places=12)
+
+    def test_M14_every_roster_row_answers_its_own_measured_ratio(self) -> None:
+        """The rule, over the whole roster and all four spellings of each id.
+
+        The ratios run 1.0x to 9.5x across ten rows, which is why one constant
+        was wrong for nine of them in one direction or the other. All four
+        spellings answer alike because `registry_model` strips the provider
+        prefix and the routing variant: a `:nitro` id and its plain form name
+        ONE slug with ONE set of endpoints.
+
+        FAILS on the unfixed module for every row: the two prefix spellings
+        answered 1.0 rather than the row's ratio, and the two `:nitro`
+        spellings answered `max(ratio, NITRO_PRICE_FACTOR)` rather than the
+        ratio - which is a different number for the six rows under 1.8.
+        """
+
+        self.assertGreaterEqual(len(MODEL_REGISTRY), 2)
+        for row in MODEL_REGISTRY:
+            expected = row.cost_in_max_endpoint / row.cost_in
+            for spelling in (
+                row.id,
+                f"openrouter/{row.id}",
+                f"{row.id}:nitro",
+                f"openrouter/{row.id}:nitro",
+            ):
+                with self.subTest(spelling=spelling):
+                    self.assertAlmostEqual(
+                        budget_module._endpoint_multiplier(spelling), expected, places=12
+                    )
+
+    def test_M14_a_graph_the_old_estimate_admitted_is_refused_now(self) -> None:
+        """The consequence, in the one currency admission actually speaks.
+
+        Six library agents on the escalation tier, chained, tooled, on one
+        cycle - 216 calls, 6 billable, 6 escalation, structurally legal under
+        every count. Its published floor is $5.4914 and has not moved. Before
+        M14 that floor WAS the enforced figure, because the escalation preset
+        is a plain slug and was multiplied by 1.0: $6.86 with the 1.25x margin,
+        comfortably admitted under the $10.00 ceiling. Priced at the $1.35/M
+        dearest endpoint the registry records for `google/gemini-3.8-flash` it
+        is $9.8845, $12.36 with the margin, and refused.
+
+        Nothing about the graph changed. What changed is that the number
+        admission compares to the ceiling is now an upper bound on what the
+        graph can bill.
+        """
+
+        graph = frontier_document(cheap=0, escalation=6)
+        self.assertEqual(structural_problems(graph), [])
+
+        estimate = estimate_budget(graph)
+        self.assertEqual(estimate.modelled_calls, 216)
+        self.assertEqual(estimate.billable_nodes, 6)
+        self.assertEqual(estimate.escalation_nodes, 6)
+        self.assertAlmostEqual(estimate.floor_cost_usd, 5.4914, places=4)
+        self.assertAlmostEqual(estimate.static_cost_usd, 9.8845, places=4)
+
+        # The floor - which is what this graph was enforced against before M14
+        # - fits the ceiling with the margin; the enforced figure does not.
+        self.assertLess(
+            estimate.floor_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, MAX_RUN_COST_USD
+        )
+        self.assertGreater(
+            estimate.static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, MAX_RUN_COST_USD
+        )
+        self.assertEqual(
+            [problem.code for problem in budget_problems(graph, ceiling_usd=10.0)],
+            [budget_module.BUDGET_OVER_CEILING],
+        )
 
 
 class CeilingTests(unittest.TestCase):
@@ -596,9 +807,15 @@ class ValidateDocumentTests(unittest.TestCase):
         Six of its eight billable nodes sit outside both loops and are
         unchanged; the two revise agents went from 4 passes each to 16, which
         is 2 x 3 x (16 - 4) = 72 calls more. It is still well inside the
-        ceiling - $3.34, $4.18 with the margin - which is the point: the
+        ceiling - $5.09, $6.37 with the margin - which is the point: the
         correction costs the shipped shape nothing and closes the gate on the
         shape that was exploiting it.
+
+        $3.34 / $4.18 until audit M14, over the same 132 calls. Five of its
+        eight billable nodes run on the escalation preset, which used to be
+        priced at its $0.75/M headline and is now priced at the $1.35/M dearest
+        endpoint the registry records for it. The floor is $2.83 and did not
+        move.
         """
 
         estimate = estimate_budget(validator_shaped_document())
@@ -1038,20 +1255,38 @@ class CycleMultiplierTests(unittest.TestCase):
                 )
 
 
-class NitroPricingTests(unittest.TestCase):
-    def test_a_nitro_id_is_inflated_and_a_plain_one_is_not(self) -> None:
-        nitro = one_authored_agent(llm={"model": f"{CHEAPER_MODEL}:nitro"})
-        plain = one_authored_agent(llm={"model": CHEAPER_MODEL})
-        inflated = estimate_budget(nitro)
-        published = estimate_budget(plain)
-        self.assertGreater(inflated.static_cost_usd, published.static_cost_usd)
-        self.assertAlmostEqual(inflated.floor_cost_usd, published.floor_cost_usd, places=10)
-        self.assertAlmostEqual(
-            published.static_cost_usd, published.floor_cost_usd, places=10
-        )
-        self.assertGreaterEqual(
-            inflated.static_cost_usd / inflated.floor_cost_usd, NITRO_PRICE_FACTOR
-        )
+class NitroSpellingTests(unittest.TestCase):
+    """A `:nitro` id and its plain spelling name ONE slug, so they price alike.
+
+    `NitroPricingTests.test_a_nitro_id_is_inflated_and_a_plain_one_is_not`
+    until audit M14, where it asserted the opposite: the nitro spelling cost
+    1.8x the plain one. That gap WAS the defect. `:nitro` is a routing
+    instruction rather than a distinct model - `registry_model` strips it and
+    both spellings reach one row with one set of endpoints - and the request
+    carrying the plain spelling pins no endpoint either. Two prices for one
+    slug meant the cheaper of them bounded nothing.
+    """
+
+    def test_a_nitro_id_and_its_plain_spelling_price_identically(self) -> None:
+        nitro = estimate_budget(one_authored_agent(llm={"model": f"{CHEAPER_MODEL}:nitro"}))
+        published = estimate_budget(one_authored_agent(llm={"model": CHEAPER_MODEL}))
+
+        self.assertAlmostEqual(nitro.floor_cost_usd, published.floor_cost_usd, places=10)
+        self.assertAlmostEqual(nitro.static_cost_usd, published.static_cost_usd, places=10)
+
+    def test_both_spellings_are_inflated_by_the_slugs_measured_spread(self) -> None:
+        row = MODEL_BY_ID[CHEAPER_MODEL]
+        spread = row.cost_in_max_endpoint / row.cost_in
+        # 1.8 for this row, which is NITRO_PRICE_FACTOR - a coincidence of the
+        # slug the constant was measured on. Asserted as the REGISTRY's figure
+        # so a re-measure moves this test rather than contradicting it.
+        self.assertAlmostEqual(spread, NITRO_PRICE_FACTOR, places=6)
+        for spelling in (CHEAPER_MODEL, f"{CHEAPER_MODEL}:nitro"):
+            with self.subTest(spelling=spelling):
+                estimate = estimate_budget(one_authored_agent(llm={"model": spelling}))
+                self.assertAlmostEqual(
+                    estimate.static_cost_usd, estimate.floor_cost_usd * spread, places=10
+                )
 
 
 class PerNodeCostTests(unittest.TestCase):

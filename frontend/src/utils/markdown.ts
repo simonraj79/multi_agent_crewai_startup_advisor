@@ -72,37 +72,77 @@ export function safeHref(raw: string): string | null {
   return null
 }
 
-/** Inline spans, applied to text that is ALREADY html-escaped. */
+const LINK_ATTRS = 'target="_blank" rel="noopener noreferrer nofollow"'
+
+/**
+ * Inline spans, applied to text that is ALREADY html-escaped.
+ *
+ * EVERY tag this function emits is held behind the sentinel until the very
+ * end, and that is a rule the passes below depend on rather than a tidy-up
+ * (audit L3). The passes run in sequence over one string, so anything an
+ * earlier pass emitted is input to a later one - and the later ones are the
+ * emphasis rewrites, which look for `*` and `~` without caring whether they
+ * sit inside a tag. `[c](http://x/*a*b)` used to become
+ * `<a href="http://x/<em>a</em>b">`: a URL the author never wrote, in an
+ * attribute. It was inert only because `escapeHtml` runs first, so no quote
+ * could close the attribute - a single-fact defence living in another
+ * function. Holding the tags removes the class rather than that instance.
+ *
+ * What is held is the TAG, never the label. `[**b**](http://x)` must still
+ * emphasise inside the link, and holding the whole anchor would swallow it;
+ * holding the opening `<a ...>` protects the href and leaves the label as
+ * ordinary text for the emphasis passes to see.
+ */
 function renderInline(escaped: string): string {
   let out = escaped
 
-  // Code spans first: their contents must not be re-interpreted as emphasis.
-  const codeSpans: string[] = []
-  out = out.replace(/`([^`]+)`/g, (_match, code: string) => {
-    codeSpans.push(code)
-    return `${SENTINEL}CODE${codeSpans.length - 1}${SENTINEL}`
-  })
+  /**
+   * Fragments the emphasis passes must not see, and their placeholders.
+   *
+   * The placeholder is built from `SENTINEL`, which `escapeHtml` strips from
+   * the input, so it cannot be forged by the text being rendered - the same
+   * property the code-span placeholder always had, now covering every tag.
+   */
+  const held: string[] = []
+  const hold = (fragment: string): string => `${SENTINEL}H${held.push(fragment) - 1}${SENTINEL}`
 
-  // [label](href) - the href is validated, the label stays escaped text.
+  // Code spans first: their contents must not be re-interpreted as anything.
+  out = out.replace(/`([^`]+)`/g, (_match, code: string) => hold(`<code>${code}</code>`))
+
+  // [label](href) - the href is validated and held, the label stays escaped
+  // text so emphasis inside a link keeps working.
   out = out.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (match, label: string, href: string) => {
     const safe = safeHref(href)
     if (!safe) return match
-    return `<a href="${safe}" target="_blank" rel="noopener noreferrer nofollow">${label || safe}</a>`
+    // An empty label falls back to the href, and that copy is held too: it is
+    // the same string, and emphasis rewriting the visible half of a URL while
+    // the attribute half is protected would be a stranger result than either.
+    return `${hold(`<a href="${safe}" ${LINK_ATTRS}>`)}${label || hold(safe)}${hold('</a>')}`
   })
 
-  // Bare URLs the Reporter emits without link syntax.
+  // Bare URLs the Reporter emits without link syntax. Both halves are held,
+  // for the reason above: here the visible text IS the URL.
   out = out.replace(/(^|[\s(])((?:https?:\/\/)[^\s<>()]+[^\s<>().,;:!?])/g, (_m, lead: string, url: string) => {
     const safe = safeHref(url)
     if (!safe) return `${lead}${url}`
-    return `${lead}<a href="${safe}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`
+    return `${lead}${hold(`<a href="${safe}" ${LINK_ATTRS}>`)}${hold(url)}${hold('</a>')}`
   })
 
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
   out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>')
 
-  out = out.replace(/\u0000CODE(\d+)\u0000/g, (_m, index: string) => `<code>${codeSpans[Number(index)]}</code>`)
-  return out
+  /*
+   * Restored twice, deliberately. Today one pass is enough, because only tags
+   * are held and no held tag contains a placeholder - but the obvious next
+   * edit here is to hold a composite fragment (a whole anchor, say), and a
+   * single pass would then leave the inner placeholder on screen as a stray
+   * sentinel rather than failing. Two passes is cheap and the second is a
+   * no-op when nothing is nested.
+   */
+  const restore = (text: string): string =>
+    text.replace(/\u0000H(\d+)\u0000/g, (_m, index: string) => held[Number(index)] ?? '')
+  return restore(restore(out))
 }
 
 function renderTable(rows: string[]): string {

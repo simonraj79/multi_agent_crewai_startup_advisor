@@ -3120,6 +3120,34 @@ AUTH_JWT_ALGORITHMS = ("EdDSA",)
 # --------------------------------------------------------------------------
 CREDENTIALS_MASTER_KEY = os.getenv("CREDENTIALS_MASTER_KEY", "").strip()
 
+# SECURITY (audit L4). Keys that are PUBLISHED, and are therefore not keys.
+#
+# `tests/__init__.py` exports the entry below so that ~30 test modules can
+# patch `AUTH_BASE_URL` on and still pass the boot check above, and the E2E
+# recipe in CLAUDE.md pastes the same string into a shell. It is a perfectly
+# valid 32-byte key - base64-decode it and it reads
+# `ci-placeholder-not-a-master-key!` - which is exactly the problem: a
+# deployment that copy-pasted the recipe would boot cleanly, encrypt every
+# user's API keys with a value anyone can read in this repository, and say
+# nothing. AES-256-GCM with a known key is an encoding, not encryption.
+#
+# So it is refused where it would matter and nowhere else. The boot check in
+# `service/app.py` (`_assert_credential_vault_startup_safety`) raises only when
+# `AUTH_BASE_URL` is set - people can sign in, so there are real credentials to
+# keep - and a keyless or auth-off deployment (the suites, SYNTHETIC mode, the
+# E2E backend, a bare checkout) keeps working with it untouched.
+#
+# A frozenset rather than one constant so that retiring a leaked key later is
+# an append, and so the check reads as membership rather than as equality with
+# one magic string. Nothing here is a credential: every member is public by
+# construction and is listed BECAUSE it is public.
+KNOWN_PLACEHOLDER_MASTER_KEYS = frozenset(
+    {
+        # tests/__init__.py, and CLAUDE.md's E2E recipe.
+        "Y2ktcGxhY2Vob2xkZXItbm90LWEtbWFzdGVyLWtleSE=",
+    }
+)
+
 # One credential is one encrypted JSON object of its fields. 4 KiB is a
 # PostgreSQL DSN with room to spare and refuses a pasted PEM by an order of
 # magnitude; the POST answers 413 over it.

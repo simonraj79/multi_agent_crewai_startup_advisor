@@ -22,6 +22,7 @@ from brief_crew import config
 from brief_crew.service.app import create_app
 from brief_crew.service.auth import AuthenticatedUser, AuthError
 from brief_crew.service.models import CreateRunRequest
+from tests.service.identities import TEST_MASTER_KEY
 
 
 class GatesModeRequestTests(unittest.TestCase):
@@ -296,6 +297,9 @@ class AuthenticatedAutoGatesTests(unittest.TestCase):
         patches = [
             patch.object(config, "AUTH_BASE_URL", "https://auth.example.test"),
             patch.object(config, "VALIDATOR_REQUIRE_AUTH", True),
+            # Audit L4: auth on means the published placeholder master key
+            # is refused at boot, so this case brings a real one.
+            patch.object(config, "CREDENTIALS_MASTER_KEY", TEST_MASTER_KEY),
             patch("brief_crew.service.app.verify_token", fake_verify),
             # OFF, deliberately. The point is that a signed-in caller does not
             # need it - if these pass with it on, they prove nothing.

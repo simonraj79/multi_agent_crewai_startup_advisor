@@ -1038,7 +1038,7 @@
     "valid": true,
     "problems": [],
     "budget": {
-      "static_cost_usd": 3.34412973,
+      "static_cost_usd": 5.48349993,
       "floor_cost_usd": 3.0463888499999996,
       "modelled_calls": 132,
       "billable_nodes": 8,

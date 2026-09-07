@@ -34,6 +34,14 @@ the other:
   built and carries this same constant, which is the only thing standing between
   "$1.35 is unreachable" and "$1.35 is unreachable because of what nobody
   happens to have set".
+* **Pricing** - added by audit M14, and it is the question the first two do not
+  ask. `max_price` bounds the endpoint at the ceiling; it does NOT pin one, and
+  no `provider.sort` is sent for an authored node. So every endpoint under the
+  ceiling may serve any slug, and the static estimate has to charge the dearest
+  one or it is not an upper bound. `RecordedExposureIsPricedTests` asserts
+  `builder/budget.py` prices each row at exactly the exposure recorded here,
+  which is what keeps this file's `cost_in_max_endpoint` column load-bearing
+  rather than descriptive.
 
 **THE EXEMPTIONS, and why an absolute rule is not available.** D9 asks for zero
 matches of `anthropic/`. Criterion 4 asks for a test that
@@ -433,6 +441,75 @@ class RegistryCeilingTests(unittest.TestCase):
         for model in MODEL_REGISTRY:
             with self.subTest(model=model.id):
                 self.assertGreaterEqual(model.cost_in_max_endpoint, model.cost_in)
+
+    def _enforced_over_floor(self, model_id: str) -> float:
+        """What a one-agent graph on `model_id` is ENFORCED at, over its floor.
+
+        Asked through `estimate_budget` rather than through the private
+        multiplier, so what is pinned is the number admission compares to the
+        ceiling and not the name of a helper. `static_cost_usd` and
+        `floor_cost_usd` price the same calls at the same token counts, so
+        their ratio IS the factor applied - and because the registry carries
+        one endpoint column that factor is applied to prompt and completion
+        alike, which is what makes the ratio exact rather than a blend.
+        """
+
+        from brief_crew.builder import estimate_budget
+        from tests.builder.test_budget import one_authored_agent
+
+        estimate = estimate_budget(one_authored_agent(llm={"model": model_id}))
+        self.assertGreater(estimate.floor_cost_usd, 0.0, model_id)
+        return estimate.static_cost_usd / estimate.floor_cost_usd
+
+    def test_the_recorded_exposure_is_what_the_static_estimate_charges(self) -> None:
+        """Audit M14. The third question, and it had no answer until the fix.
+
+        The two assertions above establish that a dear endpoint MAY serve a
+        roster slug and that the filter bounding it is really sent. Neither
+        asks what the builder's static estimate does about it, and the answer
+        was: nothing, for every slug spelled without `:nitro`. So a graph of
+        `openai/gpt-oss-120b` nodes - $0.037/M headline, $0.350/M dearest
+        endpoint - was admitted against a ninth of what it could bill.
+
+        FAILS on the unfixed module with a NUMBER rather than a missing name:
+        the enforced figure equalled the floor for every plain spelling, so
+        every ratio below read 1.0 against the row's own 1.0x-to-9.5x spread.
+        """
+
+        for model in MODEL_REGISTRY:
+            with self.subTest(model=model.id):
+                self.assertAlmostEqual(
+                    self._enforced_over_floor(model.id),
+                    model.cost_in_max_endpoint / model.cost_in,
+                    places=9,
+                )
+
+    def test_an_over_ceiling_exposure_is_priced_OVER_the_ceiling(self) -> None:
+        """The estimate over-prices where the filter is tighter, deliberately.
+
+        `cost_in_max_endpoint` is the dearest endpoint serving a slug FULL
+        STOP, not the dearest that survives `provider.max_price` - so the
+        escalation preset is priced at $1.35/M against a $1.00/M ceiling that
+        would refuse that endpoint. That is the safe direction for a bound and
+        it is a decision rather than an oversight: a tighter figure would mean
+        recording the per-endpoint prices rather than their maximum, and
+        deriving one here from the ceiling would be inventing a number.
+        """
+
+        exposed = [
+            model
+            for model in MODEL_REGISTRY
+            if model.cost_in_max_endpoint > MODEL_PRICE_CEILING_IN
+        ]
+        self.assertTrue(
+            exposed,
+            "no roster row records an over-ceiling endpoint any more; re-measure "
+            "rather than delete this test",
+        )
+        for model in exposed:
+            with self.subTest(model=model.id):
+                priced = model.cost_in * self._enforced_over_floor(model.id)
+                self.assertGreater(priced, MODEL_PRICE_CEILING_IN)
 
     def test_unknown_model_is_unpriced(self) -> None:
         """Criterion 4. `None`, never 0.0 - the two are different facts.

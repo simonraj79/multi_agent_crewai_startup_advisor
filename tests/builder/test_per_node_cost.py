@@ -24,6 +24,7 @@ from typing import Any
 
 from brief_crew.builder import estimate_budget
 from brief_crew.builder.document import BuilderDocument
+from brief_crew.config import MODEL_BY_ID
 from tests.builder.test_budget import AUTHORED_MODEL, one_authored_agent
 
 try:  # pragma: no cover - the service extra is optional, as elsewhere in tests/
@@ -125,26 +126,41 @@ class PerNodeCostRouteTests(unittest.TestCase):
         self.assertEqual(cheap["calls"], dear["calls"])
         self.assertLess(cheap["usd"], dear["usd"])
 
-    def test_a_nitro_variant_costs_MORE_than_the_dearer_headline(self) -> None:
+    def test_a_wide_endpoint_spread_costs_MORE_than_a_dearer_headline(self) -> None:
         """Measured, and it is the one direction a reader will not predict.
 
-        `static_cost_usd` is the ENFORCED figure, which multiplies a `:nitro`
-        spelling by `NITRO_PRICE_FACTOR` because that variant routes on speed
-        and may bill above its published rate. So swapping the escalation model
-        for the *cheaper* flash-lite `:nitro` preset makes the line go UP:
-        $0.157 becomes $0.182 on the fixture here. The cost line is therefore
-        reporting the number the ceiling is enforced against, not a headline
-        price - which is the whole reason 04 D6 asks the server for it instead
-        of computing it beside the picker.
+        AMENDED BY AUDIT M14, which invalidated this test's premise rather than
+        its point. It read `test_a_nitro_variant_costs_MORE_than_the_dearer_
+        headline` and swapped the escalation model for the cheaper flash-lite
+        `:nitro` preset, because only a `:nitro` spelling was inflated - $0.157
+        became $0.182. Every slug is inflated by its own measured endpoint
+        spread now, so the escalation preset carries the same 1.8x and the
+        comparison no longer inverts: $0.283 against $0.182.
+
+        The POINT survives, and one roster pair still makes it plainly.
+        `openai/gpt-oss-120b` publishes cheaper than `openai/gpt-4.1-nano` on
+        BOTH halves - $0.037/$0.17 against $0.10/$0.40 - and its floor here is
+        $0.0072 against $0.0171. Priced at each model's dearest endpoint
+        (9.4595x against 1.1x) it costs nearly four times as much: $0.0679
+        against $0.0188. So the cost line is reporting the number the ceiling
+        is enforced against and not a headline price, which is the whole reason
+        04 D6 asks the SERVER for it instead of computing it beside the picker
+        from a published rate.
         """
-        headline = self._budget(one_authored_agent())["per_node"]["draft"]
-        nitro = self._budget(
-            one_authored_agent(
-                llm={"model": "google/gemini-3.5-flash-lite:nitro"}, tier="cheap"
-            )
+        cheap_headline = self._budget(
+            one_authored_agent(llm={"model": "openai/gpt-oss-120b"}, tier="cheap")
         )["per_node"]["draft"]
-        self.assertEqual(nitro["calls"], headline["calls"])
-        self.assertGreater(nitro["usd"], headline["usd"])
+        dear_headline = self._budget(
+            one_authored_agent(llm={"model": "openai/gpt-4.1-nano"}, tier="cheap")
+        )["per_node"]["draft"]
+
+        wide = MODEL_BY_ID["openai/gpt-oss-120b"]
+        narrow = MODEL_BY_ID["openai/gpt-4.1-nano"]
+        self.assertLess(wide.cost_in, narrow.cost_in)
+        self.assertLess(wide.cost_out, narrow.cost_out)
+
+        self.assertEqual(cheap_headline["calls"], dear_headline["calls"])
+        self.assertGreater(cheap_headline["usd"], dear_headline["usd"])
 
     def test_a_library_agent_is_priced_too_so_the_line_is_not_authored_only(
         self,

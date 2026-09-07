@@ -38,6 +38,7 @@ from brief_crew.builder.tools import (
     build_custom_tool,
     parse_custom_tool,
     refuse_private_target,
+    vetted_target,
 )
 
 WEATHER = {
@@ -71,6 +72,8 @@ def resolver(addresses: list[str]):
 
 
 def transport(status: int = 200, body: str = "{}", *, seen: list[Any] | None = None):
+    #: `address` is the seventh argument since audit M3: the address
+    #: `vetted_target` checked, which is the one the socket must go to.
     def send(
         method: str,
         url: str,
@@ -78,6 +81,7 @@ def transport(status: int = 200, body: str = "{}", *, seen: list[Any] | None = N
         content: str | None,
         timeout: int,
         max_bytes: int,
+        address: str | None = None,
     ) -> tuple[int, str]:
         if seen is not None:
             seen.append(
@@ -88,6 +92,7 @@ def transport(status: int = 200, body: str = "{}", *, seen: list[Any] | None = N
                     "content": content,
                     "timeout": timeout,
                     "max_bytes": max_bytes,
+                    "address": address,
                 }
             )
         return status, body
@@ -408,6 +413,189 @@ class CredentialInTheUrlTests(unittest.TestCase):
         # In the URL it is quoted, so an `&` or `#` in a key cannot truncate it.
         self.assertIn(f"key={self.QUOTED}", seen[0]["url"])
         self.assertNotIn(self.SECRET, seen[0]["url"])
+
+
+class CheckThenConnectTests(unittest.TestCase):
+    """Audit M3: the address that was CHECKED is the address that is dialled.
+
+    `refuse_private_target` resolved the name, vetted the answers and threw
+    them away; `_default_transport` then handed the NAME to httpx, which
+    resolved it a second time. A TTL-0 record alternating between a public
+    address and `10.0.0.5` passes the check and is dialled at the private one a
+    few milliseconds later - and the connection error comes back verbatim in
+    the envelope, so even a refused dial is an internal port-scan oracle. The
+    repository already pins `hostaddr` in `postgres_probe_target` for exactly
+    this reason; this side did not.
+    """
+
+    PUBLIC = "93.184.216.34"
+    PRIVATE = "10.0.0.5"
+
+    def _tool(self, resolve: Any, send: Any) -> Any:
+        spec = parse_custom_tool(WEATHER, tool_id="ut_0123456789ab")
+        return build_custom_tool(
+            spec,
+            credential={"name": "Authorization", "header_value": "sekrit-token"},
+            resolve=resolve,
+            transport=send,
+        )
+
+    def test_M3_the_transport_is_handed_the_vetted_address_not_just_the_name(self) -> None:
+        seen: list[Any] = []
+        self._tool(resolver([self.PUBLIC]), transport(seen=seen))._run(city="Lisbon")
+        self.assertEqual(seen[0]["address"], self.PUBLIC)
+        # The URL still names the host: the transport rewrites it, so TLS can
+        # stay bound to the NAME through `sni_hostname`.
+        self.assertIn("api.example.test", seen[0]["url"])
+
+    def test_M3_a_resolver_answering_public_then_private_never_dials_the_private_one(self) -> None:
+        """The rebinding shape, with a transport that resolves the way httpx did.
+
+        The stub stands in for `httpx`: handed no vetted address it looks the
+        name up itself, which is precisely the second resolution this fix
+        removes. Before the fix the tool passed six arguments, the stub
+        resolved, and the dial landed on `10.0.0.5`.
+        """
+
+        answers = [[self.PUBLIC], [self.PRIVATE]]
+        calls: list[str] = []
+
+        def flapping(host: str) -> list[str]:
+            calls.append(host)
+            return answers.pop(0) if len(answers) > 1 else answers[0]
+
+        dialled: list[str] = []
+
+        def resolving_transport(
+            _method: str,
+            url: str,
+            _headers: Mapping[str, str],
+            _content: str | None,
+            _timeout: int,
+            _max_bytes: int,
+            address: str | None = None,
+        ) -> tuple[int, str]:
+            host = url.split("//", 1)[1].split("/", 1)[0]
+            dialled.append(address if address is not None else flapping(host)[0])
+            return 200, "{}"
+
+        envelope = json.loads(self._tool(flapping, resolving_transport)._run(city="Lisbon"))
+        self.assertEqual(envelope["status"], "ok")
+        self.assertEqual(dialled, [self.PUBLIC])
+        self.assertNotIn(self.PRIVATE, dialled)
+        # Resolved ONCE. The second answer is never consulted, which is the
+        # property: a second lookup is a second chance for the record to move.
+        self.assertEqual(calls, ["api.example.test"])
+
+    def test_M3_a_shared_address_space_answer_is_refused_by_the_is_global_catch_all(self) -> None:
+        """100.64.0.0/10 is neither private nor reserved in Python 3.13.
+
+        It is carrier-grade NAT and pod addressing on some platforms, and
+        `credentials._address_class` has refused it since plan 01. This side
+        admitted it, so the two halves of one rule disagreed about "public".
+        """
+
+        for address in ("100.64.0.1", "100.127.255.254"):
+            with self.subTest(address=address):
+                refusal, vetted = vetted_target(
+                    "https://api.example.test/x", resolve=resolver([address])
+                )
+                self.assertIsNotNone(refusal)
+                self.assertIsNone(vetted)
+                self.assertIn(address, str(refusal))
+
+        seen: list[Any] = []
+        envelope = json.loads(
+            self._tool(resolver(["100.64.0.1"]), transport(seen=seen))._run(city="x")
+        )
+        self.assertEqual(envelope["status"], "failed")
+        self.assertEqual(seen, [], "the transport was reached")
+
+    def test_M3_vetted_target_answers_the_address_for_a_public_name(self) -> None:
+        refusal, address = vetted_target(
+            "https://api.example.test/x", resolve=resolver([self.PUBLIC])
+        )
+        self.assertIsNone(refusal)
+        self.assertEqual(address, self.PUBLIC)
+
+    def test_M3_the_local_escape_hatch_pins_nothing_and_dials_the_url_as_written(self) -> None:
+        refusal, address = vetted_target(
+            "http://127.0.0.1:8099/mcp", allow_insecure_local=True
+        )
+        self.assertIsNone(refusal)
+        self.assertIsNone(address)
+
+
+class DefaultTransportPinTests(unittest.TestCase):
+    """Audit M3, the httpx half: the socket goes to the IP, TLS to the name."""
+
+    class _Response:
+        status_code = 200
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_exc: Any) -> None:
+            return None
+
+        @staticmethod
+        def iter_bytes():
+            yield b"{}"
+
+    def _client(self, calls: list[dict[str, Any]]) -> Any:
+        response = self._Response()
+
+        class Client:
+            def __init__(self, **kwargs: Any) -> None:
+                calls.append({"init": kwargs})
+
+            def __enter__(self) -> Any:
+                return self
+
+            def __exit__(self, *_exc: Any) -> None:
+                return None
+
+            @staticmethod
+            def stream(method: str, url: str, **kwargs: Any) -> Any:
+                calls.append({"method": method, "url": url, **kwargs})
+                return response
+
+        return Client
+
+    def _send(self, address: str | None) -> dict[str, Any]:
+        from unittest.mock import patch
+
+        import httpx
+
+        from brief_crew.builder.tools import _default_transport
+
+        calls: list[dict[str, Any]] = []
+        with patch.object(httpx, "Client", self._client(calls)):
+            status, text = _default_transport(
+                "GET",
+                "https://api.example.test/weather?q=x",
+                {"Authorization": "Bearer t"},
+                None,
+                15,
+                1024,
+                address,
+            )
+        self.assertEqual((status, text), (200, "{}"))
+        return calls[1]
+
+    def test_M3_the_request_line_names_the_ip_and_the_handshake_names_the_host(self) -> None:
+        call = self._send("93.184.216.34")
+        self.assertEqual(call["url"], "https://93.184.216.34/weather?q=x")
+        self.assertEqual(call["extensions"]["sni_hostname"], "api.example.test")
+        self.assertEqual(call["headers"]["Host"], "api.example.test")
+        # The author's own header survives the rewrite.
+        self.assertEqual(call["headers"]["Authorization"], "Bearer t")
+
+    def test_M3_with_no_vetted_address_the_url_is_dialled_as_written(self) -> None:
+        call = self._send(None)
+        self.assertEqual(call["url"], "https://api.example.test/weather?q=x")
+        self.assertEqual(call["extensions"], {})
+        self.assertNotIn("Host", call["headers"])
 
 
 if __name__ == "__main__":

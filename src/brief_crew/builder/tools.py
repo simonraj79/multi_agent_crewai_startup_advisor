@@ -1240,6 +1240,79 @@ def _default_resolver(host: str) -> list[str]:
     return sorted({info[4][0] for info in socket.getaddrinfo(host, None)})
 
 
+def vetted_target(
+    url: str,
+    *,
+    resolve: HostResolver | None = None,
+    allow_insecure_local: bool = False,
+) -> tuple[str | None, str | None]:
+    """`(refusal, address)` - why this URL may not be dialled, and where to dial.
+
+    The rule `URLReadTool` already applies, restated here because a custom tool
+    and an MCP server both need it and neither goes through that class: resolve
+    the name, and refuse every private, loopback, link-local, reserved,
+    multicast or otherwise non-global address it answers with. Resolution
+    happens BEFORE the request, so a DNS name pointing at 169.254.169.254 is
+    refused by address rather than by spelling.
+
+    **SECURITY: it RETURNS the address it vetted, and that is the whole point.**
+    This used to answer a refusal and throw the addresses away, so `httpx`
+    resolved the name a second time a few milliseconds later - check-then-
+    connect, and a TTL-0 record alternating between a public address and
+    `10.0.0.5` walks straight through it. The caller dials the answer that was
+    checked (`_default_transport` rewrites the URL's host to it and keeps TLS
+    bound to the NAME through `sni_hostname`), which is the same pin
+    `credentials.postgres_probe_target` applies through libpq's `hostaddr`.
+
+    `address` is None when there is nothing to pin - the `allow_insecure_local`
+    escape hatch, where the caller dials the URL as written.
+
+    `not is_global` is a catch-all rather than a sixth named class, and it is
+    what closes `100.64.0.0/10`: carrier-grade NAT and shared address space,
+    used for pod addressing on some platforms, which in Python 3.13 is neither
+    `is_private` nor `is_reserved`. `credentials._address_class` has had it
+    since plan 01; this side did not, and the two rules should not disagree
+    about what "public" means.
+    """
+
+    parsed = urllib.parse.urlsplit(url)
+    scheme = parsed.scheme.lower()
+    host = parsed.hostname or ""
+    if not host:
+        return f"{url!r} names no host", None
+    local = host in {"127.0.0.1", "localhost", "::1"}
+    if scheme != "https" and not (allow_insecure_local and local and scheme == "http"):
+        return f"{url!r} is not https, and only https targets are dialled", None
+    if local and allow_insecure_local:
+        return None, None
+    resolver = resolve or _default_resolver
+    try:
+        addresses = resolver(host)
+    except OSError as exc:  # pragma: no cover - depends on the resolver
+        return f"{host!r} does not resolve ({exc})", None
+    if not addresses:
+        return f"{host!r} resolves to nothing", None
+    for address in addresses:
+        try:
+            parsed_address = ipaddress.ip_address(address)
+        except ValueError:
+            return f"{host!r} resolved to {address!r}, which is not an address", None
+        if (
+            parsed_address.is_private
+            or parsed_address.is_loopback
+            or parsed_address.is_link_local
+            or parsed_address.is_reserved
+            or parsed_address.is_multicast
+            or parsed_address.is_unspecified
+            or not parsed_address.is_global
+        ):
+            return (
+                f"{host!r} resolves to {address}, which is on this network; a tool "
+                "reaches the public internet and nothing else"
+            ), None
+    return None, addresses[0]
+
+
 def refuse_private_target(
     url: str,
     *,
@@ -1248,49 +1321,16 @@ def refuse_private_target(
 ) -> str | None:
     """The reason this URL may not be dialled, or None.
 
-    The rule `URLReadTool` already applies, restated here because a custom tool
-    and an MCP server both need it and neither goes through that class: resolve
-    the name, and refuse every private, loopback, link-local, reserved or
-    multicast address it answers with. Resolution happens BEFORE the request, so
-    a DNS name pointing at 169.254.169.254 is refused by address rather than by
-    spelling.
+    A thin wrapper over `vetted_target` for the callers that only need the
+    verdict - `mcp.transport_refusal`, which vets a URL it is about to hand to
+    CrewAI's own client and so cannot pin an address anyway, and the tests that
+    assert the rule itself.
     """
 
-    parsed = urllib.parse.urlsplit(url)
-    scheme = parsed.scheme.lower()
-    host = parsed.hostname or ""
-    if not host:
-        return f"{url!r} names no host"
-    local = host in {"127.0.0.1", "localhost", "::1"}
-    if scheme != "https" and not (allow_insecure_local and local and scheme == "http"):
-        return f"{url!r} is not https, and only https targets are dialled"
-    if local and allow_insecure_local:
-        return None
-    resolver = resolve or _default_resolver
-    try:
-        addresses = resolver(host)
-    except OSError as exc:  # pragma: no cover - depends on the resolver
-        return f"{host!r} does not resolve ({exc})"
-    if not addresses:
-        return f"{host!r} resolves to nothing"
-    for address in addresses:
-        try:
-            parsed_address = ipaddress.ip_address(address)
-        except ValueError:
-            return f"{host!r} resolved to {address!r}, which is not an address"
-        if (
-            parsed_address.is_private
-            or parsed_address.is_loopback
-            or parsed_address.is_link_local
-            or parsed_address.is_reserved
-            or parsed_address.is_multicast
-            or parsed_address.is_unspecified
-        ):
-            return (
-                f"{host!r} resolves to {address}, which is on this network; a tool "
-                "reaches the public internet and nothing else"
-            )
-    return None
+    refusal, _address = vetted_target(
+        url, resolve=resolve, allow_insecure_local=allow_insecure_local
+    )
+    return refusal
 
 
 def _envelope(
@@ -1404,7 +1444,14 @@ def build_custom_tool(
 
         def _run(self, **kwargs: Any) -> str:
             url = render(request.url, kwargs, quote=True)
-            refusal = refuse_private_target(url, resolve=resolve)
+            # SECURITY: `address` is the answer that was CHECKED, and it is
+            # what gets dialled. Discarding it and letting httpx resolve the
+            # name again is check-then-connect: a TTL-0 record alternating
+            # between a public address and 10.0.0.5 passes the check and is
+            # dialled at the private one a few milliseconds later, and the
+            # connection error comes back in the envelope, so even a refused
+            # dial is an internal port-scan oracle.
+            refusal, address = vetted_target(url, resolve=resolve)
             if refusal is not None:
                 return _envelope(
                     tool=spec.name, query=_redact(url), status="failed", notes=_redact(refusal)
@@ -1428,6 +1475,7 @@ def build_custom_tool(
                     body,
                     request.timeout_seconds,
                     request.max_response_bytes,
+                    address,
                 )
             except _ResponseTooLarge as exc:
                 return _envelope(
@@ -1470,20 +1518,38 @@ def _default_transport(
     body: str | None,
     timeout: int,
     max_bytes: int,
+    address: str | None = None,
 ) -> tuple[int, str]:
-    """One HTTPS call, no redirects, capped mid-stream.
+    """One HTTPS call, no redirects, capped mid-stream, to the VETTED address.
 
     `follow_redirects=False` is load-bearing: a 302 to `http://169.254.169.254`
     would walk straight past the SSRF check, which ran against the URL the
     author wrote. The cap is applied while iterating rather than on
     `response.text`, so a 2 GiB body is abandoned rather than read.
+
+    **SECURITY: `address` is the address `vetted_target` checked, and the socket
+    goes there.** Passing the name and letting httpx resolve it a second time is
+    the check-then-connect hole; rewriting the host closes it. TLS is still
+    bound to the NAME rather than to the address - `sni_hostname` carries the
+    original host into the handshake (httpcore 1.0.9 honours it) and the
+    certificate is verified against it, so pinning the address buys the SSRF
+    guarantee without buying a downgrade. The explicit `Host` header is what
+    keeps virtual hosting working, since the request line now names an IP.
     """
 
     import httpx
 
+    parsed = httpx.URL(url)
+    sent = dict(headers)
+    extensions: dict[str, Any] = {}
+    if address is not None and parsed.host != address:
+        extensions["sni_hostname"] = parsed.host
+        sent.setdefault("Host", parsed.netloc.decode("ascii"))
+        url = str(parsed.copy_with(host=address))
+
     with httpx.Client(timeout=timeout, follow_redirects=False) as client:
         with client.stream(
-            method, url, headers=dict(headers), content=body
+            method, url, headers=sent, content=body, extensions=extensions
         ) as response:
             chunks: list[bytes] = []
             size = 0
@@ -1632,4 +1698,5 @@ __all__ = [
     "resolved_tool",
     "tool_problems",
     "validate_params",
+    "vetted_target",
 ]

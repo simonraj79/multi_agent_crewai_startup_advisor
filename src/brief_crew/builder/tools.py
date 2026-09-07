@@ -49,6 +49,7 @@ import os
 import re
 import socket
 import threading
+import time
 import urllib.parse
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -1511,6 +1512,15 @@ class _ResponseTooLarge(RuntimeError):
     """The body passed `max_response_bytes` and was abandoned mid-stream."""
 
 
+class _ResponseTooSlow(_ResponseTooLarge):
+    """The whole call passed `timeout_seconds` and was abandoned mid-stream.
+
+    A subclass so every existing `except _ResponseTooLarge` (the tool's own
+    `_run`, the test route) already handles it the same way: a failed
+    envelope, never a raise.
+    """
+
+
 def _default_transport(
     method: str,
     url: str,
@@ -1553,11 +1563,22 @@ def _default_transport(
         ) as response:
             chunks: list[bytes] = []
             size = 0
+            # SECURITY (audit H5): httpx's `timeout` is PER READ and httpx has
+            # no total-request deadline, so a server that trickles one byte
+            # just inside the read timeout holds this call open until
+            # `max_bytes` arrives - up to 1 MiB at 29 s a byte. The whole call
+            # gets the same bound the author chose for one read.
+            deadline = time.monotonic() + timeout
             for chunk in response.iter_bytes():
                 size += len(chunk)
                 if size > max_bytes:
                     raise _ResponseTooLarge(
                         f"the response passed {max_bytes} bytes and was abandoned"
+                    )
+                if time.monotonic() > deadline:
+                    raise _ResponseTooSlow(
+                        f"the response took longer than {timeout}s in total and "
+                        "was abandoned"
                     )
                 chunks.append(chunk)
             return response.status_code, b"".join(chunks).decode("utf-8", "replace")

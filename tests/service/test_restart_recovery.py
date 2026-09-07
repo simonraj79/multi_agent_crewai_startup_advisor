@@ -764,5 +764,171 @@ class AuditH1OwnershipSurvivesRehydrationTests(RestartRecoveryTestCase):
         self.assertIsNone(registry.require("pre-auth-row").user_id)
 
 
+class AuditH1CeilingSurvivesRehydrationTests(RestartRecoveryTestCase):
+    """A rehydrated run must come back under the ceiling it was ADMITTED under.
+
+    The follow-up half of audit H1, and the half that could not be fixed with
+    the owner: `create_run` tightens `max_cost_usd` to the account's remaining
+    `USER_SPEND_CAP_USD` headroom and records that as `ceiling_kind="account"`
+    with the cap beside it, and all three lived only on the in-memory
+    `RunRecord`. A record is evicted six hours after it finishes and on every
+    restart, and both Render services carry ``autoDeploy: yes``, so a
+    $1-capped account's run came back after any push to `main` under the
+    global $10 ceiling, contributed nothing to `account_spend`'s `committed`
+    figure - which is the number the NEXT launch is refused against - and
+    would have stopped with a sentence naming the wrong knob.
+
+    `runs` now carries the three as additive nullable columns
+    (`tests/service/test_additive_migration.py::RunCeilingColumnsTests` owns
+    the migration); what these tests own is that the registry writes them and
+    reads them back.
+    """
+
+    CAP = 1.0
+
+    def _capped_run(self, registry: RunRegistry, user_id: str = "alice") -> RunRecord:
+        return registry.create_run(
+            session_id="restart-recovery",
+            workflow_id=VALIDATOR_GRAPH.id,
+            inputs={"idea": "A no-cost synthetic idea"},
+            user_id=user_id,
+            account_cap_usd=self.CAP,
+        )
+
+    def test_h1_the_admitted_ceiling_is_written_to_the_row(self) -> None:
+        """The durable half. Without it the restore below has nothing to read."""
+
+        store = self._store()
+        registry = self._registry(store)
+        record = self._capped_run(registry)
+        self.assertEqual(record.max_cost_usd, self.CAP)
+        self.assertEqual(record.ceiling_kind, "account")
+
+        snapshot = store.get_run(record.run_id)
+        self.assertEqual(
+            snapshot.get("max_cost_usd"),
+            self.CAP,
+            "the row the registry rebuilds from carries no admitted ceiling",
+        )
+        self.assertEqual(snapshot.get("ceiling_kind"), "account")
+        self.assertEqual(snapshot.get("account_cap_usd"), self.CAP)
+
+    def test_h1_a_capped_run_restored_by_a_second_registry_keeps_its_ceiling(self) -> None:
+        """One store, two registries. The second registry IS the restart.
+
+        The per-run ceiling in force is `MAX_RUN_COST_USD` ($10 by default) and
+        the account's is $1, so a run that comes back at the per-run figure is
+        the defect: nine dollars of headroom the account was never granted.
+        """
+
+        from brief_crew.config import MAX_RUN_COST_USD
+
+        store = self._store()
+        first = self._registry(store)
+        run_id = self._capped_run(first).run_id
+        self.assertGreater(MAX_RUN_COST_USD, self.CAP, "the arms must differ")
+
+        second = self._registry(store)
+        restored = second.require(run_id)
+
+        self.assertEqual(
+            restored.max_cost_usd,
+            self.CAP,
+            "the rehydrated run came back under the global per-run ceiling; the "
+            "account cap it was admitted under is gone",
+        )
+        self.assertEqual(restored.ceiling_kind, "account")
+        self.assertEqual(restored.account_cap_usd, self.CAP)
+
+    def test_h1_a_restored_run_still_counts_toward_the_accounts_committed_spend(self) -> None:
+        """The consequence the cap is actually enforced through.
+
+        `account_spend`'s `committed` is what the NEXT launch is refused
+        against. A live capped run holds its headroom; a restored one must hold
+        exactly the same headroom, or one restart hands the account its cap
+        again.
+        """
+
+        store = self._store()
+        first = self._registry(store)
+        run_id = self._capped_run(first).run_id
+        live = first.account_spend("alice")
+        self.assertEqual(live["committed"], self.CAP)
+
+        second = self._registry(store)
+        # Rehydrate it the way any request for the run would.
+        second.require(run_id)
+
+        restored = second.account_spend("alice")
+        self.assertEqual(
+            restored["committed"],
+            live["committed"],
+            "a restored run promised the account nothing, so the next launch "
+            "would be granted the whole cap a second time",
+        )
+
+    def test_h1_an_uncapped_run_records_the_per_run_ceiling_and_no_cap(self) -> None:
+        """The ordinary run: same journey, no account cap invented on the way."""
+
+        from brief_crew.config import MAX_RUN_COST_USD
+
+        store = self._store()
+        first = self._registry(store)
+        record = first.create_run(
+            session_id="restart-recovery",
+            workflow_id=VALIDATOR_GRAPH.id,
+            inputs={"idea": "A no-cost synthetic idea"},
+            user_id="alice",
+        )
+
+        restored = self._registry(store).require(record.run_id)
+
+        self.assertEqual(restored.max_cost_usd, MAX_RUN_COST_USD)
+        self.assertEqual(restored.ceiling_kind, "run")
+        self.assertIsNone(restored.account_cap_usd)
+        self.assertEqual(self._registry(store).account_spend("alice")["committed"], 0.0)
+
+    def test_h1_a_row_from_before_the_columns_rehydrates_to_the_process_defaults(self) -> None:
+        """The carve-out, and the same shape as the unowned-row one above.
+
+        A row written before these columns existed reads NULL on all three, and
+        NULL must keep meaning "whatever this process's defaults are" - which
+        is exactly what those rows did before the migration.
+        """
+
+        from brief_crew.config import MAX_RUN_COST_USD
+
+        store = self._store()
+        self._seed_run(store, run_id="pre-ceiling-row", status="completed")
+
+        restored = self._registry(store).require("pre-ceiling-row")
+
+        self.assertEqual(restored.max_cost_usd, MAX_RUN_COST_USD)
+        self.assertEqual(restored.ceiling_kind, "run")
+        self.assertIsNone(restored.account_cap_usd)
+
+    def test_h1_a_lowered_per_run_ceiling_still_clamps_a_restored_run(self) -> None:
+        """The one place the stored value does not simply win, and it is one-way.
+
+        Restoring the admitted ceiling must not become a way to spend MORE than
+        the process now allows: an operator who lowers `MAX_RUN_COST_USD` and
+        restarts would otherwise find a rehydrated run still entitled to the
+        older, larger amount. The clamp can only reduce, and the kind reverts
+        with it because the stop sentence has to name the limit that bit.
+        """
+
+        store = self._store()
+        record = self._capped_run(self._registry(store))
+
+        tightened = self._registry(store)
+        tightened.max_run_cost_usd = 0.25
+        restored = tightened.require(record.run_id)
+
+        self.assertEqual(restored.max_cost_usd, 0.25)
+        self.assertEqual(restored.ceiling_kind, "run")
+        # The cap itself is not forgotten - it is what `account_spend` reads.
+        self.assertEqual(restored.account_cap_usd, self.CAP)
+
+
 if __name__ == "__main__":  # pragma: no cover - parity with the other suites
     unittest.main()

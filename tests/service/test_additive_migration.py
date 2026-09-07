@@ -347,5 +347,203 @@ class VersionSourceColumnTests(unittest.TestCase):
         self.assertIn("source", columns)
 
 
+# `runs` exactly as it SHIPPED at `ea611a9` - the audit-fix merge, one commit
+# before the three ceiling columns existed. `user_id` and `mode` are on it,
+# because both reached production through this same list long ago; what is
+# absent is the ceiling a run was admitted under.
+SHIPPED_RUNS_DDL = """
+CREATE TABLE runs (
+    id VARCHAR(128) NOT NULL PRIMARY KEY,
+    session_id VARCHAR(128) NOT NULL,
+    user_id VARCHAR(128),
+    workflow_id VARCHAR(128) NOT NULL,
+    flow_id VARCHAR(128),
+    graph_version VARCHAR(128) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    mode VARCHAR(16),
+    inputs JSON NOT NULL,
+    usage JSON NOT NULL,
+    result JSON,
+    error TEXT,
+    captured_frames INTEGER NOT NULL,
+    dropped_frames INTEGER NOT NULL,
+    frame_gaps INTEGER NOT NULL,
+    emit_errors INTEGER NOT NULL,
+    subscriber_dropped INTEGER NOT NULL,
+    created_at DATETIME NOT NULL,
+    started_at DATETIME,
+    completed_at DATETIME,
+    updated_at DATETIME NOT NULL
+)
+"""
+
+SHIPPED_ROW = (
+    "INSERT INTO runs VALUES ('capped-before-the-columns','s','alice',"
+    "'idea-validator',NULL,'v1','queued',NULL,'{}','{}',NULL,NULL,0,0,0,0,0,"
+    "'2026-09-07','2026-09-07',NULL,'2026-09-07')"
+)
+
+CEILING_COLUMNS = ("max_cost_usd", "ceiling_kind", "account_cap_usd")
+
+
+class RunCeilingColumnsTests(unittest.TestCase):
+    """Audit H1 follow-up: `runs.max_cost_usd` / `ceiling_kind` / `account_cap_usd`.
+
+    The third, fourth and fifth columns to reach a SHIPPED table by the
+    additive path, and the reason they had to: a run's ceiling was decided at
+    admission and kept only on the in-memory `RunRecord`, so a $1-capped
+    account's run came back after any restart under the global $10 ceiling and
+    its outstanding promise vanished from `account_spend`'s committed figure.
+
+    The fixture is `runs` as `ea611a9` left it - `user_id` and `mode` present,
+    the three absent - with one queued row owned by `alice`, which is exactly
+    the row the migration must add columns to without disturbing.
+    """
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.engine = create_engine(f"sqlite:///{Path(directory.name) / 'shipped.db'}")
+        self.addCleanup(self.engine.dispose)
+        with self.engine.begin() as connection:
+            connection.execute(text(SHIPPED_RUNS_DDL))
+            connection.execute(text(SHIPPED_ROW))
+
+    def columns(self) -> set[str]:
+        return {c["name"] for c in inspect(self.engine).get_columns("runs")}
+
+    def upgrade(self) -> PostgresFlowPersistence:
+        store = PostgresFlowPersistence(self.engine, initialize=False)
+        store.init_db()
+        self.addCleanup(store.close)
+        return store
+
+    def test_the_fixture_really_is_the_shipped_shape(self) -> None:
+        """The control. Without it every assertion below could pass on a fresh table."""
+
+        present = self.columns()
+        self.assertIn("user_id", present)
+        self.assertIn("mode", present)
+        for name in CEILING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertNotIn(name, present)
+
+    def test_the_three_columns_are_added_to_a_shipped_runs_table(self) -> None:
+        self.upgrade()
+        for name in CEILING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertIn(name, self.columns())
+
+    def test_a_row_written_before_them_keeps_three_nulls(self) -> None:
+        """Nothing is backfilled, and nothing could be.
+
+        The cap in force when this row was admitted was never recorded, and
+        `config.user_spend_cap_usd` exempts by e-mail as well as by id - so a
+        value derived here would silently cap an exempt owner after a deploy.
+        """
+
+        self.upgrade()
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT id, max_cost_usd, ceiling_kind, account_cap_usd FROM runs")
+            ).one()
+        self.assertEqual(row.id, "capped-before-the-columns")
+        self.assertIsNone(row.max_cost_usd)
+        self.assertIsNone(row.ceiling_kind)
+        self.assertIsNone(row.account_cap_usd)
+
+    def test_the_null_row_reads_back_as_no_ceiling_recorded_and_kind_run(self) -> None:
+        """The read mapping, at the layer restart recovery actually consults.
+
+        `max_cost_usd` and `account_cap_usd` stay None rather than becoming 0,
+        because 0 is a legitimate value for the first - it means *no* per-run
+        ceiling - so folding a missing value into it would turn an unrecorded
+        ceiling into an unlimited one. `ceiling_kind` can be defaulted, because
+        `run` is the only thing a NULL there ever meant.
+        """
+
+        store = self.upgrade()
+        snapshot = store.get_run("capped-before-the-columns")
+        self.assertIsNone(snapshot["max_cost_usd"])
+        self.assertIsNone(snapshot["account_cap_usd"])
+        self.assertEqual(snapshot["ceiling_kind"], "run")
+
+    def test_the_null_row_rehydrates_to_the_process_defaults(self) -> None:
+        """End to end: what a legacy row becomes when a registry restores it.
+
+        Exactly the behaviour it had before these columns existed, which is
+        the whole claim a NULL makes.
+        """
+
+        from brief_crew.config import MAX_RUN_COST_USD
+        from brief_crew.service.graph import VALIDATOR_GRAPH, VALIDATOR_NODE_REGISTRY
+        from brief_crew.service.registry import RunRegistry, WorkflowRuntime
+        from brief_crew.service.runner import SyntheticValidatorRunner
+
+        store = self.upgrade()
+        runner = SyntheticValidatorRunner()
+        registry = RunRegistry(
+            graph_version=VALIDATOR_GRAPH.version,
+            node_registry=VALIDATOR_NODE_REGISTRY,
+            runner=runner,
+            workflows={
+                VALIDATOR_GRAPH.id: WorkflowRuntime(
+                    graph_version=VALIDATOR_GRAPH.version,
+                    node_registry=VALIDATOR_NODE_REGISTRY,
+                    runner=runner,
+                )
+            },
+            persistence=store,
+            gate_sweep_interval=0.0,
+            recover_orphans=False,
+        )
+        self.addCleanup(registry.close)
+
+        restored = registry.require("capped-before-the-columns")
+        self.assertEqual(restored.max_cost_usd, MAX_RUN_COST_USD)
+        self.assertEqual(restored.ceiling_kind, "run")
+        self.assertIsNone(restored.account_cap_usd)
+
+    def test_running_it_twice_changes_nothing(self) -> None:
+        """It runs on every boot, so it has to be safe on every boot."""
+
+        self.upgrade()
+        before = self.columns()
+        self.upgrade()
+        self.assertEqual(self.columns(), before)
+        with self.engine.begin() as connection:
+            self.assertEqual(
+                connection.execute(text("SELECT COUNT(*) FROM runs")).scalar_one(), 1
+            )
+
+    def test_a_fresh_database_has_all_three_without_the_alter(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        engine = create_engine(f"sqlite:///{Path(directory.name) / 'fresh.db'}")
+        self.addCleanup(engine.dispose)
+        PostgresFlowPersistence(engine, initialize=False).init_db()
+        columns = {c["name"] for c in inspect(engine).get_columns("runs")}
+        for name in CEILING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertIn(name, columns)
+
+    def test_each_column_is_declared_in_the_additive_list_too(self) -> None:
+        """A `Table()` column with no `_ADDITIVE_COLUMNS` row reaches a fresh
+        database and no deployed one, and the failure is the first INSERT
+        naming it - in production, mid-request. This is the pin for that."""
+
+        # Read off an INSTANCE: `PostgresFlowPersistence` is a pydantic model,
+        # so an underscore-prefixed class attribute is a `ModelPrivateAttr` on
+        # the class and the tuple itself only on an instance - which is also
+        # the spelling `_add_missing_columns` uses.
+        declared = {
+            (table, column)
+            for table, column, _type in self.upgrade()._ADDITIVE_COLUMNS
+        }
+        for name in CEILING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertIn(("runs", name), declared)
+
+
 if __name__ == "__main__":
     unittest.main()

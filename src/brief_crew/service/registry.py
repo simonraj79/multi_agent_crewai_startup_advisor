@@ -1844,6 +1844,14 @@ class RunRegistry:
                 inputs=inputs,
                 user_id=user_id,
                 mode=mode,
+                # The ceiling this run is ADMITTED under, durably, so that
+                # `_restore_record` can give it back (audit H1 follow-up). The
+                # record's own values rather than the arguments, so a default
+                # applied above cannot be written differently from the one the
+                # run actually enforces.
+                max_cost_usd=record.max_cost_usd,
+                ceiling_kind=record.ceiling_kind,
+                account_cap_usd=record.account_cap_usd,
             )
         with self._lock:
             self._records[run_id] = record
@@ -3448,6 +3456,48 @@ class RunRegistry:
                 record.run_id,
             )
 
+    def _restored_ceiling(
+        self, snapshot: Mapping[str, Any]
+    ) -> tuple[float, str, float | None]:
+        """The spend ceiling a rehydrated run comes back under - audit H1 follow-up.
+
+        Three values, in this order of authority:
+
+        1. **What the row says.** `create_run` decided the ceiling at admission
+           and `persistence.create_run` now writes all three, so a run admitted
+           against a $1 account cap comes back at $1 with `ceiling_kind` still
+           `account` - which is what makes its outstanding promise visible to
+           `account_spend`'s `committed` figure again, and what makes it stop
+           with the sentence naming the knob an operator would actually raise.
+        2. **The process defaults, when a column is NULL.** Every row written
+           before these columns shipped reads NULL, and NULL means exactly the
+           behaviour those rows already had: `MAX_RUN_COST_USD`, kind `run`, no
+           account cap. Nothing is backfilled - the cap in force at a legacy
+           row's admission was never recorded, and re-deriving one from config
+           would be wrong, because `config.user_spend_cap_usd` exempts by
+           e-mail as well as by id and the row carries no e-mail, so an exempt
+           owner would silently be capped after every deploy.
+        3. **The ceiling in force NOW, when it is TIGHTER.** The one place the
+           stored value does not simply win, and it is deliberately one-way: an
+           operator who lowers `MAX_RUN_COST_USD` and restarts must not find
+           that a rehydrated run may still spend the older, larger amount. The
+           clamp can only reduce, never raise, so it cannot undo (1). When it
+           bites, the kind reverts to `run` with it, because the sentence has
+           to name the limit that actually stopped the run. `0` means "no
+           per-run ceiling" on both sides and is never read as zero dollars.
+        """
+
+        stored = snapshot.get("max_cost_usd")
+        ceiling = self.max_run_cost_usd if stored is None else float(stored)
+        kind = str(snapshot.get("ceiling_kind") or "run")
+        stored_cap = snapshot.get("account_cap_usd")
+        account_cap = None if stored_cap is None else float(stored_cap)
+        process_ceiling = float(self.max_run_cost_usd or 0.0)
+        if process_ceiling > 0 and (ceiling <= 0 or process_ceiling < ceiling):
+            ceiling = process_ceiling
+            kind = "run"
+        return ceiling, kind, account_cap
+
     def _restore_record(self, snapshot: Mapping[str, Any]) -> RunRecord:
         runtime = self._runtime_for(str(snapshot["workflow_id"]))
         stored_gate = snapshot.get("pending_gate")
@@ -3493,6 +3543,7 @@ class RunRegistry:
             }
             for metrics in self.persistence.get_node_metrics(str(snapshot["run_id"]))
         }
+        ceiling, ceiling_kind, account_cap = self._restored_ceiling(snapshot)
         record = RunRecord(
             run_id=str(snapshot["run_id"]),
             session_id=str(snapshot["session_id"]),
@@ -3506,24 +3557,16 @@ class RunRegistry:
             flow_id=str(flow_id) if flow_id else None,
             on_frames=self._enqueue_frames,
             ring_capacity=self.ring_capacity,
-            max_cost_usd=self.max_run_cost_usd,
-            # A recovered run keeps spending against the ceiling in force NOW,
-            # not the one it was admitted under, and its already-spent total
-            # comes back with it in `usage` below - so a run restored mid-flight
-            # trips at the same place it would have without the restart.
-            #
-            # FOLLOW-UP (audit H1, deliberately not fixed here): `ceiling_kind`
-            # and `account_cap_usd` are NOT restored either, and unlike the
-            # owner above there is nowhere to restore them from - `runs` has no
-            # column for any of the three, and `create_all()` never alters a
-            # table that already shipped. So a rehydrated run comes back under
-            # the global per-run ceiling with `ceiling_kind="run"`, its promise
-            # is invisible to `account_spend`'s committed figure, and its stop
-            # message reverts to the per-run wording. Recomputing the cap from
-            # config here would be WRONG: `config.user_spend_cap_usd` exempts
-            # by e-mail as well as by id, and the row carries no e-mail, so the
-            # exempt owner would silently be capped after every deploy. Closing
-            # it needs an additive column, which is a schema change.
+            # The ceiling this run was ADMITTED under, read back off the row
+            # rather than re-derived (audit H1 follow-up); `_restored_ceiling`
+            # owns the rule and the one place it still defers to the process.
+            # The already-spent total comes back with it in `usage` below, so a
+            # run restored mid-flight trips where it would have without the
+            # restart, and a capped account's promise is visible to
+            # `account_spend` again the moment the record is rehydrated.
+            max_cost_usd=ceiling,
+            ceiling_kind=ceiling_kind,
+            account_cap_usd=account_cap,
             stop_reason=_restored_stop_reason(snapshot.get("error")),
             status=RunStatus(str(snapshot["status"])),
             created_at=snapshot["created_at"],

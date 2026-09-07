@@ -115,6 +115,24 @@ COST_CEILING_ERROR = (
     "spend - so the real bill is higher than the number in this message."
 )
 
+# The per-ACCOUNT cap's stop, distinct from the per-run one above so an
+# operator reading `stop_reason` can tell "this run was expensive" from "this
+# person has used their allowance". Same durable carrier (`error`), same
+# prefix-matching recovery in `_restored_stop_reason`.
+ACCOUNT_CAP_REASON = "account_spend_cap"
+ACCOUNT_CAP_ERROR_PREFIX = "stopped by the account spend cap:"
+ACCOUNT_CAP_ERROR = (
+    f"{ACCOUNT_CAP_ERROR_PREFIX} this account's estimated spend across all "
+    "of its runs reached its USER_SPEND_CAP_USD allowance of ${cap:.2f} "
+    "(this run had ${ceiling:.4f} of headroom left when it started and has "
+    "spent ${spent:.4f}). The figure is an estimate recomputed from "
+    "brief_crew.config.PRICES, it counts only completed LLM calls, and it "
+    "excludes embedding, rerank and Firecrawl spend."
+)
+# Every reason a run stops itself for money, so the two enforcement sites and
+# the HookAborted branch agree on what "a budget stop" is.
+BUDGET_STOP_REASONS = frozenset({COST_CEILING_REASON, ACCOUNT_CAP_REASON})
+
 # PRD F20: a METRICS snapshot carries one row per (node, model) pair. The frame
 # contract caps a detail sequence at 64 entries, and no declared graph has
 # anywhere near that many, so this only guards against a pathological run.
@@ -147,6 +165,8 @@ def _restored_stop_reason(stored_error: Any) -> str | None:
         return None
     if stored_error.startswith(COST_CEILING_ERROR_PREFIX):
         return COST_CEILING_REASON
+    if stored_error.startswith(ACCOUNT_CAP_ERROR_PREFIX):
+        return ACCOUNT_CAP_REASON
     return None
 
 
@@ -285,6 +305,33 @@ class RunBusyError(RuntimeError):
     def __init__(self, run_id: str) -> None:
         super().__init__(f"run {run_id} is already executing")
         self.run_id = run_id
+
+
+class AccountSpendCapError(RuntimeError):
+    """A NEW run was refused because its owner has spent their allowance.
+
+    A third refusal beside :class:`RunAdmissionError` (the server is full,
+    429) and :class:`RunBusyError` (this run is settling, 503), and again the
+    distinction is the point: nothing is wrong with the request and nothing is
+    wrong with the server - this PERSON has used up ``USER_SPEND_CAP_USD``
+    across the runs they own, and waiting will not change that. The transport
+    answers 402, which is the one status that says "money" and nothing else.
+
+    ``spent`` includes the headroom already promised to this account's live
+    runs, so the sentence can be larger than the sum of finished runs; the
+    registry's ``account_spend`` docstring says why that is the honest figure.
+    """
+
+    __slots__ = ("user_id", "spent", "cap")
+
+    def __init__(self, *, user_id: str, spent: float, cap: float) -> None:
+        super().__init__(
+            f"account {user_id} has spent an estimated ${spent:.4f} of its "
+            f"${cap:.2f} allowance"
+        )
+        self.user_id = user_id
+        self.spent = spent
+        self.cap = cap
 
 
 class RunAdmissionError(RuntimeError):
@@ -919,6 +966,15 @@ class RunRecord:
     # direct read of the constant so a registry - and a test - can set one
     # without reaching into the environment at import time.
     max_cost_usd: float = MAX_RUN_COST_USD
+    # Which limit `max_cost_usd` is: "run" when it is MAX_RUN_COST_USD, and
+    # "account" when the registry tightened it to the owner's remaining
+    # USER_SPEND_CAP_USD headroom at admission. The enforcement is identical;
+    # only the sentence the run stops with differs, and it has to, because an
+    # operator told "this run reached its ceiling" would raise the wrong knob.
+    ceiling_kind: str = "run"
+    # The account cap in force when this run was admitted, for that sentence.
+    # None when no cap applied (anonymous, exempt, or the knob is 0).
+    account_cap_usd: float | None = None
     usage: dict[str, int | float] = field(default_factory=_empty_usage)
     node_usage: dict[tuple[str, str], dict[str, int | float | str]] = field(
         default_factory=dict
@@ -1335,12 +1391,31 @@ class RunRecord:
         ceiling = float(self.max_cost_usd or 0.0)
         if ceiling <= 0:
             return  # MAX_RUN_COST_USD=0 - explicitly no ceiling.
-        if self.stop_reason == COST_CEILING_REASON:
+        if self.stop_reason in BUDGET_STOP_REASONS:
             return  # Already tripped; do not re-announce on every later call.
         spent = float(self.usage.get("cost_usd", 0.0))
         # `>=` and not `>`: the ceiling is a budget, not a target, and a run
         # that has spent exactly it has no headroom left for the next call.
         if spent < ceiling:
+            return
+        if self.ceiling_kind == "account":
+            self.stop_reason = ACCOUNT_CAP_REASON
+            self.error = ACCOUNT_CAP_ERROR.format(
+                spent=spent,
+                ceiling=ceiling,
+                cap=float(self.account_cap_usd or 0.0),
+            )
+            logger.warning(
+                "run %s used up its account's spend allowance: estimated "
+                "$%.4f spent against $%.4f of remaining headroom under "
+                "USER_SPEND_CAP_USD=$%.2f. Requesting cancellation at the next "
+                "step boundary; the call in flight will still be paid for.",
+                self.run_id,
+                spent,
+                ceiling,
+                float(self.account_cap_usd or 0.0),
+            )
+            self.mark_cancelling()
             return
         self.stop_reason = COST_CEILING_REASON
         self.error = COST_CEILING_ERROR.format(spent=spent, ceiling=ceiling)
@@ -1459,6 +1534,13 @@ class RunRegistry:
         # critical sections, and concurrent creations could all read the same
         # "one slot left".
         self._reserved: set[str] = set()
+        # Headroom promised to runs admitted under an account cap but not yet
+        # in `_records` - the window between `create_run`'s check and
+        # `_register_run`'s insert, during which a second launch by the same
+        # account must already see the first one's promise. Keyed by run id,
+        # valued (user_id, headroom); emptied by `_register_run` or by the
+        # failure path beside it.
+        self._reserved_headroom: dict[str, tuple[str, float]] = {}
         self._refused_runs = 0
         self._lock = RLock()
         self._executor = ThreadPoolExecutor(
@@ -1557,6 +1639,54 @@ class RunRegistry:
                 "refused": self._refused_runs,
             }
 
+    def account_spend(self, user_id: str) -> dict[str, float]:
+        """What one account has spent and been promised, in estimated USD.
+
+        ``spent`` is the sum of ``usage["cost_usd"]`` over every run the
+        account owns: the in-memory record for anything this process holds
+        (fresher than its last persisted status) and the durable rows for
+        everything else. ``committed`` is the headroom already promised to the
+        account's LIVE runs admitted under a cap - each one's
+        ``max_cost_usd`` minus what it has spent so far - plus any promise made
+        by a ``create_run`` that has not yet registered its record.
+
+        The two are reported separately and the cap is checked against their
+        SUM, because a promise is money the account can still spend: eight
+        concurrent launches at $0 spent must not each be granted the whole
+        cap. A run WAITING at a human gate therefore holds its headroom until
+        it finishes, which is the right way round for a cap - the alternative
+        is a cap that only holds for one run at a time.
+
+        Called with ``self._lock`` NOT held; it takes it for the in-memory
+        pass and releases it before the database read, so a slow query never
+        holds up frame capture.
+        """
+        if not user_id:
+            return {"spent": 0.0, "committed": 0.0}
+        spent = 0.0
+        committed = 0.0
+        in_memory: list[str] = []
+        with self._lock:
+            for record in self._records.values():
+                if record.user_id != user_id:
+                    continue
+                in_memory.append(record.run_id)
+                run_spent = float(record.usage.get("cost_usd", 0.0))
+                spent += run_spent
+                if (
+                    record.status not in TERMINAL_STATUSES
+                    and record.ceiling_kind == "account"
+                ):
+                    committed += max(0.0, float(record.max_cost_usd) - run_spent)
+            for owner, headroom in self._reserved_headroom.values():
+                if owner == user_id:
+                    committed += max(0.0, headroom)
+        if self.persistence is not None:
+            spent += float(
+                self.persistence.user_spend_usd(user_id, exclude_run_ids=in_memory)
+            )
+        return {"spent": round(spent, 12), "committed": round(committed, 12)}
+
     def create_run(
         self,
         *,
@@ -1566,8 +1696,20 @@ class RunRegistry:
         user_id: str | None = None,
         mode: str = "run",
         derived: Mapping[str, Any] | None = None,
+        account_cap_usd: float | None = None,
     ) -> RunRecord:
         """Admit and register one NEW run.
+
+        ``account_cap_usd`` is the owner's lifetime allowance
+        (``config.user_spend_cap_usd``), or None when none applies. With one
+        set, the run is refused with :class:`AccountSpendCapError` once the
+        account's spend plus its outstanding promises reaches the cap, and
+        otherwise admitted with ``max_cost_usd`` tightened to the remaining
+        headroom - so the step-boundary brake that already exists stops it
+        where the ACCOUNT runs dry. The check sits in the same critical
+        section as the slot reservation and records its own promise there,
+        so two simultaneous launches by one account cannot both be granted
+        the last dollar.
 
         Raises :class:`RunAdmissionError` when too much work is already queued
         or executing. The check happens BEFORE the durable row is written, so a
@@ -1589,10 +1731,37 @@ class RunRegistry:
         """
         runtime = self._runtime_for(workflow_id)
         run_id = str(uuid.uuid4())
+        max_cost_usd = self.max_run_cost_usd
+        ceiling_kind = "run"
+        cap = None
+        if account_cap_usd is not None and user_id:
+            cap = float(account_cap_usd)
+            if cap <= 0:
+                raise ValueError("account_cap_usd must be positive when set")
+        # The database half of the spend is read OUTSIDE the lock below (it is
+        # a query); the in-memory half and the promise are settled inside it.
+        # A spend that lands between the two reads is one this launch's
+        # promise then over-counts by at most that run's last call, which is
+        # the safe direction.
+        balance = self.account_spend(user_id) if cap is not None else None
         with self._lock:
+            if cap is not None and balance is not None and user_id:
+                used = balance["spent"] + balance["committed"]
+                headroom = cap - used
+                if headroom <= 0:
+                    self._refused_runs += 1
+                    raise AccountSpendCapError(user_id=user_id, spent=used, cap=cap)
+                # The tighter of the two limits wins; MAX_RUN_COST_USD=0 is
+                # "no per-run ceiling" and must not be read as "zero dollars".
+                if max_cost_usd <= 0 or headroom < max_cost_usd:
+                    max_cost_usd = headroom
+                    ceiling_kind = "account"
+                if ceiling_kind == "account":
+                    self._reserved_headroom[run_id] = (user_id, headroom)
             active = self._active_slots()
             if active >= self.max_queued_runs:
                 self._refused_runs += 1
+                self._reserved_headroom.pop(run_id, None)
                 raise RunAdmissionError(active=active, limit=self.max_queued_runs)
             self._reserved.add(run_id)
         try:
@@ -1605,12 +1774,16 @@ class RunRegistry:
                 user_id=user_id,
                 mode=mode,
                 derived=derived,
+                max_cost_usd=max_cost_usd,
+                ceiling_kind=ceiling_kind,
+                account_cap_usd=cap,
             )
         except BaseException:
             # The slot is only held for a run that exists. A durable write that
             # failed must not leak one for the life of the process.
             with self._lock:
                 self._reserved.discard(run_id)
+                self._reserved_headroom.pop(run_id, None)
             raise
 
     def _register_run(
@@ -1624,6 +1797,9 @@ class RunRegistry:
         user_id: str | None = None,
         mode: str = "run",
         derived: Mapping[str, Any] | None = None,
+        max_cost_usd: float | None = None,
+        ceiling_kind: str = "run",
+        account_cap_usd: float | None = None,
     ) -> RunRecord:
         flow_id = run_id if hasattr(runtime.runner, "resume") else None
         record = RunRecord(
@@ -1637,7 +1813,11 @@ class RunRegistry:
             flow_id=flow_id,
             on_frames=self._enqueue_frames,
             ring_capacity=self.ring_capacity,
-            max_cost_usd=self.max_run_cost_usd,
+            max_cost_usd=(
+                self.max_run_cost_usd if max_cost_usd is None else float(max_cost_usd)
+            ),
+            ceiling_kind=ceiling_kind,
+            account_cap_usd=account_cap_usd,
             mode=mode,
             derived=derived,
         )
@@ -1654,6 +1834,9 @@ class RunRegistry:
             )
         with self._lock:
             self._records[run_id] = record
+            # The promise now lives on the record itself (`max_cost_usd` with
+            # `ceiling_kind == "account"`), which `account_spend` reads.
+            self._reserved_headroom.pop(run_id, None)
         self._note_run_observed(record)
         return record
 
@@ -2757,7 +2940,7 @@ class RunRegistry:
             # place a frame CAN be emitted for a budget stop: the ceiling is
             # detected inside a capture callback that already holds the
             # adapter's non-reentrant lock.
-            budget_stop = record.stop_reason == COST_CEILING_REASON
+            budget_stop = record.stop_reason in BUDGET_STOP_REASONS
             details: dict[str, Any] = {
                 "status": "cancelled",
                 # As above: the tally of CrewAI events the frame pipeline could
@@ -2766,15 +2949,20 @@ class RunRegistry:
                 **record.capture.serializer.unhandled_report(),
             }
             if budget_stop:
-                details["reason"] = COST_CEILING_REASON
+                details["reason"] = record.stop_reason
                 details["cost_usd"] = float(record.usage.get("cost_usd", 0.0))
                 details["ceiling_usd"] = float(record.max_cost_usd)
+                if record.stop_reason == ACCOUNT_CAP_REASON:
+                    details["account_cap_usd"] = float(record.account_cap_usd or 0.0)
             record.capture.emit(
                 kind=FrameKind.RUN_STATE,
                 event_type=UIEventType.WORKFLOW_END,
                 node_id=record.node_registry.workflow_node_id,
                 message=(
-                    "Run stopped at a step boundary: it reached its cost ceiling"
+                    "Run stopped at a step boundary: its account has used up "
+                    "its spend allowance"
+                    if record.stop_reason == ACCOUNT_CAP_REASON
+                    else "Run stopped at a step boundary: it reached its cost ceiling"
                     if budget_stop
                     else "Run cancelled at a step boundary"
                 ),

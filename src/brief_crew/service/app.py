@@ -662,16 +662,42 @@ def _assert_credential_vault_startup_safety() -> None:
     raises with the knob's name and the command that mints a good one -
     because that is a typo, not a decision.
 
+    SECURITY (audit L4): a PUBLISHED key is refused on the same terms as an
+    absent one. `tests/__init__.py` exports a valid 32-byte placeholder so the
+    suites can turn `AUTH_BASE_URL` on, and CLAUDE.md's E2E recipe pastes it
+    into a shell - so a deployment that copied the recipe would boot cleanly
+    and encrypt every user's API keys under a value anyone can read in this
+    repository. Loud here, rather than silent for the life of the deployment.
+    Refusing it unconditionally would be wrong: without `AUTH_BASE_URL` nobody
+    can sign in, there are no real credentials to keep, and the suites, the
+    E2E backend and a bare checkout all legitimately run on it.
+
     Imported inside the function: the vault module pulls in SQLAlchemy through
     the persistence module, and importing `app` must stay safe without it.
     """
     from brief_crew.service.credentials import load_master_key
 
-    if load_master_key() is None and project_config.AUTH_BASE_URL:
+    if not project_config.AUTH_BASE_URL:
+        # Malformed is still refused in every configuration - that is a typo,
+        # not a decision - and `load_master_key` has already raised by here.
+        load_master_key()
+        return
+
+    if load_master_key() is None:
         raise RuntimeError(
             "AUTH_BASE_URL is set but CREDENTIALS_MASTER_KEY is empty; people can "
             "sign in and the credential vault has no key to keep theirs with. Mint "
             "one with python -c \"import base64, secrets; "
+            "print(base64.b64encode(secrets.token_bytes(32)).decode())\" and set it"
+        )
+
+    if project_config.CREDENTIALS_MASTER_KEY in project_config.KNOWN_PLACEHOLDER_MASTER_KEYS:
+        raise RuntimeError(
+            "AUTH_BASE_URL is set and CREDENTIALS_MASTER_KEY is the placeholder "
+            "this repository publishes for its own tests and E2E recipe; it is a "
+            "valid 32-byte key that anyone can read, so the credential vault "
+            "would be encrypting people's API keys with a public value. Mint a "
+            "real one with python -c \"import base64, secrets; "
             "print(base64.b64encode(secrets.token_bytes(32)).decode())\" and set it"
         )
 

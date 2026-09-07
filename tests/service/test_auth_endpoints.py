@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from brief_crew import config
 from brief_crew.service.app import create_app, _assert_auth_startup_safety
 from brief_crew.service.auth import AuthenticatedUser, AuthError
+from tests.service.identities import TEST_MASTER_KEY
 
 ADA = AuthenticatedUser(id="user_ada", email="ada@example.test", name="Ada")
 GRACE = AuthenticatedUser(id="user_grace", email="grace@example.test", name="Grace")
@@ -56,6 +57,10 @@ class AuthEnabledCase(unittest.TestCase):
         patches = [
             patch.object(config, "AUTH_BASE_URL", "https://auth.example.test"),
             patch.object(config, "VALIDATOR_REQUIRE_AUTH", True),
+            # Audit L4: with auth on, the published placeholder master key
+            # `tests/__init__.py` exports is refused at boot. Every case in
+            # this file signs people in, so every case brings a real key.
+            patch.object(config, "CREDENTIALS_MASTER_KEY", TEST_MASTER_KEY),
             patch("brief_crew.service.app.verify_token", fake_verify),
         ]
         for item in patches:

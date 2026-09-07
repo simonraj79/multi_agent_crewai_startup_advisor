@@ -15,15 +15,18 @@ that need a second user do not each grow a copy of the setup:
   free path itself under test (`test_synthetic_identity.py`) or want two users
   on an app with no auth server at all.
 
-The vault's master key is the placeholder `tests/__init__.py` exports, so
-`create_app` under `AUTH_BASE_URL` passes its boot check. A test about the
-UNCONFIGURED vault patches `config.CREDENTIALS_MASTER_KEY` to "" itself, the
-way the key-absent tool tests clear their environment.
+The vault's master key is `TEST_MASTER_KEY` below, NOT the placeholder
+`tests/__init__.py` exports: since audit L4 the boot check refuses that one
+whenever `AUTH_BASE_URL` is set, which is the whole point of it. A test about
+the UNCONFIGURED vault patches `config.CREDENTIALS_MASTER_KEY` to "" itself,
+the way the key-absent tool tests clear their environment.
 """
 
 from __future__ import annotations
 
+import base64
 import json
+import secrets
 from typing import Any
 from unittest.mock import patch
 
@@ -39,6 +42,22 @@ BOB_TOKEN = "bob-token"
 #: Plan 01 D8. Restated here rather than imported from `service/app.py` so a
 #: rename there fails these tests instead of silently following.
 SYNTHETIC_USER_HEADER = "X-Synthetic-User"
+
+#: A real master key, minted once per test process - audit L4.
+#:
+#: `tests/__init__.py` puts the PUBLISHED placeholder in the environment so a
+#: keyless module still has a vault, and `_assert_credential_vault_startup_safety`
+#: now refuses exactly that string whenever `AUTH_BASE_URL` is set: it is a
+#: valid 32-byte key printed in this repository and in CLAUDE.md's E2E recipe,
+#: so a deployment that copied it would encrypt its users' API keys with a
+#: public value. Every case here turns authentication ON, so every case has to
+#: bring a key of its own.
+#:
+#: Random rather than a second hard-coded constant, for two reasons: a fixture
+#: nobody can copy into a deployment cannot become the next L4, and nothing in
+#: the vault may depend on WHICH key it is. One value per process, because two
+#: apps built in one test must be able to read each other's ciphertext.
+TEST_MASTER_KEY = base64.b64encode(secrets.token_bytes(32)).decode()
 
 CREDENTIALS = "/api/builder/credentials"
 #: An obviously fake key with an obviously greppable tail. Every assertion
@@ -73,6 +92,8 @@ class AuthenticatedTwoUserCase(BuilderRegistrationCleanup):
         for item in (
             patch.object(config, "AUTH_BASE_URL", "https://auth.example.test"),
             patch.object(config, "VALIDATOR_REQUIRE_AUTH", True),
+            # Audit L4: the published placeholder is refused with auth on.
+            patch.object(config, "CREDENTIALS_MASTER_KEY", TEST_MASTER_KEY),
             patch("brief_crew.service.app.verify_token", fake_verify),
         ):
             item.start()

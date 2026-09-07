@@ -45,6 +45,7 @@ from brief_crew.builder import (
     validate_document,
 )
 from brief_crew.builder import budget as budget_module
+from brief_crew.builder.bounds import back_edges, cycle_multiplier
 from brief_crew.config import (
     GRAPH_STATIC_BUDGET_MARGIN,
     MAX_BILLABLE_NODES,
@@ -366,11 +367,22 @@ class CycleAndDepthTests(unittest.TestCase):
         )
 
     def test_a_node_outside_the_loop_is_not_multiplied(self) -> None:
-        """The validator shape loops only the two revise agents."""
+        """The validator shape loops only the two revise agents.
+
+        The multiplier is `cycle_multiplier(len(back_edges))` and this document
+        closes TWO loops, so a node on either of them is priced at 4 ** 2 = 16
+        passes rather than at 4. It read 4 until audit M8, while the backstop
+        `compiler._Plan.max_method_calls` compiles for the same document has
+        always been 16 - the meter and the runtime describing different graphs.
+        """
 
         graph = validator_shaped_document()
+        self.assertEqual(len(back_edges(graph)), 2)
         self.assertEqual(node_call_count(graph, "scope_idea"), 3)
-        self.assertEqual(node_call_count(graph, "revise_scope"), 3 * (1 + MAX_CYCLE_ITERATIONS))
+        self.assertEqual(
+            node_call_count(graph, "revise_scope"), 3 * cycle_multiplier(2)
+        )
+        self.assertEqual(node_call_count(graph, "revise_scope"), 48)
 
     def test_the_same_nodes_cost_more_in_a_chain_than_in_a_fan_out(self) -> None:
         wide = document(
@@ -579,9 +591,19 @@ class ValidateDocumentTests(unittest.TestCase):
         self.assertEqual(validate_document(validator_shaped_document(), ceiling_usd=10.0), [])
 
     def test_the_validator_shape_prices_well_under_the_ceiling(self) -> None:
+        """60 until audit M8, and 132 because the shape closes TWO loops.
+
+        Six of its eight billable nodes sit outside both loops and are
+        unchanged; the two revise agents went from 4 passes each to 16, which
+        is 2 x 3 x (16 - 4) = 72 calls more. It is still well inside the
+        ceiling - $3.34, $4.18 with the margin - which is the point: the
+        correction costs the shipped shape nothing and closes the gate on the
+        shape that was exploiting it.
+        """
+
         estimate = estimate_budget(validator_shaped_document())
         self.assertLess(estimate.static_cost_usd * GRAPH_STATIC_BUDGET_MARGIN, 10.0)
-        self.assertEqual(estimate.modelled_calls, 60)
+        self.assertEqual(estimate.modelled_calls, 132)
 
     def test_structure_is_reported_before_price(self) -> None:
         # Sized off the bound rather than written as a literal: this used to be
@@ -908,6 +930,112 @@ class CrewIsPricedAtItsMembersTests(unittest.TestCase):
 
         self.assertEqual(node_call_count(library(1), "sweep"), 3 * 2)
         self.assertEqual(node_call_count(library(4), "sweep"), 3 * 5)
+
+
+def nested_loops(*, loops: int, tier: str = "cheap") -> BuilderDocument:
+    """One agent with `loops` router-closed back edges around it.
+
+    Every back edge leaves a ROUTER, which `back-edge-not-router` requires, and
+    every one of them returns to the same agent - so the agent takes `loops + 1`
+    incoming edges and is declared `joins: any`, the mode that lets one arrival
+    start it rather than waiting for all of them. That is the exact shape audit
+    M8 is about: three loops with no per-cycle counter anywhere at run time.
+    """
+
+    routers = [f"r{index}" for index in range(loops)]
+    # `scoper` rather than the node id: this document is COMPILED by one of the
+    # tests below, and `library_problems` refuses an `agent_id` that is not one
+    # of `config.py`'s registered YAML agents.
+    agent = agent_node("a", tier=tier, tools=(MARKET_TOOL,))
+    agent["config"]["agent_id"] = "scoper"
+    agent["config"]["prompt_inputs"] = {"human_override": "", "idea": "${state.idea}"}
+    nodes: list[Any] = [input_node("idea"), agent]
+    edges = [edge("e_in", "idea", "a"), edge("e_a", "a", routers[0])]
+    for index, router_id in enumerate(routers):
+        nodes.append(
+            router_node(
+                router_id,
+                branches=(
+                    {"label": "again", "op": "otherwise"},
+                    {"label": "on", "op": "gte", "key": "turns", "value": 3},
+                ),
+            )
+        )
+        edges.append(edge(f"e_back{index}", router_id, "a", source_port="again"))
+        onward = routers[index + 1] if index + 1 < len(routers) else "report"
+        edges.append(edge(f"e_on{index}", router_id, onward, source_port="on"))
+    nodes.append(
+        raw_node(
+            "report",
+            "output",
+            {"body_key": "markdown_body", "source": "${state.out__a}"},
+        )
+    )
+    graph = document(nodes, edges)
+    payload = graph.model_dump(mode="json")
+    payload["joins"] = {"a": "any"}
+    return BuilderDocument.model_validate(payload)
+
+
+class CycleMultiplierTests(unittest.TestCase):
+    """Audit M8: the meter and the runtime backstop are one arithmetic.
+
+    `budget` multiplied an on-cycle node by `1 + MAX_CYCLE_ITERATIONS` ONCE
+    however many loops a graph closed, while `compiler._Plan.max_method_calls`
+    has always sized CrewAI's per-method backstop at
+    `(1 + MAX_CYCLE_ITERATIONS) ** cycles`. A router-closed loop has no
+    per-cycle counter at run time, so three loops were metered at 4x against a
+    runtime permitting 64x - a static price describing a smaller graph than the
+    one that would run.
+    """
+
+    def test_three_back_edges_price_at_the_cube(self) -> None:
+        flat = estimate_budget(nested_loops(loops=1))
+        deep = estimate_budget(nested_loops(loops=3))
+        self.assertEqual(len(back_edges(nested_loops(loops=3))), 3)
+        self.assertEqual(
+            deep.per_node["a"].calls,
+            flat.per_node["a"].calls * (1 + MAX_CYCLE_ITERATIONS) ** 2,
+        )
+        # 3 attempts x (max_iter 2 + 1) x 4 ** 3.
+        self.assertEqual(deep.per_node["a"].calls, 9 * 64)
+
+    def test_a_single_cycle_prices_exactly_as_before(self) -> None:
+        """The one-loop case is untouched, which is what makes this safe."""
+
+        self.assertEqual(estimate_budget(nested_loops(loops=1)).modelled_calls, 9 * 4)
+        frontier = estimate_budget(frontier_document(cheap=3, escalation=5))
+        self.assertEqual(frontier.modelled_calls, FRONTIER_CALLS)
+        self.assertAlmostEqual(frontier.floor_cost_usd, FRONTIER_FLOOR_USD, places=4)
+
+    def test_the_three_loop_graph_is_refused_at_the_ceiling(self) -> None:
+        graph = nested_loops(loops=3, tier="escalation")
+        codes = [problem.code for problem in budget_problems(graph, ceiling_usd=10.0)]
+        self.assertIn(budget_module.BUDGET_OVER_CEILING, codes)
+        # And the one-loop version of the same graph is not, so the refusal is
+        # the multiplier's doing and not the tier's.
+        self.assertEqual(
+            budget_problems(nested_loops(loops=1, tier="escalation"), ceiling_usd=10.0),
+            [],
+        )
+
+    def test_the_budget_and_the_compiler_multiply_by_the_same_figure(self) -> None:
+        """One helper, asked from both sides, so they cannot drift again."""
+
+        from brief_crew.builder.compiler import compile_document
+
+        for loops in (1, 2, 3):
+            graph = nested_loops(loops=loops)
+            with self.subTest(loops=loops):
+                # The ceiling is disabled here on purpose: three loops price
+                # this graph OVER $10 - which is the finding - and the question
+                # this test asks is whether the two multipliers agree, not
+                # whether the document may be published.
+                compiled = compile_document(graph, ceiling_usd=0.0)
+                self.assertEqual(
+                    budget_module._cycle_multiplier(graph),
+                    compiled.definition["config"]["max_method_calls"],
+                )
 
 
 class NitroPricingTests(unittest.TestCase):

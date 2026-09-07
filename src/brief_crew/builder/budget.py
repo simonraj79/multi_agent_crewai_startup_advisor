@@ -54,6 +54,7 @@ from brief_crew.builder.bounds import (
     Problem,
     back_edges,
     billable_depths,
+    cycle_multiplier,
     member_edges,
     member_of,
     nodes_on_cycles,
@@ -279,7 +280,22 @@ def _billing_units(
     return ((node, _step_calls(config)),)
 
 
-def _node_multiplier(node: BuilderNode, *, on_cycle: bool) -> int:
+def _cycle_multiplier(document: BuilderDocument) -> int:
+    """What an on-cycle node's calls are multiplied by, for THIS document.
+
+    The SAME figure `compiler._Plan.max_method_calls` sizes CrewAI's per-method
+    backstop with, and `bounds.cycle_multiplier` is the one place it is
+    written. Audit M8: this was `1 + MAX_CYCLE_ITERATIONS` applied ONCE however
+    many loops the graph closed, while the backstop was already exponential in
+    them - so a graph with three router back edges and `joins: any` priced at
+    108 calls and $1.88 while the runtime permitted 1,728. A static price that
+    describes a smaller graph than the runtime allows is not a bound.
+    """
+
+    return cycle_multiplier(len(back_edges(document)))
+
+
+def _node_multiplier(node: BuilderNode, *, on_cycle: bool, cycles: int = 1) -> int:
     """What multiplies EVERY unit of one node: the retry loop and the cycle.
 
     09 D4: the WHOLE-NODE retry loop multiplies everything below it, because
@@ -299,18 +315,29 @@ def _node_multiplier(node: BuilderNode, *, on_cycle: bool) -> int:
     retry = getattr(node.config, "retry", None)
     multiplier = int(getattr(retry, "max_retries", 0) or 0) + 1
     if on_cycle:
-        multiplier *= 1 + MAX_CYCLE_ITERATIONS
+        multiplier *= cycle_multiplier(cycles)
     return multiplier
 
 
 def _calls_for(
-    node: BuilderNode, *, on_cycle: bool, members: Sequence[BuilderNode] = ()
+    node: BuilderNode,
+    *,
+    on_cycle: bool,
+    members: Sequence[BuilderNode] = (),
+    cycles: int = 1,
 ) -> int:
-    """The worst-case model calls one billable node makes, units summed."""
+    """The worst-case model calls one billable node makes, units summed.
+
+    `cycles` is the number of back edges the WHOLE document closes, not the
+    number this node sits inside: a router-closed loop has no per-cycle counter
+    at run time, so the conservative reading - and the one the compiled
+    backstop already used - is that any node on any cycle may go round the
+    product of them all. See `_cycle_multiplier`.
+    """
 
     if not node.is_billable:
         return 0
-    multiplier = _node_multiplier(node, on_cycle=on_cycle)
+    multiplier = _node_multiplier(node, on_cycle=on_cycle, cycles=cycles)
     return sum(calls for _, calls in _billing_units(node, members)) * multiplier
 
 
@@ -344,6 +371,7 @@ def node_call_count(document: BuilderDocument, node_id: str) -> int:
         node,
         on_cycle=node_id in nodes_on_cycles(document),
         members=_member_nodes(document).get(node_id, ()),
+        cycles=len(back_edges(document)),
     )
 
 
@@ -371,6 +399,7 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
 
     depths = billable_depths(document)
     cyclic = nodes_on_cycles(document)
+    loops = back_edges(document)
     members = _member_nodes(document)
     # A member agent is billable INSIDE its crew - the crew's units below ARE
     # its members - and counting it again would charge the same agent twice.
@@ -404,7 +433,9 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
             GRAPH_BUDGET_SEED_PROMPT_TOKENS
             + depths.get(node.id, 0) * GRAPH_BUDGET_CALL_COMPLETION_TOKENS
         )
-        multiplier = _node_multiplier(node, on_cycle=node.id in cyclic)
+        multiplier = _node_multiplier(
+            node, on_cycle=node.id in cyclic, cycles=len(loops)
+        )
 
         node_calls = 0
         node_static = 0.0
@@ -464,7 +495,7 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
         modelled_calls=calls_total,
         billable_nodes=billable,
         escalation_nodes=escalation,
-        cycles=len(back_edges(document)),
+        cycles=len(loops),
         unpriced_models=tuple(unpriced),
         per_node=per_node,
     )

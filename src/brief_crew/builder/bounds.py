@@ -353,6 +353,31 @@ def back_edge_indices(document: BuilderDocument) -> tuple[int, ...]:
     return tuple(index for index, _ in _back_edges_with_index(document))
 
 
+def cycle_multiplier(cycles: int) -> int:
+    """How many times a node inside `cycles` nested loops may legally run.
+
+    ONE ARITHMETIC FOR ONE BOUND. `compiler._Plan.max_method_calls` sizes
+    CrewAI's per-method runaway backstop with this figure, and `budget.py`
+    multiplies an on-cycle node's price by it; before the 2026-09-07 audit
+    (M8) the compiler used `(1 + MAX_CYCLE_ITERATIONS) ** cycles` and the
+    budget used `1 + MAX_CYCLE_ITERATIONS` ONCE however many loops there were.
+    Three router-closed back edges therefore metered 108 calls against a
+    runtime that permits 1,728 - the meter and the backstop describing
+    different graphs, which is the one thing a static price may not do. It
+    lives here because both callers already import this module and neither
+    imports the other.
+
+    The exponent is not a flourish: a router-closed loop has no per-cycle
+    counter at run time (only a gate's own `max_turns` is enforced), so a node
+    inside two nested cycles really can run `(1 + MAX_CYCLE_ITERATIONS)` times
+    per iteration of the outer one. `max(1, cycles)` is what makes a graph
+    with no loop at all still get a backstop above zero; nothing multiplies by
+    it in the budget, because with no back edge no node is on a cycle.
+    """
+
+    return (1 + MAX_CYCLE_ITERATIONS) ** max(1, cycles)
+
+
 def back_edges(document: BuilderDocument) -> tuple[BuilderEdge, ...]:
     """The edges that close a loop, found by depth-first search.
 

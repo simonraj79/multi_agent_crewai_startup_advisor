@@ -135,8 +135,10 @@ describe('both dollar figures are shown, because either one alone is a lie', () 
     // The enforced figure is above any invoice, so it says why it is: shown
     // alone it reads as an error rather than as a margin.
     expect(enforced.text()).toContain('$2.00')
-    expect(enforced.text()).toContain('nitro margin')
-    expect(enforced.text()).toContain(String(NITRO_PRICE_FACTOR))
+    // Since audit M14 the spread is per model (the registry's dearest endpoint),
+    // so the label names the rule and not the old single 1.8x factor.
+    expect(enforced.text()).toContain('dearest endpoint')
+    expect(enforced.text()).not.toContain('nitro margin')
   })
 
   it('never rounds a sub-cent graph down to $0.00', () => {

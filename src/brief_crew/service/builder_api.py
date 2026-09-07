@@ -237,10 +237,12 @@ class BuilderBudgetModel(BaseModel):
     """The static price of a graph, and whether it may be launched at all.
 
     `floor_cost_usd` sits beside the enforced figure deliberately: the enforced
-    one has `NITRO_PRICE_FACTOR` applied to every cheap-tier node, so it is
-    higher than any number an operator will see on an invoice, and showing only
-    that would look like an error. The floor is the same graph at published
-    prices, which is the figure a real run is comparable with.
+    one prices every model at its dearest endpoint under the price ceiling
+    (audit M14; `NITRO_PRICE_FACTOR` is only the fallback for an unmeasured
+    model), so it is higher than any number an operator will see on an
+    invoice, and showing only that would look like an error. The floor is the
+    same graph at published prices, which is the figure a real run is
+    comparable with.
     """
 
     model_config = ConfigDict(extra="forbid")

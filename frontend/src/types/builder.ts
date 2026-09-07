@@ -1055,15 +1055,17 @@ export const FIELD_CODES: Partial<Record<ProblemCode, string>> = {
 
 export interface BuilderBudget {
   /**
-   * What admission ENFORCES: `NITRO_PRICE_FACTOR` (1.8) applied to every
-   * cheap-tier node. Higher than any figure an invoice will show, because
-   * `:nitro` routes to the fastest provider rather than the cheapest and the
-   * recorded cheap price is a floor - eight endpoints serve the cheap model
-   * from $0.15/$1.25 to $0.54/$4.50.
+   * What admission ENFORCES: every model priced at its DEAREST endpoint under
+   * the $1.00/M ceiling, as measured in the registry (`cost_in_max_endpoint`
+   * over `cost_in`; audit M14). The request states only a maximum price and no
+   * provider sort, so any endpoint under the ceiling may serve a call - eight
+   * serve the cheap model from $0.15/$1.25 to $0.54/$4.50, and one plain slug
+   * spreads 9.5x. `NITRO_PRICE_FACTOR` (1.8) is now only the fallback for a
+   * model the registry has not measured.
    */
   static_cost_usd: number
   /**
-   * The same graph at published prices, with no nitro inflation. Shown beside
+   * The same graph at published prices, with no endpoint spread. Shown beside
    * the enforced figure rather than instead of it: this is the number a real
    * run's `compute_cost_usd` total is comparable with, and showing the inflated
    * one alone reads as an error.

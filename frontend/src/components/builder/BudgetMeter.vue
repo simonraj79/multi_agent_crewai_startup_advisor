@@ -20,7 +20,12 @@
 /** `config.py:GRAPH_STATIC_BUDGET_MARGIN`. `budget.py` refuses at `static * this > ceiling`. */
 export const GRAPH_STATIC_BUDGET_MARGIN = 1.25
 
-/** `config.py:NITRO_PRICE_FACTOR`. Applied to every cheap-tier node in `static_cost_usd`. */
+/**
+ * `config.py:NITRO_PRICE_FACTOR`. Since audit M14 it is only the FALLBACK
+ * spread for a model the registry has not measured; every measured model is
+ * priced at its own dearest endpoint. Mirrored here so `budgetMeter.spec.ts`
+ * can pin the two against each other.
+ */
 export const NITRO_PRICE_FACTOR = 1.8
 </script>
 
@@ -32,9 +37,10 @@ export const NITRO_PRICE_FACTOR = 1.8
  * FOUR THINGS IT REFUSES TO DO, each of them a way a cost display lies.
  *
  * 1. It never shows one dollar figure. `static_cost_usd` is what admission
- *    ENFORCES, and it is `NITRO_PRICE_FACTOR` above the published rate on every
- *    cheap node - shown alone it reads as an error, because it is higher than
- *    any invoice will be. `floor_cost_usd` is the comparable number, the one a
+ *    ENFORCES, and it prices every model at its dearest endpoint under the
+ *    price ceiling (up to 9.5x the headline for one plain slug; audit M14) -
+ *    shown alone it reads as an error, because it is higher than any invoice
+ *    will be. `floor_cost_usd` is the comparable number, the one a
  *    real run's `compute_cost_usd` total can be held against. Both, always,
  *    each labelled with what it is.
  * 2. It never renders a percentage of a disabled ceiling. `ceiling_usd <= 0` is
@@ -194,7 +200,7 @@ function money(value: number | undefined): string {
         </p>
         <p class="budget-static" data-testid="budget-static">
           <span class="budget-amount">{{ money(budget.static_cost_usd) }}</span>
-          <span class="budget-label">enforced · {{ NITRO_PRICE_FACTOR }}× nitro margin</span>
+          <span class="budget-label">enforced · at each model's dearest endpoint</span>
         </p>
         <p class="budget-ceiling" data-testid="budget-ceiling">
           <span class="budget-amount">{{ ceilingEnabled ? money(ceiling) : '—' }}</span>

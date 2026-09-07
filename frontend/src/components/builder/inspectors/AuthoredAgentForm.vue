@@ -430,6 +430,20 @@ const advancedCount = ADVANCED_FIELDS.length
         @commit="commit({ max_rpm: $event }, 'Set requests per minute')"
       />
 
+      <!--
+        THE ONE NULLABLE NUMBER WHOSE EMPTY BOX IS A VALUE (audit M11 follow-up).
+        `NumberRow`'s whole contract for a nullable field is that the
+        placeholder says what the absence means, and this one said "no limit"
+        over a runtime that has had one since the M11 fix:
+        `runtime._authored_agent` writes BUILDER_DEFAULT_AGENT_SECONDS in before
+        the None-dropping, and `document.py` refuses anything over
+        BUILDER_MAX_AGENT_SECONDS. So the placeholder was a false statement
+        about behaviour and the missing `:max` let a paste put 3600 in a box
+        whose save answers 422. Both figures are READ from the vocabulary, never
+        restated here: a client copy of a server bound is the drift R6 exists to
+        forbid, and the failure mode is a form that goes on promising 900 after
+        the constant moves.
+      -->
       <NumberRow
         label="Execution time"
         :control-id="control('max_execution_time')"
@@ -437,10 +451,11 @@ const advancedCount = ADVANCED_FIELDS.length
         :node-id="id"
         :model-value="config.max_execution_time"
         :min="1"
+        :max="bounds.max_agent_seconds"
         nullable
-        placeholder="no limit"
+        :placeholder="`${bounds.default_agent_seconds} s by default`"
         note="seconds"
-        help="How long the whole node may take, across every iteration and retry."
+        :help="`How long the whole node may take, across every iteration and retry. Left empty it is ${bounds.default_agent_seconds} seconds, and ${bounds.max_agent_seconds} is the ceiling - an agent that never answers holds the one worker thread every queued run is waiting for.`"
         @commit="commit({ max_execution_time: $event }, 'Set execution time')"
       />
 

@@ -736,6 +736,20 @@ def _vocabulary() -> BuilderVocabularyModel:
             "max_cycles": project_config.MAX_CYCLES,
             "max_cycle_iterations": project_config.MAX_CYCLE_ITERATIONS,
             "max_agent_iter": project_config.BUILDER_MAX_AGENT_ITER,
+            # The authored agent's WALL CLOCK, both halves (audit M11 follow-up).
+            # The fix itself is server-side - `runtime._authored_agent` fills in
+            # the default before the None-dropping and `document.py` refuses
+            # anything over the ceiling - and it left the form telling a
+            # half-truth: the box was drawn with `placeholder="no limit"` and no
+            # `:max`, so an author read "no limit" over a node that has had one
+            # since that commit, and could type 3600 into a control that would
+            # be refused at save. A DEFAULT is served alongside a ceiling here
+            # for the first time, and that asymmetry is the point: every other
+            # entry in this dict is a bound, while an empty box on this one
+            # field means a value rather than an absence, so the client cannot
+            # name it without being told.
+            "default_agent_seconds": project_config.BUILDER_DEFAULT_AGENT_SECONDS,
+            "max_agent_seconds": project_config.BUILDER_MAX_AGENT_SECONDS,
             "max_guardrail_retries": project_config.BUILDER_MAX_GUARDRAIL_RETRIES,
             "max_label_chars": project_config.BUILDER_MAX_LABEL_CHARS,
             "max_name_chars": project_config.BUILDER_MAX_NAME_CHARS,

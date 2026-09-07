@@ -1123,6 +1123,21 @@ export interface BuilderBounds {
   max_cycles: number
   max_cycle_iterations: number
   max_agent_iter: number
+  /**
+   * `BUILDER_DEFAULT_AGENT_SECONDS` (300) - what an EMPTY execution-time box
+   * actually means, and the one entry in this interface that is not a bound.
+   *
+   * Every other nullable number on the authored agent is "let CrewAI decide",
+   * and `NumberRow`'s placeholder says so. `max_execution_time` stopped being
+   * one of those at the M11 fix: `runtime._authored_agent` fills this figure in
+   * before the None-dropping, so an empty box is 300 seconds and a placeholder
+   * reading "no limit" was a statement about the runtime that had stopped being
+   * true. Served rather than restated here, per R6 - a client-side 300 is a
+   * number that goes on being shown after the server's moves.
+   */
+  default_agent_seconds: number
+  /** `BUILDER_MAX_AGENT_SECONDS` (900) - the ceiling `document.py` refuses past. */
+  max_agent_seconds: number
   max_guardrail_retries: number
   max_label_chars: number
   max_name_chars: number

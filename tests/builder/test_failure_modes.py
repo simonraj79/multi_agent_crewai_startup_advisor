@@ -428,6 +428,22 @@ def mcp_graph(*, on_error: str) -> Any:
 class McpUnreachableTests(unittest.TestCase):
     """`test_mcp_unreachable` - plan 07 criterion 8's error-edge half."""
 
+    def setUp(self) -> None:
+        # `server_config` now re-vets a remote URL at dial time, and
+        # `mcp.example.test` resolves to nothing. A public answer, injected.
+        patcher = patch(
+            "brief_crew.builder.tools._default_resolver",
+            return_value=["93.184.216.34"],
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # This test dials a loopback port ON PURPOSE, to meet a real
+        # connection failure; the dial-time check refuses loopback unless
+        # the deployment allows insecure local servers, so allow it here.
+        allow = patch.object(mcp_module.project_config, "MCP_ALLOW_INSECURE_LOCAL", True)
+        allow.start()
+        self.addCleanup(allow.stop)
+
     def _run(self, graph: Any) -> tuple[Any, FrameBuffer]:
         workflow = build_builder_workflow(graph)
         buffer = FrameBuffer(capacity=512)

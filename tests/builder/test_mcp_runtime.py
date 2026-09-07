@@ -91,6 +91,16 @@ def run_as(record: McpServerRecord | None = RECORD, *, kind: str = "mcp_header")
 class ServerConfigTests(unittest.TestCase):
     """The three transports, and the one thing none of them is."""
 
+    def setUp(self) -> None:
+        # `server_config` now re-vets a remote URL at dial time, and
+        # `mcp.example.test` resolves to nothing. A public answer, injected.
+        patcher = patch(
+            "brief_crew.builder.tools._default_resolver",
+            return_value=["93.184.216.34"],
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_http_builds_MCPServerHTTP_streamable_with_the_filter_and_the_cache(self) -> None:
         from crewai.mcp.config import MCPServerHTTP
 
@@ -144,8 +154,91 @@ class ServerConfigTests(unittest.TestCase):
             )
 
 
+class DialTimeRebindingTests(unittest.TestCase):
+    """Audit M2: a remote MCP URL is vetted when it is DIALLED, not only saved.
+
+    `transport_refusal` runs at create and at validate, and that is where the
+    check stopped. Register `https://rebind.attacker.test/mcp` while it
+    resolves public - create, validate and publish all pass - then repoint the
+    name at `10.0.0.5`. Every later run dialled the new address with the
+    author's MCP header credential attached and fed the responses into the
+    agent's context. `stdio` was always re-checked here; the two remote
+    transports were the half that was not.
+    """
+
+    def _record(self, transport: str = "http") -> McpServerRecord:
+        return McpServerRecord(
+            id="ms_0123456789ab",
+            user_id="user_alice",
+            label="Rebinder",
+            transport=transport,
+            url=f"https://rebind.attacker.test/{transport}",
+        )
+
+    def test_M2_a_url_that_passed_at_create_is_refused_at_dial_when_it_rebinds(self) -> None:
+        public = lambda _host: ["93.184.216.34"]  # noqa: E731 - one line, one answer
+        private = lambda _host: ["10.0.0.5"]  # noqa: E731
+
+        record = self._record()
+        # Create time, with the public answer: nothing to refuse.
+        self.assertIsNone(
+            mcp_module.transport_refusal(
+                transport="http", url=record.url, resolve=public
+            )
+        )
+        # Dial time, with the answer the name now gives.
+        with self.assertRaises(mcp_module.McpUnavailable) as caught:
+            server_config(record, tool_names=("x",), resolve=private)
+        self.assertIn("10.0.0.5", str(caught.exception))
+
+    def test_M2_the_same_holds_for_sse(self) -> None:
+        with self.assertRaises(mcp_module.McpUnavailable):
+            server_config(
+                self._record("sse"),
+                tool_names=("x",),
+                resolve=lambda _host: ["169.254.169.254"],
+            )
+
+    def test_M2_one_resolver_that_answers_public_then_private_still_refuses(self) -> None:
+        """The TTL-0 shape, as one object: the second answer is the dial's."""
+
+        answers = [["93.184.216.34"], ["10.0.0.5"]]
+
+        def flapping(_host: str) -> list[str]:
+            return answers.pop(0) if len(answers) > 1 else answers[0]
+
+        record = self._record()
+        self.assertIsNone(
+            mcp_module.transport_refusal(
+                transport="http", url=record.url, resolve=flapping
+            )
+        )
+        with self.assertRaises(mcp_module.McpUnavailable):
+            server_config(record, tool_names=("x",), resolve=flapping)
+
+    def test_M2_a_public_answer_at_dial_time_still_builds_the_config(self) -> None:
+        from crewai.mcp.config import MCPServerHTTP
+
+        config = server_config(
+            self._record(),
+            tool_names=("x",),
+            resolve=lambda _host: ["93.184.216.34"],
+        )
+        self.assertIsInstance(config, MCPServerHTTP)
+
+
 class BindAttachmentsTests(unittest.TestCase):
     """Criterion 4, at the entrypoint that FD10 says does the dereferencing."""
+
+    def setUp(self) -> None:
+        # `server_config` now re-vets a remote URL at dial time, and
+        # `mcp.example.test` resolves to nothing. A public answer, injected.
+        patcher = patch(
+            "brief_crew.builder.tools._default_resolver",
+            return_value=["93.184.216.34"],
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_it_builds_the_config_from_the_row_and_the_resolved_header(self) -> None:
         with run_as():

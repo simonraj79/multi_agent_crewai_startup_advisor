@@ -122,7 +122,52 @@ function renderTable(rows: string[]): string {
   return `<table>${head}<tbody>${rest}</tbody></table>`
 }
 
-const TABLE_DIVIDER = /^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/
+/**
+ * A table divider row: nothing but spaces, pipes, colons and dashes, and at
+ * least one dash.
+ *
+ * Written as an anchored class test PLUS a `String.includes`, not as one
+ * regex, and the split is measured rather than stylistic. The shipped pattern
+ * was `/^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/`: two unbounded classes on either
+ * side of a dash that BOTH match a dash, so a long line that almost matches
+ * makes the engine try every split of it. The subject is reachable from model
+ * output - `markdown_body` is deliberately exempt from the 4,096-character
+ * frame clip and read at 64 KiB - and this test runs on the line after any
+ * line containing a pipe.
+ *
+ * Measured in node 24 on `' -'.repeat(32768) + 'x'`, which is 65,537
+ * characters that fail only at the last one:
+ *
+ *   /^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/   4381 ms   (shipped)
+ *   /^[\s:|-]*-[\s:|-]*$/               712 ms   (still quadratic)
+ *   /^[\s:|-]+$/ + includes('-')           <1 ms
+ *
+ * The middle line is the obvious repair and is only six times better, because
+ * merging the two classes does not remove the ambiguity - one dash still lives
+ * in both of them. Asking "which characters" and "is there a dash" separately
+ * removes it: a single anchored class has exactly one way to match, so a
+ * failure costs one pass and not one pass per split.
+ *
+ * Nothing the old pattern accepted is rejected here: `---`, `| --- | :-: |`,
+ * a bare `-`, leading and trailing whitespace all still open a table, and
+ * nothing without a dash is a divider under either. The new form is very
+ * slightly WIDER, and the widening is enumerated rather than waved at -
+ * exhaustively over every string of length <= 3 in the alphabet involved,
+ * exactly two disagree, `":|-"` and `"||-"`. Both are more than one pipe
+ * before the first dash, which the old pattern's single optional leading
+ * `\|?` could not span. Neither is a row anybody writes, and both make a
+ * degenerate line render as an empty table instead of two paragraphs.
+ *
+ * Exported for the regression test alone - `escapeHtml` and `safeHref` are
+ * exported on the same terms. The equivalence with the old pattern is a claim
+ * about a set of strings, and a test that could only see it through the
+ * renderer's output would be checking two things at once.
+ */
+const TABLE_DIVIDER_CHARS = /^[\s:|-]+$/
+
+export function isTableDivider(line: string): boolean {
+  return TABLE_DIVIDER_CHARS.test(line) && line.includes('-')
+}
 
 /**
  * Blockquotes recurse one level per `>`, and a Vue computed that throws blanks
@@ -179,7 +224,7 @@ export function renderMarkdown(source: string, depth = 0): string {
     }
 
     // Pipe table: a header row followed by a divider row.
-    if (line.includes('|') && index + 1 < lines.length && TABLE_DIVIDER.test(lines[index + 1])) {
+    if (line.includes('|') && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
       const rows: string[] = []
       while (index < lines.length && lines[index].includes('|')) {
         rows.push(lines[index])

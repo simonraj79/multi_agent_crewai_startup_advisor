@@ -672,6 +672,10 @@ class SkillStore:
             raise AttachmentNotYours(str(skill_id))
         bumped_body = skills_module.bumped(body)
         parsed = skills_module.parse_pack(bumped_body, owner="me")
+        # Where the pack lives NOW. A `PUT` that renames it materialises a new
+        # directory and used to leave this one behind, holding the previous
+        # body under a name the index no longer mentions (audit M13).
+        previous_directory = skills_module.pack_directory(current)
         pack = skills_module.SkillPack(
             id=str(skill_id),
             name=parsed.name,
@@ -702,6 +706,10 @@ class SkillStore:
             raise NameTaken(f"you already have a skill called {pack.name!r}") from exc
         if result.rowcount != 1:
             raise AttachmentNotYours(str(skill_id))
+        if directory.resolve() != previous_directory.resolve():
+            # The rename succeeded in the index, so the old directory is now
+            # unreachable: nothing names it and no ceiling counts it.
+            skills_module.remove_pack_directory(previous_directory)
         return skills_module.SkillPack(
             id=str(skill_id),
             name=pack.name,
@@ -714,10 +722,29 @@ class SkillStore:
         )
 
     def delete(self, user_id: Any, skill_id: str) -> None:
+        """Remove the row AND the file it indexes.
+
+        The row is the index and the file is the pack, so deleting only the row
+        left the body on disk where the `MAX_SKILLS_PER_USER` ceiling cannot
+        see it - create-then-delete in a loop is then unbounded storage
+        (audit M13). The path is read inside the same transaction that deletes
+        the row, so the directory removed is the one that row named and never a
+        path recomputed from a name somebody could have changed underneath.
+        """
+
         owner = _owner(user_id)
         if not self._ID.match(str(skill_id)):
             raise AttachmentNotYours(str(skill_id))
         with self._store.begin() as connection:
+            row = (
+                connection.execute(
+                    select(user_skills.c.path).where(
+                        user_skills.c.id == skill_id, user_skills.c.user_id == owner
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
             result = connection.execute(
                 delete(user_skills).where(
                     user_skills.c.id == skill_id, user_skills.c.user_id == owner
@@ -725,3 +752,7 @@ class SkillStore:
             )
         if result.rowcount != 1:
             raise AttachmentNotYours(str(skill_id))
+        if row is not None:
+            skills_module.remove_pack_directory(
+                skills_module.resolve_stored_path(str(row["path"])).parent
+            )

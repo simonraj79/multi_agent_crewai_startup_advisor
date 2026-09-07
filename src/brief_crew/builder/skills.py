@@ -46,6 +46,7 @@ from __future__ import annotations
 import io
 import os
 import pathlib
+import shutil
 import zipfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -402,6 +403,48 @@ def materialise(pack: SkillPack) -> pathlib.Path:
     return directory
 
 
+#: How deep under `skills_root()` a removable pack directory sits:
+#: `users/<user_id>/<name>`. Stated as a number so the guard below refuses
+#: `users/<user_id>` - which holds every pack that person owns - as loudly as
+#: it refuses the root itself.
+_PACK_DEPTH = 3
+
+
+def remove_pack_directory(directory: pathlib.Path) -> bool:
+    """Delete a materialised pack directory. True if it went, False if refused.
+
+    The row is the index and the FILE is the pack, so a `DELETE` that removed
+    only the row left the author's 64 KiB on disk where the 32-row ceiling
+    could not see it: create-then-delete in a loop is unbounded storage under
+    `data/skills/users/<uid>/`. Render's disk is ephemeral, which bounds it in
+    production and does not make it right.
+
+    **It refuses to delete anything that is not a pack directory**, and the
+    check is structural rather than a promise: the resolved path must sit under
+    the resolved `skills_root()` and be exactly `_PACK_DEPTH` segments deep or
+    more. That refuses the root, refuses `users/`, and refuses `users/<uid>/`,
+    which is the one that would take every pack a person owns. It answers
+    False rather than raising, because a `DELETE` whose row is already gone
+    must not become a 500 over a directory.
+    """
+
+    root = skills_root().resolve()
+    try:
+        target = directory.resolve()
+    except OSError:  # pragma: no cover - depends on the filesystem
+        return False
+    if not _is_rooted(target, root):
+        return False
+    try:
+        depth = len(target.relative_to(root).parts)
+    except ValueError:  # pragma: no cover - `_is_rooted` already said yes
+        return False
+    if depth < _PACK_DEPTH:
+        return False
+    shutil.rmtree(target, ignore_errors=True)
+    return True
+
+
 def search_path(pack: SkillPack) -> pathlib.Path:
     """The directory `discover_skills` would SCAN to find this pack.
 
@@ -586,6 +629,7 @@ __all__ = [
     "parse_pack",
     "loaded_skill",
     "read_pack_zip",
+    "remove_pack_directory",
     "resolve_stored_path",
     "SKILL_LOAD_ERROR_CLASS",
     "skill_frame_details",

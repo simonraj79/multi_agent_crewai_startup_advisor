@@ -280,5 +280,118 @@ class AnonymousSkillTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401, response.text)
 
 
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class SkillFilesOnDiskTests(AuthenticatedTwoUserCase):
+    """Audit M13, the skill-files half: the row is the index, the FILE is the pack.
+
+    `DELETE` removed the row and left the 64 KiB body under
+    `data/skills/users/<uid>/`, where the `MAX_SKILLS_PER_USER` ceiling cannot
+    see it - so create-then-delete in a loop was unbounded storage. A `PUT`
+    that renamed a pack materialised a second directory and left the first one
+    behind for the same reason. Render's ephemeral disk bounds the damage in
+    production and does not make either right.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.root = TemporaryRoot().install(self)
+
+    def create(self, body: str = BODY) -> dict[str, Any]:
+        response = self.client.post(SKILLS, json={"body": body}, headers=self.as_alice())
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()
+
+    def packs(self) -> list[pathlib.Path]:
+        """Every directory holding a SKILL.md under this user's own subtree."""
+
+        users = self.root / "users"
+        if not users.exists():
+            return []
+        return sorted(path.parent for path in users.rglob("SKILL.md"))
+
+    def test_M13_delete_removes_the_pack_directory_and_not_only_the_row(self) -> None:
+        created = self.create()
+        self.assertEqual(len(self.packs()), 1, self.packs())
+
+        response = self.client.delete(f"{SKILLS}/{created['id']}", headers=self.as_alice())
+        self.assertEqual(response.status_code, 204, response.text)
+
+        self.assertEqual(self.packs(), [], "the body is still on disk")
+
+    def test_M13_create_then_delete_in_a_loop_leaves_nothing_behind(self) -> None:
+        """The actual attack: the 32-row ceiling never sees a deleted pack."""
+
+        for index in range(5):
+            created = self.create(BODY.replace("my-method", f"method-{index}"))
+            self.client.delete(f"{SKILLS}/{created['id']}", headers=self.as_alice())
+        self.assertEqual(self.packs(), [])
+
+    def test_M13_a_rename_leaves_exactly_one_directory(self) -> None:
+        created = self.create()
+        renamed = self.client.put(
+            f"{SKILLS}/{created['id']}",
+            json={"body": BODY.replace("name: my-method", "name: my-other-method")},
+            headers=self.as_alice(),
+        )
+        self.assertEqual(renamed.status_code, 200, renamed.text)
+
+        directories = self.packs()
+        self.assertEqual(len(directories), 1, directories)
+        self.assertEqual(directories[0].name, "my-other-method")
+
+    def test_M13_an_edit_that_does_not_rename_keeps_its_directory(self) -> None:
+        """The removal must be about the RENAME, not about every PUT."""
+
+        created = self.create()
+        edited = self.client.put(
+            f"{SKILLS}/{created['id']}",
+            json={"body": BODY.replace("Do the thing carefully.", "Do it twice.")},
+            headers=self.as_alice(),
+        )
+        self.assertEqual(edited.status_code, 200, edited.text)
+
+        directories = self.packs()
+        self.assertEqual([path.name for path in directories], ["my-method"])
+        self.assertIn("Do it twice.", (directories[0] / "SKILL.md").read_text(encoding="utf-8"))
+
+    def test_M13_another_persons_pack_survives_a_404_delete(self) -> None:
+        """A refused delete must not reach the filesystem at all."""
+
+        created = self.create()
+        refused = self.client.delete(f"{SKILLS}/{created['id']}", headers=self.as_bob())
+        self.assertEqual(refused.status_code, 404, refused.text)
+        self.assertEqual(len(self.packs()), 1)
+
+    def test_M13_the_remover_refuses_anything_that_is_not_a_pack_directory(self) -> None:
+        """Structural, not a promise: rmtree is the wrong thing to be casual with."""
+
+        from brief_crew.builder.skills import remove_pack_directory
+
+        # A real pack, so `users/` and `users/<uid>/` are populated and their
+        # removal would take somebody's whole library rather than nothing.
+        self.create()
+        keep = [
+            self.root,
+            self.root / "users",
+            self.root / "users" / "user_alice",
+            self.root.parent,
+            pathlib.Path(tempfile.gettempdir()),
+        ]
+        for directory in keep:
+            with self.subTest(directory=str(directory)):
+                self.assertTrue(directory.exists(), f"{directory} is not a fixture")
+                self.assertFalse(remove_pack_directory(directory))
+                self.assertTrue(directory.exists(), f"{directory} was removed")
+        self.assertEqual(len(self.packs()), 1)
+
+    def test_M13_the_remover_takes_a_real_pack_directory(self) -> None:
+        from brief_crew.builder.skills import remove_pack_directory
+
+        self.create()
+        directory = self.packs()[0]
+        self.assertTrue(remove_pack_directory(directory))
+        self.assertFalse(directory.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

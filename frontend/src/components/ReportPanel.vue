@@ -42,7 +42,7 @@ import {
   verdictLabel,
   verdictTone as verdictToneFor,
 } from '../data/verdictDisplay'
-import { renderMarkdown } from '../utils/markdown'
+import { renderMarkdown, safeHref } from '../utils/markdown'
 
 const props = withDefaults(defineProps<{
   report: RunResult | null
@@ -84,6 +84,30 @@ const reportKicker = computed(() =>
 
 const body = computed(() => renderMarkdown(props.report?.markdown_body ?? ''))
 const sources = computed(() => props.report?.sources ?? [])
+
+/**
+ * The cited sources, each with its href already decided (audit L3).
+ *
+ * `:href="source.url"` bound the value straight through, which is the one
+ * place on this panel where a model-authored string became a live attribute
+ * without passing the check the report BODY's own links pass. It was
+ * unreachable - `Evidence.url` is validated to http(s) server-side, and the
+ * report's markdown renderer refuses anything else - but that made it a
+ * single-fact defence living in another process, and the fact is one schema
+ * edit away from changing. `safeHref` is the same function the body uses, so
+ * a citation and a link in the prose beside it now answer to one rule.
+ *
+ * A source whose URL is refused is not dropped: it renders as the plain span
+ * the no-URL case already used, with its own text if it has none, because
+ * silently losing a citation is worse than showing an inert one.
+ */
+const citations = computed(() =>
+  sources.value.map((source, index) => ({
+    key: source.url ?? index,
+    href: source.url ? safeHref(source.url) : null,
+    text: source.title || source.url || 'Untitled source',
+  })),
+)
 
 /**
  * Either carrier may say so. The report's own flag predates the verdict frame
@@ -316,11 +340,11 @@ async function copyReport(): Promise<void> {
       <footer v-if="sources.length" class="report-sources">
         <h3>{{ sources.length }} cited source{{ sources.length === 1 ? '' : 's' }}</h3>
         <ol>
-          <li v-for="(source, i) in sources" :key="source.url ?? i">
-            <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer nofollow">
-              {{ source.title || source.url }}
+          <li v-for="citation in citations" :key="citation.key">
+            <a v-if="citation.href" :href="citation.href" target="_blank" rel="noopener noreferrer nofollow">
+              {{ citation.text }}
             </a>
-            <span v-else>{{ source.title || 'Untitled source' }}</span>
+            <span v-else>{{ citation.text }}</span>
           </li>
         </ol>
       </footer>

@@ -38,6 +38,7 @@ from brief_crew.builder.tools import (
     build_custom_tool,
     parse_custom_tool,
     refuse_private_target,
+    vetted_target,
 )
 
 WEATHER = {
@@ -71,6 +72,8 @@ def resolver(addresses: list[str]):
 
 
 def transport(status: int = 200, body: str = "{}", *, seen: list[Any] | None = None):
+    #: `address` is the seventh argument since audit M3: the address
+    #: `vetted_target` checked, which is the one the socket must go to.
     def send(
         method: str,
         url: str,
@@ -78,6 +81,7 @@ def transport(status: int = 200, body: str = "{}", *, seen: list[Any] | None = N
         content: str | None,
         timeout: int,
         max_bytes: int,
+        address: str | None = None,
     ) -> tuple[int, str]:
         if seen is not None:
             seen.append(
@@ -88,6 +92,7 @@ def transport(status: int = 200, body: str = "{}", *, seen: list[Any] | None = N
                     "content": content,
                     "timeout": timeout,
                     "max_bytes": max_bytes,
+                    "address": address,
                 }
             )
         return status, body
@@ -295,6 +300,302 @@ class SsrfRuleTests(unittest.TestCase):
         self.assertIsNone(
             refuse_private_target("http://127.0.0.1:8099/mcp", allow_insecure_local=True)
         )
+
+
+class CredentialInTheUrlTests(unittest.TestCase):
+    """Audit M1: a key in the query string never reaches a frame in plaintext.
+
+    `{credential}` is permitted in the URL because a query-string key is a real
+    API shape (`.../v1?key=...&q=...`). The rendered URL was then written
+    verbatim into the envelope's `query`, its `notes` and each result's `url`,
+    and the serializer copies `query` onto the frame - where the redaction walk
+    cannot help, because it keys on the FIELD NAME and `query` is not a secret
+    name. So the plaintext key reached the 2,000-frame ring, the durable frames
+    table, `GET /api/runs/{id}/frames`, the NDJSON and ZIP export, and Langfuse
+    with content capture on.
+
+    Both spellings are asserted, because the URL substitution is quoted: a key
+    with a `/` or `+` in it appears percent-encoded in the URL and a redaction
+    that only looked for the raw bytes would miss every such key.
+    """
+
+    #: Deliberately carries characters that change under `quote(safe="")`.
+    SECRET = "sk-M1-SECRET/TOKEN+VALUE="
+    QUOTED = "sk-M1-SECRET%2FTOKEN%2BVALUE%3D"
+
+    SPEC = {
+        "name": "key_in_url",
+        "description": "A search API that takes its key as a query parameter.",
+        "properties": [
+            {"name": "q", "type": "string", "description": "query", "required": True}
+        ],
+        "request": {
+            "method": "GET",
+            "url": "https://api.example.test/v1?key={credential}&q={q}",
+            "header_name": "Authorization",
+            "header_template": "Bearer {credential}",
+            "body_template": None,
+            "timeout_seconds": 15,
+            "max_response_bytes": 1048576,
+        },
+    }
+
+    def _tool(self, send: Any) -> Any:
+        spec = parse_custom_tool(self.SPEC, tool_id="ut_0123456789ab")
+        return build_custom_tool(
+            spec,
+            credential={"name": "Authorization", "header_value": self.SECRET},
+            resolve=resolver(PUBLIC),
+            transport=send,
+        )
+
+    def assert_clean(self, rendered: str, where: str) -> None:
+        self.assertNotIn(self.SECRET, rendered, f"the raw key is in {where}")
+        self.assertNotIn(self.QUOTED, rendered, f"the encoded key is in {where}")
+        self.assertIn("***", rendered, f"nothing was redacted in {where}")
+
+    def test_M1_the_envelope_query_and_result_url_carry_no_key_in_either_spelling(self) -> None:
+        seen: list[Any] = []
+        tool = self._tool(transport(200, '{"hits": []}', seen=seen))
+        raw = tool._run(q="rain")
+        envelope = json.loads(raw)
+
+        self.assertEqual(envelope["status"], "ok")
+        self.assert_clean(envelope["query"], "envelope['query']")
+        self.assert_clean(envelope["results"][0]["url"], "results[0]['url']")
+        # The whole serialized envelope, which is what the frame is built from.
+        self.assertNotIn(self.SECRET, raw)
+        self.assertNotIn(self.QUOTED, raw)
+        # The author's own argument is not a secret and must survive.
+        self.assertIn("q=rain", envelope["query"])
+
+    def test_M1_the_notes_of_a_transport_failure_carry_no_key(self) -> None:
+        """httpx names the URL it was dialling; that sentence became `notes`."""
+
+        def boom(_method: str, url: str, *_rest: Any, **__: Any) -> tuple[int, str]:
+            raise TimeoutError(f"read timed out for {url}")
+
+        envelope = json.loads(self._tool(boom)._run(q="rain"))
+        self.assertEqual(envelope["status"], "failed")
+        self.assertIn("TimeoutError", envelope["notes"])
+        self.assert_clean(envelope["notes"], "envelope['notes']")
+        self.assert_clean(envelope["query"], "envelope['query']")
+
+    def test_M1_an_oversize_body_refusal_carries_no_key_either(self) -> None:
+        def oversize(_method: str, url: str, *_rest: Any, **__: Any) -> tuple[int, str]:
+            from brief_crew.builder.tools import _ResponseTooLarge
+
+            raise _ResponseTooLarge(f"the response from {url} was abandoned")
+
+        envelope = json.loads(self._tool(oversize)._run(q="rain"))
+        self.assertEqual(envelope["status"], "failed")
+        self.assert_clean(envelope["notes"], "envelope['notes']")
+
+    def test_M1_a_refused_target_reports_without_the_key(self) -> None:
+        spec = parse_custom_tool(self.SPEC, tool_id="ut_0123456789ab")
+        tool = build_custom_tool(
+            spec,
+            credential={"name": "Authorization", "header_value": self.SECRET},
+            resolve=resolver(PRIVATE),
+            transport=transport(),
+        )
+        envelope = json.loads(tool._run(q="rain"))
+        self.assertEqual(envelope["status"], "failed")
+        self.assert_clean(envelope["query"], "envelope['query']")
+        self.assertNotIn(self.SECRET, envelope["notes"])
+
+    def test_M1_the_request_that_goes_out_still_carries_the_real_key(self) -> None:
+        """Redaction is on the REPORT. The tool would be useless otherwise."""
+
+        seen: list[Any] = []
+        self._tool(transport(200, "{}", seen=seen))._run(q="rain")
+        self.assertEqual(seen[0]["headers"], {"Authorization": f"Bearer {self.SECRET}"})
+        # In the URL it is quoted, so an `&` or `#` in a key cannot truncate it.
+        self.assertIn(f"key={self.QUOTED}", seen[0]["url"])
+        self.assertNotIn(self.SECRET, seen[0]["url"])
+
+
+class CheckThenConnectTests(unittest.TestCase):
+    """Audit M3: the address that was CHECKED is the address that is dialled.
+
+    `refuse_private_target` resolved the name, vetted the answers and threw
+    them away; `_default_transport` then handed the NAME to httpx, which
+    resolved it a second time. A TTL-0 record alternating between a public
+    address and `10.0.0.5` passes the check and is dialled at the private one a
+    few milliseconds later - and the connection error comes back verbatim in
+    the envelope, so even a refused dial is an internal port-scan oracle. The
+    repository already pins `hostaddr` in `postgres_probe_target` for exactly
+    this reason; this side did not.
+    """
+
+    PUBLIC = "93.184.216.34"
+    PRIVATE = "10.0.0.5"
+
+    def _tool(self, resolve: Any, send: Any) -> Any:
+        spec = parse_custom_tool(WEATHER, tool_id="ut_0123456789ab")
+        return build_custom_tool(
+            spec,
+            credential={"name": "Authorization", "header_value": "sekrit-token"},
+            resolve=resolve,
+            transport=send,
+        )
+
+    def test_M3_the_transport_is_handed_the_vetted_address_not_just_the_name(self) -> None:
+        seen: list[Any] = []
+        self._tool(resolver([self.PUBLIC]), transport(seen=seen))._run(city="Lisbon")
+        self.assertEqual(seen[0]["address"], self.PUBLIC)
+        # The URL still names the host: the transport rewrites it, so TLS can
+        # stay bound to the NAME through `sni_hostname`.
+        self.assertIn("api.example.test", seen[0]["url"])
+
+    def test_M3_a_resolver_answering_public_then_private_never_dials_the_private_one(self) -> None:
+        """The rebinding shape, with a transport that resolves the way httpx did.
+
+        The stub stands in for `httpx`: handed no vetted address it looks the
+        name up itself, which is precisely the second resolution this fix
+        removes. Before the fix the tool passed six arguments, the stub
+        resolved, and the dial landed on `10.0.0.5`.
+        """
+
+        answers = [[self.PUBLIC], [self.PRIVATE]]
+        calls: list[str] = []
+
+        def flapping(host: str) -> list[str]:
+            calls.append(host)
+            return answers.pop(0) if len(answers) > 1 else answers[0]
+
+        dialled: list[str] = []
+
+        def resolving_transport(
+            _method: str,
+            url: str,
+            _headers: Mapping[str, str],
+            _content: str | None,
+            _timeout: int,
+            _max_bytes: int,
+            address: str | None = None,
+        ) -> tuple[int, str]:
+            host = url.split("//", 1)[1].split("/", 1)[0]
+            dialled.append(address if address is not None else flapping(host)[0])
+            return 200, "{}"
+
+        envelope = json.loads(self._tool(flapping, resolving_transport)._run(city="Lisbon"))
+        self.assertEqual(envelope["status"], "ok")
+        self.assertEqual(dialled, [self.PUBLIC])
+        self.assertNotIn(self.PRIVATE, dialled)
+        # Resolved ONCE. The second answer is never consulted, which is the
+        # property: a second lookup is a second chance for the record to move.
+        self.assertEqual(calls, ["api.example.test"])
+
+    def test_M3_a_shared_address_space_answer_is_refused_by_the_is_global_catch_all(self) -> None:
+        """100.64.0.0/10 is neither private nor reserved in Python 3.13.
+
+        It is carrier-grade NAT and pod addressing on some platforms, and
+        `credentials._address_class` has refused it since plan 01. This side
+        admitted it, so the two halves of one rule disagreed about "public".
+        """
+
+        for address in ("100.64.0.1", "100.127.255.254"):
+            with self.subTest(address=address):
+                refusal, vetted = vetted_target(
+                    "https://api.example.test/x", resolve=resolver([address])
+                )
+                self.assertIsNotNone(refusal)
+                self.assertIsNone(vetted)
+                self.assertIn(address, str(refusal))
+
+        seen: list[Any] = []
+        envelope = json.loads(
+            self._tool(resolver(["100.64.0.1"]), transport(seen=seen))._run(city="x")
+        )
+        self.assertEqual(envelope["status"], "failed")
+        self.assertEqual(seen, [], "the transport was reached")
+
+    def test_M3_vetted_target_answers_the_address_for_a_public_name(self) -> None:
+        refusal, address = vetted_target(
+            "https://api.example.test/x", resolve=resolver([self.PUBLIC])
+        )
+        self.assertIsNone(refusal)
+        self.assertEqual(address, self.PUBLIC)
+
+    def test_M3_the_local_escape_hatch_pins_nothing_and_dials_the_url_as_written(self) -> None:
+        refusal, address = vetted_target(
+            "http://127.0.0.1:8099/mcp", allow_insecure_local=True
+        )
+        self.assertIsNone(refusal)
+        self.assertIsNone(address)
+
+
+class DefaultTransportPinTests(unittest.TestCase):
+    """Audit M3, the httpx half: the socket goes to the IP, TLS to the name."""
+
+    class _Response:
+        status_code = 200
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_exc: Any) -> None:
+            return None
+
+        @staticmethod
+        def iter_bytes():
+            yield b"{}"
+
+    def _client(self, calls: list[dict[str, Any]]) -> Any:
+        response = self._Response()
+
+        class Client:
+            def __init__(self, **kwargs: Any) -> None:
+                calls.append({"init": kwargs})
+
+            def __enter__(self) -> Any:
+                return self
+
+            def __exit__(self, *_exc: Any) -> None:
+                return None
+
+            @staticmethod
+            def stream(method: str, url: str, **kwargs: Any) -> Any:
+                calls.append({"method": method, "url": url, **kwargs})
+                return response
+
+        return Client
+
+    def _send(self, address: str | None) -> dict[str, Any]:
+        from unittest.mock import patch
+
+        import httpx
+
+        from brief_crew.builder.tools import _default_transport
+
+        calls: list[dict[str, Any]] = []
+        with patch.object(httpx, "Client", self._client(calls)):
+            status, text = _default_transport(
+                "GET",
+                "https://api.example.test/weather?q=x",
+                {"Authorization": "Bearer t"},
+                None,
+                15,
+                1024,
+                address,
+            )
+        self.assertEqual((status, text), (200, "{}"))
+        return calls[1]
+
+    def test_M3_the_request_line_names_the_ip_and_the_handshake_names_the_host(self) -> None:
+        call = self._send("93.184.216.34")
+        self.assertEqual(call["url"], "https://93.184.216.34/weather?q=x")
+        self.assertEqual(call["extensions"]["sni_hostname"], "api.example.test")
+        self.assertEqual(call["headers"]["Host"], "api.example.test")
+        # The author's own header survives the rewrite.
+        self.assertEqual(call["headers"]["Authorization"], "Bearer t")
+
+    def test_M3_with_no_vetted_address_the_url_is_dialled_as_written(self) -> None:
+        call = self._send(None)
+        self.assertEqual(call["url"], "https://api.example.test/weather?q=x")
+        self.assertEqual(call["extensions"], {})
+        self.assertNotIn("Host", call["headers"])
 
 
 if __name__ == "__main__":

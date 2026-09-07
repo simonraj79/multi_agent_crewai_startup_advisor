@@ -49,6 +49,7 @@ import os
 import re
 import socket
 import threading
+import time
 import urllib.parse
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -59,6 +60,7 @@ from typing import Any, Literal
 from brief_crew import config as project_config
 from brief_crew.builder.bounds import Problem
 from brief_crew.builder.document import ATTACH_TARGET_KINDS, BuilderDocument, ToolConfig
+from brief_crew.events.redaction import REDACTED
 
 # --------------------------------------------------------------------------
 # Problem codes
@@ -526,10 +528,83 @@ def _postgres_query(
 
     if credential is None:
         raise ToolBuildError("postgres_query needs a postgres credential")
+    # SECURITY: the host is vetted HERE, where the connection is actually made.
+    # `POST /credentials/{id}/test` already refuses loopback, private, link-local
+    # and metadata addresses; nothing on the run path did, so a signed-in author
+    # could store `postgresql://...@10.0.0.5/` (or `sqlite:///output/x.db`) and
+    # have the run dial it and hand the rows back. Parsed the way SQLAlchemy
+    # will parse it, refused unless it is PostgreSQL to a public host, and
+    # `hostaddr` pinned to the vetted answer so libpq cannot re-resolve the
+    # name to something else a moment later (the same pin the probe applies).
+    from sqlalchemy.engine import make_url
+
+    from brief_crew.service.credentials import _address_class
+
+    dsn = credential["dsn"]
+    try:
+        url = make_url(dsn)
+    except Exception as exc:  # noqa: BLE001 - any parse failure is a refusal
+        raise ToolBuildError(
+            "postgres_query needs a postgresql:// connection string"
+        ) from exc
+    if not str(url.drivername).lower().startswith("postgresql"):
+        raise ToolBuildError(
+            f"postgres_query dials PostgreSQL only; {url.drivername!r} is not that"
+        )
+    host = (url.host or "").strip().lower()
+    # Three distinct causes, three sentences, because an author reading one of
+    # them needs to know which mistake they made: a DSN with no host at all
+    # makes libpq dial a local Unix socket under peer/trust auth, a host that
+    # IS a socket path does the same by another spelling, and `localhost` is
+    # loopback by name rather than by address. The probe's own refusals split
+    # them the same way (`credentials.postgres_probe_target`).
+    if not host:
+        raise ToolBuildError(
+            "postgres_query dials public database hosts only; this DSN names no "
+            "host, so libpq would dial a local socket"
+        )
+    if host.startswith("/") or host.startswith("@"):
+        raise ToolBuildError(
+            f"postgres_query dials public database hosts only; {host!r} is a "
+            "Unix socket path"
+        )
+    if host.rstrip(".") == "localhost" or host.rstrip(".").endswith(".localhost"):
+        raise ToolBuildError(
+            f"postgres_query dials public database hosts only; {host!r} is a "
+            "loopback address"
+        )
+    literal = url.query.get("hostaddr")
+    if literal:
+        addresses = [part.strip() for part in str(literal).split(",") if part.strip()]
+    else:
+        try:
+            addresses = _default_resolver(host)
+        except OSError:
+            addresses = []
+    if not addresses:
+        raise ToolBuildError(
+            f"postgres_query dials public database hosts only; {host!r} could not "
+            "be resolved"
+        )
+    for address in addresses:
+        try:
+            address_class = _address_class(address)
+        except ValueError as exc:
+            raise ToolBuildError(
+                f"postgres_query dials public database hosts only; {host!r} "
+                "resolved to something that is not an IP address"
+            ) from exc
+        if address_class is not None:
+            raise ToolBuildError(
+                f"postgres_query dials public database hosts only; {host!r} "
+                f"{'is' if literal else 'resolves to'} a {address_class} address"
+            )
+    pinned = url.update_query_dict({"hostaddr": addresses[0]})
+    db_uri = pinned.render_as_string(hide_password=False)
     tables = params.get("tables") or []
     with _forced_env({"CREWAI_NL2SQL_ALLOW_DML": "false"}):
         tool = crewai_tools.NL2SQLTool(
-            db_uri=credential["dsn"],
+            db_uri=db_uri,
             tables=list(tables),
             allow_dml=False,
             tool_failure_policy=_policy(policy),
@@ -1166,6 +1241,79 @@ def _default_resolver(host: str) -> list[str]:
     return sorted({info[4][0] for info in socket.getaddrinfo(host, None)})
 
 
+def vetted_target(
+    url: str,
+    *,
+    resolve: HostResolver | None = None,
+    allow_insecure_local: bool = False,
+) -> tuple[str | None, str | None]:
+    """`(refusal, address)` - why this URL may not be dialled, and where to dial.
+
+    The rule `URLReadTool` already applies, restated here because a custom tool
+    and an MCP server both need it and neither goes through that class: resolve
+    the name, and refuse every private, loopback, link-local, reserved,
+    multicast or otherwise non-global address it answers with. Resolution
+    happens BEFORE the request, so a DNS name pointing at 169.254.169.254 is
+    refused by address rather than by spelling.
+
+    **SECURITY: it RETURNS the address it vetted, and that is the whole point.**
+    This used to answer a refusal and throw the addresses away, so `httpx`
+    resolved the name a second time a few milliseconds later - check-then-
+    connect, and a TTL-0 record alternating between a public address and
+    `10.0.0.5` walks straight through it. The caller dials the answer that was
+    checked (`_default_transport` rewrites the URL's host to it and keeps TLS
+    bound to the NAME through `sni_hostname`), which is the same pin
+    `credentials.postgres_probe_target` applies through libpq's `hostaddr`.
+
+    `address` is None when there is nothing to pin - the `allow_insecure_local`
+    escape hatch, where the caller dials the URL as written.
+
+    `not is_global` is a catch-all rather than a sixth named class, and it is
+    what closes `100.64.0.0/10`: carrier-grade NAT and shared address space,
+    used for pod addressing on some platforms, which in Python 3.13 is neither
+    `is_private` nor `is_reserved`. `credentials._address_class` has had it
+    since plan 01; this side did not, and the two rules should not disagree
+    about what "public" means.
+    """
+
+    parsed = urllib.parse.urlsplit(url)
+    scheme = parsed.scheme.lower()
+    host = parsed.hostname or ""
+    if not host:
+        return f"{url!r} names no host", None
+    local = host in {"127.0.0.1", "localhost", "::1"}
+    if scheme != "https" and not (allow_insecure_local and local and scheme == "http"):
+        return f"{url!r} is not https, and only https targets are dialled", None
+    if local and allow_insecure_local:
+        return None, None
+    resolver = resolve or _default_resolver
+    try:
+        addresses = resolver(host)
+    except OSError as exc:  # pragma: no cover - depends on the resolver
+        return f"{host!r} does not resolve ({exc})", None
+    if not addresses:
+        return f"{host!r} resolves to nothing", None
+    for address in addresses:
+        try:
+            parsed_address = ipaddress.ip_address(address)
+        except ValueError:
+            return f"{host!r} resolved to {address!r}, which is not an address", None
+        if (
+            parsed_address.is_private
+            or parsed_address.is_loopback
+            or parsed_address.is_link_local
+            or parsed_address.is_reserved
+            or parsed_address.is_multicast
+            or parsed_address.is_unspecified
+            or not parsed_address.is_global
+        ):
+            return (
+                f"{host!r} resolves to {address}, which is on this network; a tool "
+                "reaches the public internet and nothing else"
+            ), None
+    return None, addresses[0]
+
+
 def refuse_private_target(
     url: str,
     *,
@@ -1174,49 +1322,16 @@ def refuse_private_target(
 ) -> str | None:
     """The reason this URL may not be dialled, or None.
 
-    The rule `URLReadTool` already applies, restated here because a custom tool
-    and an MCP server both need it and neither goes through that class: resolve
-    the name, and refuse every private, loopback, link-local, reserved or
-    multicast address it answers with. Resolution happens BEFORE the request, so
-    a DNS name pointing at 169.254.169.254 is refused by address rather than by
-    spelling.
+    A thin wrapper over `vetted_target` for the callers that only need the
+    verdict - `mcp.transport_refusal`, which vets a URL it is about to hand to
+    CrewAI's own client and so cannot pin an address anyway, and the tests that
+    assert the rule itself.
     """
 
-    parsed = urllib.parse.urlsplit(url)
-    scheme = parsed.scheme.lower()
-    host = parsed.hostname or ""
-    if not host:
-        return f"{url!r} names no host"
-    local = host in {"127.0.0.1", "localhost", "::1"}
-    if scheme != "https" and not (allow_insecure_local and local and scheme == "http"):
-        return f"{url!r} is not https, and only https targets are dialled"
-    if local and allow_insecure_local:
-        return None
-    resolver = resolve or _default_resolver
-    try:
-        addresses = resolver(host)
-    except OSError as exc:  # pragma: no cover - depends on the resolver
-        return f"{host!r} does not resolve ({exc})"
-    if not addresses:
-        return f"{host!r} resolves to nothing"
-    for address in addresses:
-        try:
-            parsed_address = ipaddress.ip_address(address)
-        except ValueError:
-            return f"{host!r} resolved to {address!r}, which is not an address"
-        if (
-            parsed_address.is_private
-            or parsed_address.is_loopback
-            or parsed_address.is_link_local
-            or parsed_address.is_reserved
-            or parsed_address.is_multicast
-            or parsed_address.is_unspecified
-        ):
-            return (
-                f"{host!r} resolves to {address}, which is on this network; a tool "
-                "reaches the public internet and nothing else"
-            )
-    return None
+    refusal, _address = vetted_target(
+        url, resolve=resolve, allow_insecure_local=allow_insecure_local
+    )
+    return refusal
 
 
 def _envelope(
@@ -1293,11 +1408,30 @@ def build_custom_tool(
     secret = dict(credential or {})
     request = spec.request
 
+    def _redact(text: object) -> str:
+        """Every string this tool emits passes through here.
+
+        `{credential}` is permitted in the URL (query-string keys are a real
+        API shape), and the rendered URL used to be written verbatim into the
+        envelope's `query`, `notes` and each result's `url` - which reach the
+        durable frame table, `GET /api/runs/{id}/frames` and the log export.
+        The redaction walk cannot catch it: the KEY is `query`.
+        """
+        rendered = str(text)
+        for value in secret.values():
+            if value and len(value) >= 8:
+                rendered = rendered.replace(value, REDACTED)
+                rendered = rendered.replace(urllib.parse.quote(value, safe=""), REDACTED)
+        return rendered
+
     def render(template: str, values: Mapping[str, Any], *, quote: bool) -> str:
         def replace(match: re.Match[str]) -> str:
             key = match.group(1)
             if key == "credential":
-                return secret.get("header_value", "")
+                value = secret.get("header_value", "")
+                # Quoted like every other URL substitution: an unencoded `&` or
+                # `#` in a key silently truncates it.
+                return urllib.parse.quote(value, safe="") if quote else value
             raw = values.get(key)
             text = "" if raw is None else str(raw)
             return urllib.parse.quote(text, safe="") if quote else text
@@ -1311,10 +1445,17 @@ def build_custom_tool(
 
         def _run(self, **kwargs: Any) -> str:
             url = render(request.url, kwargs, quote=True)
-            refusal = refuse_private_target(url, resolve=resolve)
+            # SECURITY: `address` is the answer that was CHECKED, and it is
+            # what gets dialled. Discarding it and letting httpx resolve the
+            # name again is check-then-connect: a TTL-0 record alternating
+            # between a public address and 10.0.0.5 passes the check and is
+            # dialled at the private one a few milliseconds later, and the
+            # connection error comes back in the envelope, so even a refused
+            # dial is an internal port-scan oracle.
+            refusal, address = vetted_target(url, resolve=resolve)
             if refusal is not None:
                 return _envelope(
-                    tool=spec.name, query=url, status="failed", notes=refusal
+                    tool=spec.name, query=_redact(url), status="failed", notes=_redact(refusal)
                 )
             headers: dict[str, str] = {}
             if request.header_name and request.header_template:
@@ -1335,30 +1476,33 @@ def build_custom_tool(
                     body,
                     request.timeout_seconds,
                     request.max_response_bytes,
+                    address,
                 )
             except _ResponseTooLarge as exc:
                 return _envelope(
-                    tool=spec.name, query=url, status="failed", notes=str(exc)
+                    tool=spec.name, query=_redact(url), status="failed", notes=_redact(exc)
                 )
             except Exception as exc:  # noqa: BLE001 - a tool reports, never raises
                 return _envelope(
                     tool=spec.name,
-                    query=url,
+                    query=_redact(url),
                     status="failed",
-                    notes=f"{type(exc).__name__}: {exc}",
+                    notes=_redact(f"{type(exc).__name__}: {exc}"),
                 )
             if status_code >= 400:
                 return _envelope(
                     tool=spec.name,
-                    query=url,
+                    query=_redact(url),
                     status="rate_limited" if status_code == 429 else "failed",
                     notes=f"the server answered {status_code}",
                 )
             return _envelope(
                 tool=spec.name,
-                query=url,
+                query=_redact(url),
                 status="ok",
-                results=[{"url": url, "status_code": status_code, "body": text}],
+                results=[
+                    {"url": _redact(url), "status_code": status_code, "body": _redact(text)}
+                ],
             )
 
     return _CustomHttpTool(tool_failure_policy=_policy(failure_policy))
@@ -1368,6 +1512,15 @@ class _ResponseTooLarge(RuntimeError):
     """The body passed `max_response_bytes` and was abandoned mid-stream."""
 
 
+class _ResponseTooSlow(_ResponseTooLarge):
+    """The whole call passed `timeout_seconds` and was abandoned mid-stream.
+
+    A subclass so every existing `except _ResponseTooLarge` (the tool's own
+    `_run`, the test route) already handles it the same way: a failed
+    envelope, never a raise.
+    """
+
+
 def _default_transport(
     method: str,
     url: str,
@@ -1375,28 +1528,57 @@ def _default_transport(
     body: str | None,
     timeout: int,
     max_bytes: int,
+    address: str | None = None,
 ) -> tuple[int, str]:
-    """One HTTPS call, no redirects, capped mid-stream.
+    """One HTTPS call, no redirects, capped mid-stream, to the VETTED address.
 
     `follow_redirects=False` is load-bearing: a 302 to `http://169.254.169.254`
     would walk straight past the SSRF check, which ran against the URL the
     author wrote. The cap is applied while iterating rather than on
     `response.text`, so a 2 GiB body is abandoned rather than read.
+
+    **SECURITY: `address` is the address `vetted_target` checked, and the socket
+    goes there.** Passing the name and letting httpx resolve it a second time is
+    the check-then-connect hole; rewriting the host closes it. TLS is still
+    bound to the NAME rather than to the address - `sni_hostname` carries the
+    original host into the handshake (httpcore 1.0.9 honours it) and the
+    certificate is verified against it, so pinning the address buys the SSRF
+    guarantee without buying a downgrade. The explicit `Host` header is what
+    keeps virtual hosting working, since the request line now names an IP.
     """
 
     import httpx
 
+    parsed = httpx.URL(url)
+    sent = dict(headers)
+    extensions: dict[str, Any] = {}
+    if address is not None and parsed.host != address:
+        extensions["sni_hostname"] = parsed.host
+        sent.setdefault("Host", parsed.netloc.decode("ascii"))
+        url = str(parsed.copy_with(host=address))
+
     with httpx.Client(timeout=timeout, follow_redirects=False) as client:
         with client.stream(
-            method, url, headers=dict(headers), content=body
+            method, url, headers=sent, content=body, extensions=extensions
         ) as response:
             chunks: list[bytes] = []
             size = 0
+            # SECURITY (audit H5): httpx's `timeout` is PER READ and httpx has
+            # no total-request deadline, so a server that trickles one byte
+            # just inside the read timeout holds this call open until
+            # `max_bytes` arrives - up to 1 MiB at 29 s a byte. The whole call
+            # gets the same bound the author chose for one read.
+            deadline = time.monotonic() + timeout
             for chunk in response.iter_bytes():
                 size += len(chunk)
                 if size > max_bytes:
                     raise _ResponseTooLarge(
                         f"the response passed {max_bytes} bytes and was abandoned"
+                    )
+                if time.monotonic() > deadline:
+                    raise _ResponseTooSlow(
+                        f"the response took longer than {timeout}s in total and "
+                        "was abandoned"
                     )
                 chunks.append(chunk)
             return response.status_code, b"".join(chunks).decode("utf-8", "replace")
@@ -1537,4 +1719,5 @@ __all__ = [
     "resolved_tool",
     "tool_problems",
     "validate_params",
+    "vetted_target",
 ]

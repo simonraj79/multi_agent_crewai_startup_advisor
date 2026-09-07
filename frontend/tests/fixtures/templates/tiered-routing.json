@@ -915,6 +915,7 @@
       "budget-unpriced-model",
       "credential-missing",
       "crew-hierarchical-needs-manager",
+      "crew-max-iter-ignored",
       "crew-members-out-of-range",
       "crew-task-order-mismatch",
       "crew-tier-not-honoured",

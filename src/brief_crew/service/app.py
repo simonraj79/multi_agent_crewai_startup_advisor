@@ -6,11 +6,12 @@ calling ``create_app`` reports the exact installation blocker.
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from io import BytesIO
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -26,6 +27,7 @@ from pydantic import Field, ValidationError
 
 from brief_crew import config as project_config
 from brief_crew.config import (
+    MAX_EXPORT_FRAMES,
     RUN_RATE_LIMIT_KEY_MAX_CHARS,
     WS_MAX_GATE_FIELD_CHARS,
     WS_MAX_GATE_FIELDS,
@@ -611,6 +613,32 @@ def _assert_auth_startup_safety() -> None:
             "CORS_ALLOW_ORIGINS is '*' while authentication is required; name "
             "the origins that may carry an Authorization header instead"
         )
+    if not auth_base_url_is_trustworthy(project_config.AUTH_BASE_URL):
+        # SECURITY (audit L2): the signing keys that authenticate EVERY request
+        # are fetched from `${AUTH_BASE_URL}/api/auth/jwks`, and `iss`/`aud`
+        # are pinned to the same string. Over cleartext, whoever sits on the
+        # path substitutes their own keys and mints tokens this service
+        # believes. Loopback is allowed for a developer's own machine; nothing
+        # else is reachable without TLS.
+        raise RuntimeError(
+            "AUTH_BASE_URL must be https:// when authentication is required "
+            f"(it is {project_config.AUTH_BASE_URL!r}); the JWKS that verifies "
+            "every bearer token is fetched from it, and a cleartext fetch can be "
+            "answered by anyone on the path. http:// is accepted for loopback only"
+        )
+
+
+def auth_base_url_is_trustworthy(base_url: str) -> bool:
+    """https anywhere, or plain http on the developer's own loopback."""
+
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(base_url)
+    if parts.scheme == "https":
+        return True
+    if parts.scheme != "http":
+        return False
+    return (parts.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
 
 
 #: Plan 01 D8: the header a zero-cost test sets to BE somebody. Honoured only
@@ -670,6 +698,68 @@ class ReadyResponse(HealthResponse):
     observability: dict[str, Any] = Field(default_factory=dict)
 
 
+class _StripQueryCredentials(logging.Filter):
+    """Replace the value of an `access_token` query parameter in a log line.
+
+    SECURITY (audit L1). The WebSocket handshake carries the 15-minute bearer
+    token as a QUERY PARAMETER, and that is forced rather than chosen: the
+    browser WebSocket API cannot set a header on the handshake, so
+    `Authorization` is unavailable there. uvicorn's access log writes the
+    request line verbatim, so every handshake put a live credential into
+    Render's log stream and into any drain attached to it - and the run id
+    beside it, which after audit H1 was the other half of a working attack.
+
+    Filtering the value out is the cheap half of the answer. The expensive
+    halves, both left to whoever owns the deployment and the client: run
+    uvicorn with `--no-access-log`, and carry the token in
+    `Sec-WebSocket-Protocol`, which the browser API *can* set.
+
+    The quantifier is bounded, for the same reason `_URL_CREDENTIALS` is
+    (audit C1): a log filter runs on every request and must never be the
+    slowest thing in one.
+    """
+
+    _CREDENTIAL = re.compile(r"([?&]access_token=)[^&\s\"]{1,8192}")
+    _REPLACEMENT = r"\1***"
+
+    def _scrub(self, value: str) -> str:
+        return self._CREDENTIAL.sub(self._REPLACEMENT, value)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn.access carries the request line in `args`, not in `msg`.
+        # `msg` is scrubbed too, and cheaply: it is a format string there and
+        # can never match, so this only does work for a caller that logged an
+        # already-formatted line.
+        args = record.args
+        if isinstance(args, tuple):
+            record.args = tuple(
+                self._scrub(item) if isinstance(item, str) else item for item in args
+            )
+        elif isinstance(args, dict):
+            record.args = {
+                key: self._scrub(item) if isinstance(item, str) else item
+                for key, item in args.items()
+            }
+        if isinstance(record.msg, str):
+            record.msg = self._scrub(record.msg)
+        # A filter that drops records would lose the access log entirely.
+        return True
+
+
+def _install_access_log_filter() -> None:
+    """Attach `_StripQueryCredentials` to `uvicorn.access`, exactly once.
+
+    Idempotent by CLASS rather than by identity: this suite builds hundreds of
+    apps in one process, and a filter added per app would run the same
+    substitution hundreds of times over every request line.
+    """
+
+    access_log = logging.getLogger("uvicorn.access")
+    if any(isinstance(item, _StripQueryCredentials) for item in access_log.filters):
+        return
+    access_log.addFilter(_StripQueryCredentials())
+
+
 def create_app(
     *,
     registry: RunRegistry | None = None,
@@ -698,11 +788,14 @@ def create_app(
     _assert_openrouter_startup_safety()
     _assert_auth_startup_safety()
     _assert_credential_vault_startup_safety()
+    _install_access_log_filter()
 
     try:
         from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
         from fastapi import WebSocket, WebSocketDisconnect
+        from fastapi.concurrency import run_in_threadpool
         from fastapi.middleware.cors import CORSMiddleware
+        from fastapi.responses import StreamingResponse
     except ModuleNotFoundError as exc:
         raise ServiceDependencyError(
             "FastAPI is not installed; install the existing project service extra"
@@ -2058,44 +2151,78 @@ def create_app(
         format: str = "ndjson",
         user: AuthenticatedUser | None = Depends(current_user),
     ) -> Response:
+        """Export one run's frames, bounded and off the event loop - audit M13.
+
+        This route used to join EVERY frame of a run into one string inline in
+        an ``async def``, and for ``format=zip`` then DEFLATE it in a
+        ``BytesIO`` there too. ``all_frames`` pages the database, not the
+        2,000-frame ring, so that string is the size of the run's whole durable
+        history; and only ``POST .../runs`` is rate limited, so nothing bounded
+        how often an owner could ask. Both halves held the interpreter lock.
+
+        Now: NDJSON is a ``StreamingResponse`` over a generator, which Starlette
+        iterates in a worker thread, so the paging, the serialising and the
+        socket writes all happen off the loop and no page outlives its
+        ``yield``. The ZIP still has to be one buffer - the format needs its
+        central directory - but it is built in a threadpool, and both are
+        capped at ``MAX_EXPORT_FRAMES``.
+        """
         require_own_run(run_id, user)
         if format not in {"ndjson", "zip"}:
             raise HTTPException(status_code=400, detail="format must be ndjson or zip")
-        frames_content = "".join(
-            json.dumps({"type": "frame", "data": frame}, separators=(",", ":"))
-            + "\n"
-            for frame in registry.all_frames(run_id)
-        ).encode("utf-8")
+
+        def frame_lines() -> Iterator[bytes]:
+            for frame in registry.iter_frames(run_id, limit=MAX_EXPORT_FRAMES):
+                yield (
+                    json.dumps({"type": "frame", "data": frame}, separators=(",", ":"))
+                    + "\n"
+                ).encode("utf-8")
+
         if format == "zip":
-            status = RunStatusResponse.model_validate(
-                registry.status_payload(run_id)
-            ).model_dump(mode="json")
-            archive_buffer = BytesIO()
-            with zipfile.ZipFile(
-                archive_buffer,
-                mode="w",
-                compression=zipfile.ZIP_DEFLATED,
-            ) as archive:
-                archive.writestr("frames.ndjson", frames_content)
-                archive.writestr(
-                    "run.json",
-                    json.dumps(status, ensure_ascii=False, indent=2).encode("utf-8"),
-                )
-                archive.writestr(
-                    "node-metrics.json",
-                    json.dumps(
-                        status["node_usage"], ensure_ascii=False, indent=2
-                    ).encode("utf-8"),
-                )
+
+            def build_archive() -> bytes:
+                status = RunStatusResponse.model_validate(
+                    registry.status_payload(run_id)
+                ).model_dump(mode="json")
+                frames_content = b"".join(frame_lines())
+                # The export's own count, which is what tells a reader whether
+                # the cap bit. `status["frames"]` is the run's, and after a
+                # truncation the two disagree on purpose.
+                exported = frames_content.count(b"\n")
+                status.setdefault("frames", {})
+                if isinstance(status.get("frames"), dict):
+                    status["frames"]["exported"] = exported
+                    status["frames"]["truncated"] = exported >= MAX_EXPORT_FRAMES
+                archive_buffer = BytesIO()
+                with zipfile.ZipFile(
+                    archive_buffer,
+                    mode="w",
+                    compression=zipfile.ZIP_DEFLATED,
+                ) as archive:
+                    archive.writestr("frames.ndjson", frames_content)
+                    archive.writestr(
+                        "run.json",
+                        json.dumps(status, ensure_ascii=False, indent=2).encode(
+                            "utf-8"
+                        ),
+                    )
+                    archive.writestr(
+                        "node-metrics.json",
+                        json.dumps(
+                            status["node_usage"], ensure_ascii=False, indent=2
+                        ).encode("utf-8"),
+                    )
+                return archive_buffer.getvalue()
+
             return Response(
-                content=archive_buffer.getvalue(),
+                content=await run_in_threadpool(build_archive),
                 media_type="application/zip",
                 headers={
                     "Content-Disposition": f'attachment; filename="run-{run_id}.zip"'
                 },
             )
-        return Response(
-            content=frames_content,
+        return StreamingResponse(
+            frame_lines(),
             media_type="application/x-ndjson",
             headers={
                 "Content-Disposition": f'attachment; filename="run-{run_id}.ndjson"'

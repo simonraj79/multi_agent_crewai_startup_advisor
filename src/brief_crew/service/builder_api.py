@@ -1964,7 +1964,21 @@ def create_builder_router(
             except Exception as exc:  # the vault's own refusal, by id only
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
         tool = build_custom_tool(spec, credential=credential)
-        return {"envelope": json.loads(tool._run(**dict(arguments or {})))}
+        # SECURITY: `_run` is a synchronous httpx call of up to
+        # CUSTOM_TOOL_MAX_TIMEOUT_SECONDS per READ, made from an `async def`
+        # route - so it used to park the event loop, and every other request
+        # (health checks and live run streams included) waited on a host the
+        # caller chose. httpx's timeout is per READ and has no total deadline,
+        # so a server emitting one byte every 29 s holds the loop until
+        # `max_response_bytes` arrives. Same rule `discover_mcp_server` states
+        # for itself. Imported here, not at module scope: starlette ships with
+        # FastAPI, which is the optional `service` extra, and this module has
+        # to stay importable without it - the reason the fastapi import sits
+        # inside `create_builder_router` rather than at the top of the file.
+        from starlette.concurrency import run_in_threadpool
+
+        envelope = await run_in_threadpool(tool._run, **dict(arguments or {}))
+        return {"envelope": json.loads(envelope)}
 
     def _custom_tool_body(spec: Any) -> dict[str, Any]:
         """The wire shape of one custom tool. The credential travels as an ID."""
@@ -2318,23 +2332,53 @@ def create_builder_router(
         return _attachment(lambda: store.create(owner, body)).detail()
 
     async def _archive_bytes(request: Request) -> bytes:
-        """The zip, whether it arrived multipart or as a raw body.
+        """The zip, whether it arrived multipart or as a raw body, BOUNDED.
 
-        Both, because the plan says multipart and a raw `application/zip` POST
-        is what every command-line client will send; accepting one and refusing
-        the other would be a route that works only from the browser we happened
-        to write.
+        Both shapes, because the plan says multipart and a raw
+        `application/zip` POST is what every command-line client will send;
+        accepting one and refusing the other would be a route that works only
+        from the browser we happened to write.
+
+        SECURITY: the bytes are counted as they ARRIVE. `RequestBodySize
+        LimitMiddleware` reads `Content-Length` and says so in its own
+        docstring, so a `Transfer-Encoding: chunked` POST declares no length
+        and walks past it; `await request.body()` then buffered the whole
+        stream before `read_pack_zip` ever got to measure it, and endless
+        chunks are resident memory in a process the caller does not pay for.
+        `read_pack_zip` still applies the same ceiling to what it is handed -
+        two doors, because this one is about arrival and that one is about
+        content.
         """
+
+        limit = project_config.MAX_SKILL_IMPORT_BYTES
+        too_large = HTTPException(
+            status_code=413,
+            detail=f"a skill archive is at most {limit} bytes",
+        )
 
         content_type = request.headers.get("content-type", "")
         if content_type.startswith("multipart/form-data"):
-            form = await request.form()
-            for value in form.values():
-                read = getattr(value, "read", None)
-                if read is not None:
-                    return await read()
+            # `max_part_size` is starlette's own bound on one part, so the
+            # multipart half is refused while it is still being parsed rather
+            # than after the whole part is in memory.
+            async with request.form(max_part_size=limit, max_files=1) as form:
+                for value in form.values():
+                    read = getattr(value, "read", None)
+                    if read is not None:
+                        raw = await read()
+                        if len(raw) > limit:
+                            raise too_large
+                        return raw
             raise HTTPException(status_code=422, detail="attach the zip as a file")
-        return await request.body()
+
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise too_large
+            chunks.append(chunk)
+        return b"".join(chunks)
 
     async def _json_body(request: Request) -> Mapping[str, Any]:
         try:
@@ -2472,12 +2516,20 @@ def _import_envelope(raw: bytes) -> "BuilderImportRequest":
         )
     try:
         payload = json.loads(raw)
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         # `JSONDecodeError.msg` is the decoder's own phrase ("Expecting value")
         # and the position; neither quotes the file.
+        #
+        # `RecursionError` is caught beside it, and it is not a theoretical
+        # branch: `json.loads` recurses once per nesting level, so 200 KB of
+        # `[` exhausts the C stack and used to leave this route answering 500
+        # over a file the author could have been told about in one sentence
+        # (audit L2). It is a malformed file like any other.
         where = (
             f" ({exc.msg} at line {exc.lineno} column {exc.colno})"
             if isinstance(exc, json.JSONDecodeError)
+            else " (it nests too deeply)"
+            if isinstance(exc, RecursionError)
             else ""
         )
         raise HTTPException(

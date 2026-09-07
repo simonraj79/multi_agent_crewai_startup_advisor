@@ -1596,6 +1596,32 @@ def user_spend_cap_usd(user_id: str | None, email: str | None = None) -> float |
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
 
 # --------------------------------------------------------------------------
+# The most frames one log export will read, serialise and return.
+#
+# SECURITY (audit M13). `GET /api/runs/{id}/logs` used to join EVERY frame of a
+# run into one string on the event loop, and for `format=zip` then DEFLATE it
+# in a BytesIO there too. `all_frames` pages the DATABASE, not the 2,000-frame
+# in-memory ring, so the size of that string is the size of the run's whole
+# durable history - and the endpoint carries no rate limit of its own, because
+# only `POST .../runs` is limited. One caller could therefore hold the
+# interpreter lock for as long as the largest run they own takes to compress.
+#
+# A CONSTANT, not an environment knob, and that is the same call `config.py`
+# already makes for `MAX_REQUEST_BODY_BYTES` and `MAX_RUN_INPUT_CHARS`: it is a
+# safety bound on the shape of a response, not a deployment preference, and a
+# knob is a thing an operator can raise back to the defect.
+#
+# 50,000 is a margin, not a guess. The in-memory ring is 2,000
+# (`events/buffer.py::DEFAULT_RING_CAPACITY`); the largest real run anyone here
+# has measured wrote 102 frames, and the observability programme's paired
+# comparison ran to 95 rows. So this is ~25x the ring and ~500x the largest
+# observed run, while still bounding one response at order 50 MB of NDJSON
+# rather than at whatever the database holds. An export that reaches it is
+# truncated, never refused: a partial log is worth more to whoever is debugging
+# than a 500, and `frames.truncated` in the ZIP's `run.json` says it happened.
+MAX_EXPORT_FRAMES = 50_000
+
+# --------------------------------------------------------------------------
 # C6's three frame ceilings - .agent/plans/10-runtime.md D6
 #
 # Separate constants rather than one, because each bounds a different thing and
@@ -2631,6 +2657,29 @@ BUILDER_MAX_GATE_MESSAGE_CHARS = 2000
 BUILDER_MAX_AGENT_ITER = 8
 BUILDER_MAX_GUARDRAIL_RETRIES = 2
 
+# The WALL CLOCK on one authored agent, in seconds. Added 2026-09-07 for the
+# security audit's M11, and the reason is a queue rather than a price.
+#
+# Every LIBRARY agent has had one since the day it was written: `agents.yaml`
+# gives the six validator agents 120-300 s and the three brief agents 300-600 s,
+# and CrewAI's own default for `Agent.max_execution_time` is None. An AUTHORED
+# agent carried no value, so `runtime._present` dropped the key and the agent
+# ran without a clock - and RUN_CONCURRENCY defaults to 1, so the single worker
+# thread held by one agent whose model or tool never answers is the whole
+# service: the eight runs MAX_QUEUED_RUNS admits behind it wait for a call that
+# is not coming back. That is a denial of service costing one request.
+#
+# 300 s is the default because it is the modal figure in `agents.yaml` - the
+# value this repository's own tool-using research agents were given after they
+# were watched running - rather than a number chosen here. 900 s is the ceiling
+# because it is three times that: an author who knows their agent is slow can
+# say so, and cannot say "never give up". Neither is an environment knob. A
+# deployment that wants a different wall clock is making a decision about its
+# own queue, and the place that decision belongs is RUN_CONCURRENCY, which is
+# already one.
+BUILDER_DEFAULT_AGENT_SECONDS = 300
+BUILDER_MAX_AGENT_SECONDS = 900
+
 # --------------------------------------------------------------------------
 # What an AUTHORED agent or crew may write - 03-node-library.md D3, FD5.
 #
@@ -3042,6 +3091,12 @@ AUTH_JWKS_TIMEOUT_SECONDS = _env_positive_int("AUTH_JWKS_TIMEOUT_SECONDS", 45)
 # instances are not perfectly synchronised, and a token minted one second in
 # the future must not be rejected as invalid.
 AUTH_JWT_LEEWAY_SECONDS = _env_positive_int("AUTH_JWT_LEEWAY_SECONDS", 60)
+
+# After a JWKS refetch that failed to find the `kid` it was asked for, further
+# unknown kids are refused WITHOUT a fetch for this long. A real rotation is
+# unaffected (its refetch finds the key); a flood of junk-kid tokens costs one
+# outbound request per window instead of one per token.
+AUTH_JWKS_MIN_REFRESH_SECONDS = _env_positive_int("AUTH_JWKS_MIN_REFRESH_SECONDS", 30)
 
 # Ed25519. Declared here AND in frontend/server/auth.ts's `keyPairConfig`,
 # because a verifier that accepts whatever the token's own header claims is a

@@ -131,6 +131,22 @@ class JwksCache:
         self._lock = threading.Lock()
         self._keys: dict[str, Any] = {}
         self._fetched_at = 0.0
+        # SECURITY: a `kid` is attacker-chosen - the header is read before the
+        # signature is checked - and every unknown one used to force a network
+        # round trip UNDER the lock, up to AUTH_JWKS_TIMEOUT_SECONDS against an
+        # auth origin that sleeps. A stranger with junk tokens could therefore
+        # stall every authenticated request. After a refetch that did NOT find
+        # the kid it was asked for, further unknown kids are refused without a
+        # fetch for `min_refresh_seconds`; a real rotation still costs exactly
+        # one refetch, because that refetch finds its kid and resets nothing.
+        #
+        # `None`, not `0.0`, and that is not style: `time.monotonic()` has an
+        # unspecified origin, and on Linux it is the host's uptime - so on a
+        # container that starts within `min_refresh_seconds` of boot, `now -
+        # 0.0` is INSIDE the window and the very first token would be refused
+        # without ever fetching a key at all.
+        self._futile_at: float | None = None
+        self.min_refresh_seconds = config.AUTH_JWKS_MIN_REFRESH_SECONDS
 
     @property
     def url(self) -> str:
@@ -176,9 +192,20 @@ class JwksCache:
             raise AuthError("token header carries no key id")
 
         with self._lock:
-            expired = (time.monotonic() - self._fetched_at) > self._ttl
-            if kid not in self._keys or expired:
+            now = time.monotonic()
+            expired = (now - self._fetched_at) > self._ttl
+            unknown = kid not in self._keys
+            # Keyed on the futile attempt alone, not on freshness: a fetch
+            # that returned no keys leaves the cache permanently "expired".
+            throttled = (
+                unknown
+                and self._futile_at is not None
+                and (now - self._futile_at) < self.min_refresh_seconds
+            )
+            if (unknown or expired) and not throttled:
                 self._refresh()
+                if unknown and kid not in self._keys:
+                    self._futile_at = now
             key = self._keys.get(kid)
 
         if key is None:

@@ -339,5 +339,103 @@ class StartupSafetyTests(unittest.TestCase):
         self.assertIn("Authorization", config.CORS_ALLOW_HEADERS)
 
 
+class AuditH1RehydratedRunOwnershipTests(AuthEnabledCase):
+    """Ownership must survive the memory cache being dropped - audit H1.
+
+    `_records` is a status and replay cache, not the system of record: a
+    terminal run leaves it six hours after it finishes, and on every restart.
+    Rebuilt from the database it used to come back with `user_id=None`, and
+    `require_own_run` reads None as "a pre-auth row, readable by anyone" - so
+    the 404 below was a 200 for any caller holding the run id, and the run id
+    is not a secret (it is in console URLs, log-export filenames and the
+    uvicorn access log).
+    """
+
+    def _finish_run_as(self, token: str) -> str:
+        run_id = self.launch_as(token)
+        registry = self.app.state.run_registry
+        registry.wait(run_id, timeout=5)
+        for _ in range(2):
+            gate = self.client.get(
+                f"/api/runs/{run_id}", headers=self.auth(token)
+            ).json()["pending_gate"]
+            if gate is None:
+                break
+            self.client.post(
+                f"/api/runs/{run_id}/gates/{gate['gate_id']}",
+                json={"outcome": "approve", "fields": {}},
+                headers=self.auth(token),
+            )
+            registry.wait(run_id, timeout=5)
+        return run_id
+
+    def _evict(self, run_id: str) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        registry = self.app.state.run_registry
+        evicted = registry.evict_stale_runs(
+            now=datetime.now(timezone.utc) + timedelta(days=1)
+        )
+        self.assertIn(run_id, evicted, "the run was never dropped from memory")
+
+    def test_h1_a_stranger_still_gets_404_after_the_record_is_evicted(self) -> None:
+        run_id = self._finish_run_as("ada-token")
+        self._evict(run_id)
+
+        response = self.client.get(
+            f"/api/runs/{run_id}", headers=self.auth("grace-token")
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+            "a rehydrated run answered somebody who does not own it",
+        )
+        self.assertNotIn(run_id, response.text)
+
+    def test_h1_an_anonymous_caller_still_gets_401_after_eviction(self) -> None:
+        run_id = self._finish_run_as("ada-token")
+        self._evict(run_id)
+
+        self.assertEqual(self.client.get(f"/api/runs/{run_id}").status_code, 401)
+
+    def test_h1_the_owner_still_reads_their_own_rehydrated_run(self) -> None:
+        """The fix must not lock the owner out of their own history."""
+        run_id = self._finish_run_as("ada-token")
+        self._evict(run_id)
+
+        response = self.client.get(
+            f"/api/runs/{run_id}", headers=self.auth("ada-token")
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["run_id"], run_id)
+
+    def test_h1_every_run_endpoint_refuses_a_stranger_after_eviction(self) -> None:
+        """Read, frames, logs, cancel and the gate reply all key on the same check."""
+        run_id = self._finish_run_as("ada-token")
+        self._evict(run_id)
+
+        for method, path in (
+            ("get", f"/api/runs/{run_id}"),
+            ("get", f"/api/runs/{run_id}/frames"),
+            ("get", f"/api/runs/{run_id}/logs"),
+            ("post", f"/api/runs/{run_id}/cancel"),
+            ("post", f"/api/runs/{run_id}/gates/scope-confirmation"),
+        ):
+            with self.subTest(path=path):
+                call = getattr(self.client, method)
+                response = (
+                    call(path, headers=self.auth("grace-token"))
+                    if method == "get"
+                    else call(
+                        path,
+                        json={"outcome": "approve"},
+                        headers=self.auth("grace-token"),
+                    )
+                )
+                self.assertEqual(response.status_code, 404, path)
+
+
 if __name__ == "__main__":
     unittest.main()

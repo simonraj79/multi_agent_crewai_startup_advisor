@@ -229,18 +229,31 @@ class PublicHostTests(ProbeHostCase):
 class ThroughTheRouteTests(AuthenticatedTwoUserCase):
     """The route reaches the vetting with its defaults, and a literal needs no DNS."""
 
-    def test_a_loopback_dsn_is_refused_over_http_without_dialling_or_resolving(self) -> None:
+    def test_a_stored_dsn_that_now_resolves_to_loopback_is_refused_over_http(self) -> None:
+        """The rebinding shape, which is the only way such a row exists now.
+
+        A loopback LITERAL can no longer be stored at all - audit H2 moved the
+        same vetting to `CredentialStore.create`, so the route answers 422 when
+        it is pasted (`tests/service/test_credentials.py`). What this route must
+        still refuse is the row that was public when it was written and is not
+        when it is dialled, and that is what is built here: created while the
+        name answers a public address, probed while it answers 127.0.0.2.
+        """
+
         ping = RecordingPing()
-
-        def no_dns(host: str) -> list[str]:
-            raise AssertionError(f"DNS was consulted for the literal {host!r}")
-
-        mine = self.create_credential(
-            self.as_alice(), kind="postgres", label="local pg", fields={"dsn": dsn("127.0.0.1")}
-        )["id"]
+        with patch(
+            "brief_crew.service.credentials._default_resolve_host",
+            lambda _host: [PUBLIC_V4],
+        ):
+            mine = self.create_credential(
+                self.as_alice(),
+                kind="postgres",
+                label="local pg",
+                fields={"dsn": dsn("loop.example.test")},
+            )["id"]
         with (
             patch("brief_crew.service.credentials._default_sql_ping", ping),
-            patch("brief_crew.service.credentials._default_resolve_host", no_dns),
+            patch("brief_crew.service.credentials._default_resolve_host", resolve),
         ):
             response = self.client.post(f"{CREDENTIALS}/{mine}/test", headers=self.as_alice())
 
@@ -253,9 +266,12 @@ class ThroughTheRouteTests(AuthenticatedTwoUserCase):
 
     def test_a_public_dsn_reaches_the_dial_over_http(self) -> None:
         ping = RecordingPing()
-        mine = self.create_credential(
-            self.as_alice(), kind="postgres", label="remote pg", fields={"dsn": dsn("db.example.test")}
-        )["id"]
+        with patch("brief_crew.service.credentials._default_resolve_host", resolve):
+            # The create path vets it too since audit H2, so the injected
+            # resolver has to be in place for the POST as well as the probe.
+            mine = self.create_credential(
+                self.as_alice(), kind="postgres", label="remote pg", fields={"dsn": dsn("db.example.test")}
+            )["id"]
         with (
             patch("brief_crew.service.credentials._default_sql_ping", ping),
             patch("brief_crew.service.credentials._default_resolve_host", resolve),

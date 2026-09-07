@@ -15,12 +15,16 @@ No cost: a synthetic app over in-memory SQLite. No network, no model.
 
 from __future__ import annotations
 
+import threading
+import time
 import unittest
 from typing import Any
+from unittest.mock import patch
 
 from brief_crew import config as project_config
+from brief_crew.builder import tools as tools_module
 from brief_crew.builder.tools import catalogue
-from tests.service.identities import AuthenticatedTwoUserCase
+from tests.service.identities import ALICE_TOKEN, AuthenticatedTwoUserCase
 
 try:  # pragma: no cover - the service extra is optional, as elsewhere in tests/
     from fastapi.testclient import TestClient  # noqa: F401
@@ -235,6 +239,122 @@ class CustomToolRouteTests(AuthenticatedTwoUserCase):
             )
         self.assertEqual(response.status_code, 422, response.text)
         self.assertIn("ceiling is 1", response.json()["detail"])
+
+
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class TestRouteOffTheLoopTests(AuthenticatedTwoUserCase):
+    """Audit H5: `POST .../custom/{id}/test` must not park the event loop.
+
+    The route is `async def` and called `tool._run()` synchronously - one
+    blocking httpx call to a host the CALLER chose, with a timeout that is per
+    READ and no total deadline at all, so a server emitting one byte every 29
+    seconds holds the whole process until `max_response_bytes` arrives. Nothing
+    rate-limits the route either. The credential probe two routers over is
+    rate-limited and `discover_mcp_server` is a plain `def` for exactly this
+    reason; this one was neither.
+
+    Both halves are asserted: that the call is handed to the threadpool, and -
+    the property that actually matters - that a second request is served while
+    the first is still sleeping.
+    """
+
+    SLEEP_SECONDS = 1.0
+    #: Well under the sleep, and far above what an in-process GET costs.
+    RESPONSIVE_SECONDS = 0.5
+
+    def _tool_id(self) -> str:
+        created = self.client.post(CUSTOM, json=WEATHER, headers=self.as_alice())
+        self.assertEqual(created.status_code, 201, created.text)
+        return created.json()["id"]
+
+    @staticmethod
+    def _public(_host: str) -> list[str]:
+        """`api.example.test` resolves to nothing; the vetting needs an answer."""
+
+        return ["93.184.216.34"]
+
+    def test_H5_the_blocking_call_is_handed_to_the_threadpool(self) -> None:
+        import starlette.concurrency as concurrency
+
+        real = concurrency.run_in_threadpool
+        handed: list[Any] = []
+
+        async def recording(func: Any, *args: Any, **kwargs: Any) -> Any:
+            handed.append(func)
+            return await real(func, *args, **kwargs)
+
+        tool_id = self._tool_id()
+        with (
+            patch.object(tools_module, "_default_resolver", self._public),
+            patch.object(
+                tools_module,
+                "_default_transport",
+                lambda *_a, **_k: (200, "{}"),
+            ),
+            patch.object(concurrency, "run_in_threadpool", recording),
+        ):
+            response = self.client.post(
+                f"{CUSTOM}/{tool_id}/test", json={"args": {"city": "Lisbon"}},
+                headers=self.as_alice(),
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["envelope"]["status"], "ok")
+        self.assertEqual(len(handed), 1, "the tool call did not go to the threadpool")
+
+    def test_H5_a_second_request_is_served_while_the_test_call_is_still_dialling(self) -> None:
+        """One portal, one loop, two requests - which is the whole question.
+
+        A `TestClient` used as a context manager runs ONE event loop for its
+        lifetime; used per-request it spins a fresh portal each time, and two
+        separate loops could not show this either way.
+        """
+
+        from fastapi.testclient import TestClient
+
+        tool_id = self._tool_id()
+        started = threading.Event()
+
+        def slow_transport(*_args: Any, **_kwargs: Any) -> tuple[int, str]:
+            started.set()
+            time.sleep(self.SLEEP_SECONDS)
+            return 200, "{}"
+
+        with TestClient(self.app) as client:
+            headers = {"Authorization": f"Bearer {ALICE_TOKEN}"}
+            outcome: list[Any] = []
+
+            def call_test_route() -> None:
+                outcome.append(
+                    client.post(
+                        f"{CUSTOM}/{tool_id}/test",
+                        json={"args": {"city": "Lisbon"}},
+                        headers=headers,
+                    )
+                )
+
+            with (
+                patch.object(tools_module, "_default_resolver", self._public),
+                patch.object(tools_module, "_default_transport", slow_transport),
+            ):
+                worker = threading.Thread(target=call_test_route, daemon=True)
+                worker.start()
+                self.assertTrue(started.wait(timeout=10), "the tool call never began")
+
+                began = time.monotonic()
+                catalogue_response = client.get(TOOLS, headers=headers)
+                elapsed = time.monotonic() - began
+
+                worker.join(timeout=30)
+
+        self.assertEqual(catalogue_response.status_code, 200, catalogue_response.text)
+        self.assertLess(
+            elapsed,
+            self.RESPONSIVE_SECONDS,
+            f"the loop was parked: a plain GET took {elapsed:.2f}s while one "
+            f"custom-tool test call slept {self.SLEEP_SECONDS}s",
+        )
+        self.assertEqual(outcome[0].status_code, 200, outcome[0].text)
 
 
 if __name__ == "__main__":

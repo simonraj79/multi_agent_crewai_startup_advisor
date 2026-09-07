@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor, wait as wait_for_futures
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -1675,7 +1676,10 @@ class RunRegistry:
                 spent += run_spent
                 if (
                     record.status not in TERMINAL_STATUSES
-                    and record.ceiling_kind == "account"
+                    # Every capped admission, not only the ones the account
+                    # cap happened to be the tighter of: see create_run.
+                    and record.account_cap_usd is not None
+                    and float(record.max_cost_usd) > 0
                 ):
                     committed += max(0.0, float(record.max_cost_usd) - run_spent)
             for owner, headroom in self._reserved_headroom.values():
@@ -1756,8 +1760,17 @@ class RunRegistry:
                 if max_cost_usd <= 0 or headroom < max_cost_usd:
                     max_cost_usd = headroom
                     ceiling_kind = "account"
-                if ceiling_kind == "account":
-                    self._reserved_headroom[run_id] = (user_id, headroom)
+                # SECURITY: reserve the amount GRANTED, not only the amount
+                # granted when the account was the tighter limit. A run admitted
+                # under the per-run ceiling still spends this account's money,
+                # and with USER_SPEND_CAP_USD raised above MAX_RUN_COST_USD the
+                # old condition recorded no promise at all - so N runs parked
+                # at gates each carried the full per-run ceiling against a cap
+                # that never saw them.
+                self._reserved_headroom[run_id] = (
+                    user_id,
+                    headroom if ceiling_kind == "account" else max_cost_usd,
+                )
             active = self._active_slots()
             if active >= self.max_queued_runs:
                 self._refused_runs += 1
@@ -2850,9 +2863,19 @@ class RunRegistry:
             combined[frame.seq] = frame.to_dict()
         return [combined[seq] for seq in sorted(combined)[:limit]]
 
-    def all_frames(self, run_id: str) -> list[dict[str, Any]]:
-        frames: list[dict[str, Any]] = []
+    def iter_frames(
+        self, run_id: str, *, limit: int | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """Every frame of a run, one page at a time and at most ``limit`` of them.
+
+        A GENERATOR, because the log export used to materialise the whole run
+        before it wrote a byte (audit M13) and `replay_frames` was already
+        paging - so the paging was there and its only consumer threw the
+        benefit away. ``limit`` is applied across pages rather than per page;
+        None means every frame, which is what the in-process callers want.
+        """
         after = 0
+        yielded = 0
         while True:
             page = self.replay_frames(
                 run_id,
@@ -2860,11 +2883,20 @@ class RunRegistry:
                 limit=MAX_REPLAY_LIMIT,
             )
             if not page:
-                return frames
-            frames.extend(page)
+                return
+            for frame in page:
+                if limit is not None and yielded >= limit:
+                    return
+                yield frame
+                yielded += 1
             after = int(page[-1]["seq"])
             if len(page) < MAX_REPLAY_LIMIT:
-                return frames
+                return
+
+    def all_frames(
+        self, run_id: str, *, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        return list(self.iter_frames(run_id, limit=limit))
 
     def wait(self, run_id: str, timeout: float | None = None) -> Any:
         with self._lock:
@@ -3467,6 +3499,9 @@ class RunRegistry:
             workflow_id=str(snapshot["workflow_id"]),
             graph_version=str(snapshot["graph_version"]),
             inputs=dict(snapshot.get("inputs", {})),
+            # The owner comes back with the run, or every ownership check on a
+            # run this process did not create fails open after a restart.
+            user_id=snapshot.get("user_id"),
             node_registry=runtime.node_registry,
             flow_id=str(flow_id) if flow_id else None,
             on_frames=self._enqueue_frames,
@@ -3476,6 +3511,19 @@ class RunRegistry:
             # not the one it was admitted under, and its already-spent total
             # comes back with it in `usage` below - so a run restored mid-flight
             # trips at the same place it would have without the restart.
+            #
+            # FOLLOW-UP (audit H1, deliberately not fixed here): `ceiling_kind`
+            # and `account_cap_usd` are NOT restored either, and unlike the
+            # owner above there is nowhere to restore them from - `runs` has no
+            # column for any of the three, and `create_all()` never alters a
+            # table that already shipped. So a rehydrated run comes back under
+            # the global per-run ceiling with `ceiling_kind="run"`, its promise
+            # is invisible to `account_spend`'s committed figure, and its stop
+            # message reverts to the per-run wording. Recomputing the cap from
+            # config here would be WRONG: `config.user_spend_cap_usd` exempts
+            # by e-mail as well as by id, and the row carries no e-mail, so the
+            # exempt owner would silently be capped after every deploy. Closing
+            # it needs an additive column, which is a schema change.
             stop_reason=_restored_stop_reason(snapshot.get("error")),
             status=RunStatus(str(snapshot["status"])),
             created_at=snapshot["created_at"],

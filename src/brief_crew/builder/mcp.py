@@ -324,6 +324,7 @@ def server_config(
     tool_names: Sequence[str] = (),
     header: Mapping[str, str] | None = None,
     env: Mapping[str, str] | None = None,
+    resolve: HostResolver | None = None,
 ) -> Any:
     """The CrewAI config object for this record - never a string.
 
@@ -342,6 +343,16 @@ def server_config(
         else None
     )
     headers = dict(header) if header else None
+    if record.transport in ("http", "sse"):
+        # SECURITY: re-checked HERE, not only at create/validate. A name that
+        # resolved public when the row was written can resolve private when
+        # the socket is opened (DNS rebinding). `stdio` below was always
+        # re-checked at dial; the remote transports were the half that was not.
+        refusal = transport_refusal(
+            transport=record.transport, url=record.url, resolve=resolve
+        )
+        if refusal is not None:
+            raise McpUnavailable(refusal)
     if record.transport == "http":
         return MCPServerHTTP(
             url=str(record.url),
@@ -471,7 +482,7 @@ def discover(
     if refusal is not None:
         return DiscoveryResult(status="error", error=refusal, discovered_at=clock())
     try:
-        config = server_config(record, header=header, env=env)
+        config = server_config(record, header=header, env=env, resolve=resolve)
         raw = list((resolver or _default_resolver)(config))
     except Exception as exc:  # noqa: BLE001 - every failure is one sentence
         return DiscoveryResult(

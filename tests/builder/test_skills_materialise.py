@@ -232,5 +232,126 @@ class AttachmentTests(TemporaryRootCase):
         self.assertEqual(loaded_skill(self.pack()).frontmatter.name, "my-method")
 
 
+class PackDirectoryTests(TemporaryRootCase):
+    """Audit L2: a pack name reaches the filesystem as one safe segment.
+
+    The name is validated once, by CrewAI's compiled pattern at parse. `re`
+    anchors `$` before a trailing newline, so a name ending in one matched it,
+    and `pack_directory` interpolated the name straight into a path - making a
+    directory whose name ends in a newline, which nothing else in the tree
+    would ever spell the same way twice. `_safe_segment` was already applied to
+    the user id, which is opaque; the name is author input and had less
+    protection than the id.
+    """
+
+    def _pack(self, name: str) -> SkillPack:
+        return SkillPack(
+            id="sk_0123456789ab",
+            name=name,
+            description="A method of mine. Use when testing.",
+            version=1,
+            body=BODY,
+            owner="me",
+            user_id="user_alice",
+        )
+
+    def test_L2_a_name_ending_in_a_newline_makes_no_such_directory(self) -> None:
+        directory = pack_directory(self._pack("ok\n"))
+        self.assertFalse(directory.name.endswith("\n"), repr(directory.name))
+        self.assertEqual(directory.name, "ok_")
+
+    def test_L2_a_name_carrying_a_separator_stays_one_segment(self) -> None:
+        for name in ("../escape", "a/b", "a\\b", "a:b"):
+            with self.subTest(name=name):
+                directory = pack_directory(self._pack(name))
+                self.assertEqual(directory.parent.name, "user_alice")
+                self.assertNotIn("/", directory.name)
+                self.assertNotIn("\\", directory.name)
+                self.assertNotIn("..", directory.name.strip("_"))
+
+    def test_L2_an_ordinary_name_is_unchanged(self) -> None:
+        """The sanitiser must not rename every pack that was always fine."""
+
+        self.assertEqual(pack_directory(self._pack("my-method")).name, "my-method")
+
+    def test_L2_a_filesystem_refusal_is_a_sentence_rather_than_a_500(self) -> None:
+        """`mkdir` is the one step here the author does not control."""
+
+        pack = self._pack("my-method")
+        with patch.object(
+            pathlib.Path, "mkdir", side_effect=OSError(28, "No space left on device")
+        ):
+            with self.assertRaises(SkillError) as caught:
+                materialise(pack)
+        detail = str(caught.exception)
+        self.assertIn("could not be written", detail)
+        self.assertIn("No space left on device", detail)
+
+
+class AliasBombTests(unittest.TestCase):
+    """Audit H3: a 400-byte body must not stall the process for minutes.
+
+    `yaml.safe_load` resolves an alias as a shared REFERENCE, so loading is
+    cheap. The cost arrived when the frontmatter then failed validation and
+    `_first_sentence` called `str()` on the pydantic error to cut its
+    `input_value` tail - rendering materialises the aliased structure, and at
+    eight references per level that walk is exponential. Measured through this
+    same `parse_pack`: 0.10 s at 349 bytes, 0.88 s at 391, about 7.8 s at 433,
+    and `MAX_SKILL_BYTES` is 65,536. The three skill routes are `async def`, so
+    the render ran ON the event loop and every other request - health checks and
+    live run streams included - waited behind it.
+
+    The bound here is deliberately loose. The fix answers in about a
+    millisecond and the bomb took minutes, so two seconds separates them by
+    three orders of magnitude and cannot be tripped by a slow machine.
+    """
+
+    LEVELS = 12
+    BOUND_SECONDS = 2.0
+
+    def _bomb(self, levels: int = LEVELS) -> str:
+        rows = ['a0: &a0 "lol"']
+        for level in range(1, levels + 1):
+            previous = f"*a{level - 1}"
+            rows.append(f"a{level}: &a{level} [{','.join([previous] * 8)}]")
+        aliases = "\n".join(rows)
+        # `description` must be a string; the alias makes it a nested list, so
+        # validation fails and the error carries the expanded value.
+        return f"---\nname: bomb\n{aliases}\ndescription: *a{levels}\n---\nbody\n"
+
+    def test_H3_a_twelve_level_alias_frontmatter_is_refused_in_under_two_seconds(self) -> None:
+        import time
+
+        body = self._bomb()
+        # Small enough that no size limit can be the thing that saves us.
+        self.assertLess(len(body.encode("utf-8")), 1024, "the bomb must stay tiny")
+
+        started = time.monotonic()
+        with self.assertRaises(SkillError) as caught:
+            parse_pack(body)
+        elapsed = time.monotonic() - started
+
+        self.assertLess(
+            elapsed,
+            self.BOUND_SECONDS,
+            f"parse_pack took {elapsed:.2f}s over {len(body)} bytes of aliases",
+        )
+        detail = str(caught.exception)
+        self.assertNotIn("lol", detail, "the expanded value is in the refusal")
+        self.assertLessEqual(len(detail), 200)
+        self.assertEqual(detail.count("\n"), 0, "the refusal is one sentence")
+        self.assertIn("description", detail)
+
+    def test_H3_the_refusal_still_names_the_field_and_the_reason(self) -> None:
+        """The sentence an author gets is unchanged for an ordinary mistake."""
+
+        broken = BODY.replace("description: A method of mine. Use when testing.", "description: []")
+        with self.assertRaises(SkillError) as caught:
+            parse_pack(broken)
+        detail = str(caught.exception)
+        self.assertIn("description", detail)
+        self.assertIn("valid string", detail)
+
+
 if __name__ == "__main__":
     unittest.main()

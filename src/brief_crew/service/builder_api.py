@@ -2332,23 +2332,53 @@ def create_builder_router(
         return _attachment(lambda: store.create(owner, body)).detail()
 
     async def _archive_bytes(request: Request) -> bytes:
-        """The zip, whether it arrived multipart or as a raw body.
+        """The zip, whether it arrived multipart or as a raw body, BOUNDED.
 
-        Both, because the plan says multipart and a raw `application/zip` POST
-        is what every command-line client will send; accepting one and refusing
-        the other would be a route that works only from the browser we happened
-        to write.
+        Both shapes, because the plan says multipart and a raw
+        `application/zip` POST is what every command-line client will send;
+        accepting one and refusing the other would be a route that works only
+        from the browser we happened to write.
+
+        SECURITY: the bytes are counted as they ARRIVE. `RequestBodySize
+        LimitMiddleware` reads `Content-Length` and says so in its own
+        docstring, so a `Transfer-Encoding: chunked` POST declares no length
+        and walks past it; `await request.body()` then buffered the whole
+        stream before `read_pack_zip` ever got to measure it, and endless
+        chunks are resident memory in a process the caller does not pay for.
+        `read_pack_zip` still applies the same ceiling to what it is handed -
+        two doors, because this one is about arrival and that one is about
+        content.
         """
+
+        limit = project_config.MAX_SKILL_IMPORT_BYTES
+        too_large = HTTPException(
+            status_code=413,
+            detail=f"a skill archive is at most {limit} bytes",
+        )
 
         content_type = request.headers.get("content-type", "")
         if content_type.startswith("multipart/form-data"):
-            form = await request.form()
-            for value in form.values():
-                read = getattr(value, "read", None)
-                if read is not None:
-                    return await read()
+            # `max_part_size` is starlette's own bound on one part, so the
+            # multipart half is refused while it is still being parsed rather
+            # than after the whole part is in memory.
+            async with request.form(max_part_size=limit, max_files=1) as form:
+                for value in form.values():
+                    read = getattr(value, "read", None)
+                    if read is not None:
+                        raw = await read()
+                        if len(raw) > limit:
+                            raise too_large
+                        return raw
             raise HTTPException(status_code=422, detail="attach the zip as a file")
-        return await request.body()
+
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise too_large
+            chunks.append(chunk)
+        return b"".join(chunks)
 
     async def _json_body(request: Request) -> Mapping[str, Any]:
         try:

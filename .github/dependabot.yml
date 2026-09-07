@@ -77,5 +77,18 @@ updates:
         dependency-type: production
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Two majors are migrations, not bumps, and were refused on the first scan
+    # (2026-09-08, PRs #19 and #13):
+    #   - `typescript` is pinned with a tilde range on purpose, because
+    #     `vue-tsc` tracks one TypeScript major; TypeScript 7 failed the
+    #     type-check-and-build job outright. Bump it with vue-tsc, by hand.
+    #   - `@types/node` must track the Node the project RUNS on - 24, per
+    #     render.yaml NODE_VERSION and ci.yml node-version - so a major here
+    #     would type APIs the runtime does not have. Minors stay welcome.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"

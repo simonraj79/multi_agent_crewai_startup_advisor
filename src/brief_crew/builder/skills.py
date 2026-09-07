@@ -213,6 +213,25 @@ def _first_sentence(exc: BaseException) -> str:
     `service/credentials_api.py` parses by hand specifically to avoid.
     """
 
+    # SECURITY: never `str()` a pydantic ValidationError over author input.
+    # Rendering it materialises `input_value`, and for frontmatter built out
+    # of YAML aliases (`a1: &a1 [*a0,*a0,...]`, twelve deep) that walk is
+    # exponential: measured 0.1 s at 349 bytes, 0.9 s at 391, 7.8 s at 433,
+    # and MAX_SKILL_BYTES admits far deeper - on the event loop, so one
+    # request stalls the whole process. `errors()` with the input elided
+    # answers in microseconds and yields the same sentence.
+    try:
+        from pydantic import ValidationError
+    except ImportError:  # pragma: no cover - pydantic is a hard dependency
+        ValidationError = ()  # type: ignore[assignment,misc]
+    if isinstance(exc, ValidationError):
+        for error in exc.errors(
+            include_url=False, include_input=False, include_context=False
+        ):
+            field = ".".join(str(part) for part in error.get("loc", ()))
+            message = str(error.get("msg", "is not valid"))
+            return (f"{field}: {message}" if field else message)[:200]
+        return "the frontmatter is not valid"
     lines = [line.rstrip() for line in str(exc).strip().splitlines()]
     for index, line in enumerate(lines):
         stripped = line.strip()

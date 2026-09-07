@@ -232,5 +232,70 @@ class AttachmentTests(TemporaryRootCase):
         self.assertEqual(loaded_skill(self.pack()).frontmatter.name, "my-method")
 
 
+class AliasBombTests(unittest.TestCase):
+    """Audit H3: a 400-byte body must not stall the process for minutes.
+
+    `yaml.safe_load` resolves an alias as a shared REFERENCE, so loading is
+    cheap. The cost arrived when the frontmatter then failed validation and
+    `_first_sentence` called `str()` on the pydantic error to cut its
+    `input_value` tail - rendering materialises the aliased structure, and at
+    eight references per level that walk is exponential. Measured through this
+    same `parse_pack`: 0.10 s at 349 bytes, 0.88 s at 391, about 7.8 s at 433,
+    and `MAX_SKILL_BYTES` is 65,536. The three skill routes are `async def`, so
+    the render ran ON the event loop and every other request - health checks and
+    live run streams included - waited behind it.
+
+    The bound here is deliberately loose. The fix answers in about a
+    millisecond and the bomb took minutes, so two seconds separates them by
+    three orders of magnitude and cannot be tripped by a slow machine.
+    """
+
+    LEVELS = 12
+    BOUND_SECONDS = 2.0
+
+    def _bomb(self, levels: int = LEVELS) -> str:
+        rows = ['a0: &a0 "lol"']
+        for level in range(1, levels + 1):
+            previous = f"*a{level - 1}"
+            rows.append(f"a{level}: &a{level} [{','.join([previous] * 8)}]")
+        aliases = "\n".join(rows)
+        # `description` must be a string; the alias makes it a nested list, so
+        # validation fails and the error carries the expanded value.
+        return f"---\nname: bomb\n{aliases}\ndescription: *a{levels}\n---\nbody\n"
+
+    def test_H3_a_twelve_level_alias_frontmatter_is_refused_in_under_two_seconds(self) -> None:
+        import time
+
+        body = self._bomb()
+        # Small enough that no size limit can be the thing that saves us.
+        self.assertLess(len(body.encode("utf-8")), 1024, "the bomb must stay tiny")
+
+        started = time.monotonic()
+        with self.assertRaises(SkillError) as caught:
+            parse_pack(body)
+        elapsed = time.monotonic() - started
+
+        self.assertLess(
+            elapsed,
+            self.BOUND_SECONDS,
+            f"parse_pack took {elapsed:.2f}s over {len(body)} bytes of aliases",
+        )
+        detail = str(caught.exception)
+        self.assertNotIn("lol", detail, "the expanded value is in the refusal")
+        self.assertLessEqual(len(detail), 200)
+        self.assertEqual(detail.count("\n"), 0, "the refusal is one sentence")
+        self.assertIn("description", detail)
+
+    def test_H3_the_refusal_still_names_the_field_and_the_reason(self) -> None:
+        """The sentence an author gets is unchanged for an ordinary mistake."""
+
+        broken = BODY.replace("description: A method of mine. Use when testing.", "description: []")
+        with self.assertRaises(SkillError) as caught:
+            parse_pack(broken)
+        detail = str(caught.exception)
+        self.assertIn("description", detail)
+        self.assertIn("valid string", detail)
+
+
 if __name__ == "__main__":
     unittest.main()

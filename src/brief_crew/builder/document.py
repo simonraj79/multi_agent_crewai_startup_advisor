@@ -39,6 +39,7 @@ from brief_crew.config import (
     BUILDER_DOCUMENT_SCHEMA,
     BUILDER_ID_PATTERN,
     BUILDER_MAX_AGENT_ITER,
+    BUILDER_MAX_AGENT_SECONDS,
     BUILDER_MAX_GATE_MESSAGE_CHARS,
     BUILDER_MAX_GUARDRAIL_RETRIES,
     BUILDER_MAX_LABEL_CHARS,
@@ -412,7 +413,16 @@ class AuthoredAgentConfig(_BillableConfig):
 
     # --- advanced, all `Agent.*` at 1.15.18 unless marked
     max_rpm: int | None = Field(default=None, ge=1)
-    max_execution_time: int | None = Field(default=None, ge=1)
+    # The one field whose ABSENCE is not the same as its default (audit M11).
+    # `None` here means "the author did not say", and `runtime._authored_agent`
+    # fills in BUILDER_DEFAULT_AGENT_SECONDS before the None-dropping - because
+    # CrewAI's own default is None, which is no wall clock at all, and with
+    # RUN_CONCURRENCY at 1 one agent that never returns holds every queued run.
+    # The ceiling is here rather than in the runtime so an author is told at
+    # save time, on the node, instead of finding out at the first paid run.
+    max_execution_time: int | None = Field(
+        default=None, ge=1, le=BUILDER_MAX_AGENT_SECONDS
+    )
     allow_delegation: bool = False
     # `Agent.memory` is UNIFIED at 1.15.18 (`bool | Memory | MemoryScope |
     # MemorySlice`) and is not three toggles. A document carries the boolean;

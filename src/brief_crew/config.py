@@ -2631,6 +2631,29 @@ BUILDER_MAX_GATE_MESSAGE_CHARS = 2000
 BUILDER_MAX_AGENT_ITER = 8
 BUILDER_MAX_GUARDRAIL_RETRIES = 2
 
+# The WALL CLOCK on one authored agent, in seconds. Added 2026-09-07 for the
+# security audit's M11, and the reason is a queue rather than a price.
+#
+# Every LIBRARY agent has had one since the day it was written: `agents.yaml`
+# gives the six validator agents 120-300 s and the three brief agents 300-600 s,
+# and CrewAI's own default for `Agent.max_execution_time` is None. An AUTHORED
+# agent carried no value, so `runtime._present` dropped the key and the agent
+# ran without a clock - and RUN_CONCURRENCY defaults to 1, so the single worker
+# thread held by one agent whose model or tool never answers is the whole
+# service: the eight runs MAX_QUEUED_RUNS admits behind it wait for a call that
+# is not coming back. That is a denial of service costing one request.
+#
+# 300 s is the default because it is the modal figure in `agents.yaml` - the
+# value this repository's own tool-using research agents were given after they
+# were watched running - rather than a number chosen here. 900 s is the ceiling
+# because it is three times that: an author who knows their agent is slow can
+# say so, and cannot say "never give up". Neither is an environment knob. A
+# deployment that wants a different wall clock is making a decision about its
+# own queue, and the place that decision belongs is RUN_CONCURRENCY, which is
+# already one.
+BUILDER_DEFAULT_AGENT_SECONDS = 300
+BUILDER_MAX_AGENT_SECONDS = 900
+
 # --------------------------------------------------------------------------
 # What an AUTHORED agent or crew may write - 03-node-library.md D3, FD5.
 #

@@ -143,3 +143,19 @@ export const HIERARCHICAL_DELEGATION_DOCUMENT: BuilderDocument = {
   joins: {},
   budget: null,
 }
+
+/**
+ * What the card must say, word for word (R14).
+ *
+ * Both halves are things the picture actively suggests are otherwise. A drawn
+ * team looks like a team that could grow, and it cannot: the three members are
+ * the three `member` edges, fixed when the document is saved. And the manager
+ * looks free, because it has no box of its own; it is inside the crew node,
+ * reasoning once per hand-off, on the dearer model.
+ */
+export const HIERARCHICAL_DELEGATION_CAVEAT =
+  'The roster is fixed when you draw it. This lead chooses the order and the '
+  + 'emphasis over the three specialists it has, and cannot invent a fourth '
+  + 'while it runs. Its own reasoning is billed on every hand-off, inside the '
+  + 'one box the canvas draws, which is why the crew node declares the dearer '
+  + 'tier while its members declare the cheap one.'

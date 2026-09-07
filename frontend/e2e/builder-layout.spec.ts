@@ -318,9 +318,10 @@ test.describe('Flow builder layout', () => {
     // rails are absent first is what makes the width assertion meaningful: a
     // 236px gallery is only possible while a column that holds nothing is
     // still being reserved for it.
-    // NINE: plan 14's seven first-row cards plus the two library-agent
-    // templates in the demoted second row.
-    await expect(gallery(page).locator('.template-card')).toHaveCount(9)
+    // THIRTEEN: plan 16's four new patterns on top of plan 14's nine, and the
+    // demoted second row retired (D2) - every card is now on the shelf its own
+    // `category` names.
+    await expect(gallery(page).locator('.template-card')).toHaveCount(13)
     await expect(page.locator('.builder-palette')).toHaveCount(0)
     await expect(page.locator('.builder-inspector')).toHaveCount(0)
 
@@ -371,24 +372,63 @@ test.describe('Flow builder layout', () => {
     const galleryBox = await gallery(page).boundingBox()
     expect(galleryBox, 'the gallery should have a box').not.toBeNull()
 
+    /*
+     * AMENDED 2026-09-07 (plan 16), and the amendment is a STRONGER claim than
+     * the one it replaces rather than a relaxed one.
+     *
+     * It asserted the first grid held SEVEN cards and that cards 0 and 3 ended
+     * above the fold. The first half is simply a different number now: the
+     * gallery is six sections (D7), so the first grid is the `start` shelf and
+     * holds THREE - there is no index 3 in it.
+     *
+     * The second half is re-aimed. The card gained five copy fields (D4) and
+     * first came out about 660px tall, which put its action 56px below the
+     * fold; the information architecture was then reworked - the blurb left
+     * the gallery card, the job leads, the two decision lines became one
+     * scannable block, and the thumbnail's height was capped - and it is 524px.
+     * MEASURED at 1440x900 with an empty library: the `Use this template`
+     * action ends 16px ABOVE the fold, and the card's own bottom edge clears it
+     * by 3px. So this asserts the ACTION, which is the thing that has to be
+     * reachable without scrolling and has a real 16px margin, rather than the
+     * card's bottom edge, whose 3px is not a margin worth a suite.
+     *
+     * What the assertion was FOR is unchanged: the defect it caught was a
+     * gallery squeezed into a 236px column inside a 0px grid row, which
+     * reported 1356px of cards as scrollHeight and drew a sliver. A gallery
+     * whose first shelf shows three whole cards, action and all, cannot be
+     * that - and the reachability half below is untouched.
+     */
     const firstRow = gallery(page).locator('.template-grid').first()
     const firstRowCards = firstRow.locator('.template-card')
-    await expect(firstRowCards).toHaveCount(7)
-    // The first and fourth card: the ends of the grid's FIRST VISUAL row, which
-    // is four wide at this viewport. Both must be whole and above the fold, and
-    // they stay the right two whether the section holds six cards or seven.
-    for (const index of [0, 3]) {
-      const cardBox = await firstRowCards.nth(index).boundingBox()
+    await expect(firstRowCards).toHaveCount(3)
+
+    const headingBox = await gallery(page).locator('.gallery-section-heading').first().boundingBox()
+    expect(headingBox, 'the first section heading should have a box').not.toBeNull()
+    expect
+      .soft(
+        headingBox!.y + headingBox!.height,
+        'the first section heading is below the fold before anybody has scrolled',
+      )
+      .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height + 1)
+
+    // The ends of the section's first visual row. Three cards at this viewport,
+    // so 0 and 2 - and they stay the right two however wide the section is.
+    for (const index of [0, 2]) {
+      const card = firstRowCards.nth(index)
+      const cardBox = await card.boundingBox()
       expect(cardBox, `template card ${index} should have a box`).not.toBeNull()
       expect
         .soft(cardBox!.height, `template card ${index} collapsed`)
         .toBeGreaterThan(200)
+
+      const actionBox = await card.locator('.template-action').boundingBox()
+      expect(actionBox, `template card ${index} should name its action`).not.toBeNull()
       expect
         .soft(
-          cardBox!.y + cardBox!.height,
-          `template card ${index} is below the fold before anybody has scrolled`,
+          actionBox!.y + actionBox!.height,
+          `template card ${index}'s action is below the fold before anybody has scrolled`,
         )
-        .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height + 1)
+        .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height)
     }
 
     // And the rest is REACHABLE rather than clipped: scrolling the gallery to
@@ -958,7 +998,34 @@ test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)'
     expect(watch.unexpected).toEqual([])
   })
 
-  test('keeps the caveat card within reach of its siblings', async ({ page }) => {
+  /*
+   * AMENDED 2026-09-07 (plan 16 refine round 2), and it REVERSES D-15-27's
+   * three-line cap rather than adjusting it.
+   *
+   * D-15-27 was measured when ONE card of nine carried a caveat: the grid row
+   * is as tall as its tallest card, so that block ran to 177px of a 232px
+   * column and its three neighbours ended their content 206px above their own
+   * bottom edge and read as unfinished. The answer was a 3-line box with an
+   * inner scroller, and this test pinned it - box <= 80px, and `scrollHeight`
+   * greater than the box, which was the proof the whole sentence was still in
+   * the DOM.
+   *
+   * SIX of thirteen carry one now, and a cold reader given only this gallery
+   * found the cap first and hardest: every tan box clipped mid-word behind a
+   * scrollbar they had to discover, and what was hidden inside the fallback
+   * card's was the small print they most needed - that a poor answer is not a
+   * failure, and that `max_retries` under 1 makes the fallback unreachable.
+   * Meanwhile the evenness the cap was buying is now bought by five card
+   * fields that did not exist then: the measured tallest-to-shortest content
+   * ratio is 1.43 with the caveats rendered in full, against the 2.0 below.
+   *
+   * So the two halves swap. The box bound is gone, and in its place is the
+   * claim it used to make impossible: the caveat is NOT clipped -
+   * `scrollHeight` fits inside `clientHeight`, which is R14's "verbatim" with
+   * the one loophole a box can still leave. The ratio guard is unchanged and
+   * is what stops this becoming one tall card beside five short ones again.
+   */
+  test('renders every caveat in full without unbalancing its siblings', async ({ page }) => {
     const watch = watchConsole(page)
     await page.setViewportSize({ width: 1440, height: 900 })
     await stubEmptyLibrary(page)
@@ -969,7 +1036,7 @@ test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)'
     await expect(caveat).toBeVisible()
 
     const measured = await page.evaluate(() => {
-      const block = document.querySelector('.template-caveat') as HTMLElement
+      const blocks = [...document.querySelectorAll('.template-caveat')] as HTMLElement[]
       const cards = [...document.querySelectorAll('.template-card')] as HTMLElement[]
       const contentOf = (card: HTMLElement) => {
         const bottom = Math.max(
@@ -978,21 +1045,29 @@ test.describe('the gallery reads as four cards and one trash (D-15-26, D-15-27)'
         return Math.round(bottom - card.getBoundingClientRect().top)
       }
       return {
-        caveatHeight: Math.round(block.getBoundingClientRect().height),
-        // The whole caveat is still in the DOM; only its box is bounded.
-        caveatScroll: block.scrollHeight,
+        // Every caveat on the page, not the first: six cards carry one, and a
+        // cap that came back on one of them is the defect.
+        caveats: blocks.map((block) => ({
+          height: Math.round(block.getBoundingClientRect().height),
+          scroll: block.scrollHeight,
+        })),
         content: cards.map(contentOf),
       }
     })
 
-    // Three lines plus padding, not nine. The critic measured 177px.
-    expect
-      .soft(measured.caveatHeight, `the caveat box is ${measured.caveatHeight}px`)
-      .toBeLessThanOrEqual(80)
-    // R14: verbatim and complete. The text is longer than its box, which is
-    // what "scroll inside the block" means and what clamping would have lost.
-    expect.soft(measured.caveatScroll).toBeGreaterThan(measured.caveatHeight)
-    // And the row is no longer one tall card beside three short ones.
+    // R14, and the loophole a box can leave in it: the whole sentence is in the
+    // DOM either way, and this is the assertion that it is also on the SCREEN.
+    expect.soft(measured.caveats.length, 'no caveat rendered at all').toBeGreaterThan(0)
+    for (const [index, caveat] of measured.caveats.entries()) {
+      expect
+        .soft(
+          caveat.scroll,
+          `caveat ${index} is clipped: ${caveat.scroll}px of text in a ${caveat.height}px box`,
+        )
+        .toBeLessThanOrEqual(caveat.height + 1)
+    }
+    // And the row is still not one tall card beside five short ones - the guard
+    // D-15-27 was really about, and the half of it that survives unchanged.
     const tallest = Math.max(...measured.content)
     const shortest = Math.min(...measured.content)
     expect

@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import blankFixture from './fixtures/templates/blank.json'
 import conditionalRouterFixture from './fixtures/templates/conditional-router.json'
+import fallbackBarFixture from './fixtures/templates/fallback-bar.json'
 import fanOutJoinFixture from './fixtures/templates/fan-out-join.json'
 import hierarchicalDelegationFixture from './fixtures/templates/hierarchical-delegation.json'
 import ideaValidatorFixture from './fixtures/templates/idea-validator.json'
@@ -9,14 +10,17 @@ import minimalGatedAgentFixture from './fixtures/templates/minimal-gated-agent.j
 import newsToSocialFixture from './fixtures/templates/news-to-social.json'
 import reflectionLoopFixture from './fixtures/templates/reflection-loop.json'
 import sequentialPipelineFixture from './fixtures/templates/sequential-pipeline.json'
+import singleAgentFixture from './fixtures/templates/single-agent.json'
+import tieredRoutingFixture from './fixtures/templates/tiered-routing.json'
+import voteReviewFixture from './fixtures/templates/vote-review.json'
 import rosterFixture from './fixtures/models.json'
 import TemplateGallery from '../src/components/builder/TemplateGallery.vue'
 import {
   ALL_BUILDER_TEMPLATES,
   BUILDER_TEMPLATES,
-  MORE_BUILDER_TEMPLATES,
   documentFromTemplate,
 } from '../src/data/builderTemplates'
+import { TEMPLATE_CATEGORIES } from '../src/data/templateCategories'
 import { resetModels } from '../src/data/models'
 import { roster } from '../src/data/modelRoster'
 import { MODEL_ROLES, resolvedRoles, roleOf } from '../src/data/templates/modelRoles'
@@ -79,16 +83,21 @@ interface TemplateFixture {
   }
 }
 
+/** Every template's recorded server answer, keyed by id, in gallery order. */
 const FIXTURES = {
   blank: blankFixture,
+  'single-agent': singleAgentFixture,
+  'minimal-gated-agent': minimalGatedAgentFixture,
   'sequential-pipeline': sequentialPipelineFixture,
   'news-to-social': newsToSocialFixture,
   'conditional-router': conditionalRouterFixture,
+  'tiered-routing': tieredRoutingFixture,
+  'fan-out-join': fanOutJoinFixture,
+  'vote-review': voteReviewFixture,
   'reflection-loop': reflectionLoopFixture,
+  'fallback-bar': fallbackBarFixture,
   'hierarchical-delegation': hierarchicalDelegationFixture,
   'idea-validator': ideaValidatorFixture,
-  'minimal-gated-agent': minimalGatedAgentFixture,
-  'fan-out-join': fanOutJoinFixture,
 } as unknown as Record<string, TemplateFixture>
 
 /** The regeneration recipe, in the order it has to be run. */
@@ -103,32 +112,56 @@ beforeEach(() => {
   roster.value = rosterFixture as unknown as ModelRoster
 })
 
-describe('the gallery ships seven templates and keeps two more', () => {
-  it('offers them in the order plan 14 D7 declares', () => {
+describe('the gallery ships thirteen templates on six shelves', () => {
+  it('offers them in the order plan 16 D2 declares', () => {
+    // Grouped by the category each one names, in `templateCategories.ts` order,
+    // and restated here rather than derived: a test that read the order from
+    // the file it is checking would ratify any order at all. `blank` first and
+    // `idea-validator` last is plan 14's ordering rule, which D2 keeps.
     expect(BUILDER_TEMPLATES.map((template) => template.id)).toEqual([
+      // start
       'blank',
+      'single-agent',
+      'minimal-gated-agent',
+      // chain
       'sequential-pipeline',
       // Smaller than the pipeline above it and still after it: the ordering
       // rule is conceptual load, not node count, and this one carries an idea
-      // neither neighbour does - a graph with no gate.
+      // neither neighbour does - a workflow with no gate.
       'news-to-social',
+      // route
       'conditional-router',
+      'tiered-routing',
+      // parallel
+      'fan-out-join',
+      'vote-review',
+      // review
       'reflection-loop',
+      'fallback-bar',
+      // team
       'hierarchical-delegation',
       'idea-validator',
     ])
-    expect(BUILDER_TEMPLATES).toHaveLength(7)
+    expect(BUILDER_TEMPLATES).toHaveLength(13)
   })
 
-  it('keeps the two library-agent templates in a second row', () => {
-    // Owner's decision 21: `e2e/builder.spec.ts` drives `minimal-gated-agent`
-    // through the whole authoring journey, so deleting it would turn a template
-    // change into a suite change.
-    expect(MORE_BUILDER_TEMPLATES.map((template) => template.id)).toEqual([
-      'minimal-gated-agent',
-      'fan-out-join',
-    ])
-    expect(ALL_BUILDER_TEMPLATES).toHaveLength(9)
+  it('keeps every template on one shelf, with no demoted second row', () => {
+    /*
+     * REPLACES the test that asserted `MORE_BUILDER_TEMPLATES` was exactly
+     * `['minimal-gated-agent', 'fan-out-join']`.
+     *
+     * D2 retires the demoted row and keeps owner's decision 21's RULE: nothing
+     * is deleted, and `e2e/builder.spec.ts` still drives `minimal-gated-agent`
+     * through the whole authoring journey. What changed is placement - the two
+     * library-agent templates sit on the shelves their own `category` names,
+     * `MORE_BUILDER_TEMPLATES` is gone and `ALL_BUILDER_TEMPLATES` aliases
+     * `BUILDER_TEMPLATES`. Asserting the alias is what stops a second row
+     * growing back unnoticed.
+     */
+    expect(ALL_BUILDER_TEMPLATES).toBe(BUILDER_TEMPLATES)
+    for (const id of ['minimal-gated-agent', 'fan-out-join']) {
+      expect(BUILDER_TEMPLATES.map((template) => template.id), id).toContain(id)
+    }
   })
 
   it('has a fixture for every template and a template for every fixture', () => {
@@ -314,8 +347,15 @@ describe('the gallery card says what the picture cannot', () => {
     // answers 403 rather than running. Asserted VERBATIM because R14's whole
     // point is that a caveat is not summarised on the way to the screen.
     const withCaveat = ALL_BUILDER_TEMPLATES.filter((template) => template.caveat)
+    // Six since plan 16: the two above plus D6's three riders on existing cards
+    // (a fixed roster, a four-branch ceiling, four desks) and `fallback-bar`,
+    // whose fallback fires on transport failure and never on a bad answer.
     expect(withCaveat.map((template) => template.id)).toEqual([
       'news-to-social',
+      'conditional-router',
+      'fan-out-join',
+      'fallback-bar',
+      'hierarchical-delegation',
       'idea-validator',
     ])
     const caveats = wrapper.findAll('.template-caveat')
@@ -325,23 +365,52 @@ describe('the gallery card says what the picture cannot', () => {
     }
   })
 
-  it('puts the two library templates in a demoted second row', async () => {
+  /*
+   * REPLACES the two-grid assertion this test used to carry, and the reason is
+   * that what it proved has been retired rather than that it was wrong.
+   *
+   * It asserted `findAll('.template-grid')` was exactly TWO containers, the
+   * first holding `BUILDER_TEMPLATES.length` cards and the second
+   * `MORE_BUILDER_TEMPLATES.length`, plus an open `<details class="template-more">`
+   * with the count in its summary. It existed to prove the demotion of the two
+   * library-agent templates was real. D2 retires the demotion: there is no
+   * `MORE_BUILDER_TEMPLATES` and no second row, and every card sits on the
+   * shelf its own `category` names.
+   *
+   * So the claim moves rather than disappearing. What has to be true now is
+   * that the sections come from the CONTRACT (`templateCategories.ts`) rather
+   * than from a list kept in the component, in the contract's order, and that
+   * every card is on exactly one of them - which is the same shape of
+   * exhaustiveness the fixture test above uses, and the thing a gallery of
+   * thirteen cards across six shelves can get silently wrong.
+   */
+  it('renders one section per category, holding the cards that name it', async () => {
     const { api } = galleryApi()
     const wrapper = mount(TemplateGallery, { props: { api: api as never } })
     await wrapper.vm.$nextTick()
 
-    const more = wrapper.find('.template-more')
-    expect(more.exists()).toBe(true)
-    // OPEN, and the reason is arithmetic rather than taste: the grid resolves to
-    // four columns, so six cards and eight cards occupy the same two rows.
-    // Shutting it saves no space and hides the card six E2E specs click.
-    expect((more.element as HTMLDetailsElement).open).toBe(true)
-    expect(more.find('summary').text()).toContain(String(MORE_BUILDER_TEMPLATES.length))
-    // The demotion is real: these two are not in the first grid.
-    const rows = wrapper.findAll('.template-grid')
-    expect(rows).toHaveLength(2)
-    expect(rows[0].findAll('.template-card')).toHaveLength(BUILDER_TEMPLATES.length)
-    expect(rows[1].findAll('.template-card')).toHaveLength(MORE_BUILDER_TEMPLATES.length)
+    const sections = wrapper.findAll('.gallery-section')
+    expect(sections).toHaveLength(TEMPLATE_CATEGORIES.length)
+
+    for (const [index, category] of TEMPLATE_CATEGORIES.entries()) {
+      const section = sections[index]
+      expect(section.get('h3').text(), category.id).toBe(category.title)
+      // The question is what makes a two-word heading navigable by somebody
+      // who does not know the word for what they want.
+      expect(section.text(), category.id).toContain(category.question)
+      expect(
+        section.findAll('.template-card h4').map((card) => card.text()),
+        category.id,
+      ).toEqual(
+        ALL_BUILDER_TEMPLATES.filter((template) => template.category === category.id).map(
+          (template) => template.title,
+        ),
+      )
+    }
+
+    // Exactly one shelf each: no card duplicated, none dropped, none demoted.
+    expect(wrapper.findAll('.template-card')).toHaveLength(ALL_BUILDER_TEMPLATES.length)
+    expect(wrapper.find('.template-more').exists()).toBe(false)
   })
 })
 

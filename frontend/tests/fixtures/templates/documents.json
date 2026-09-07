@@ -8,17 +8,20 @@
   },
   "order": [
     "blank",
+    "single-agent",
+    "minimal-gated-agent",
     "sequential-pipeline",
     "news-to-social",
     "conditional-router",
+    "tiered-routing",
+    "fan-out-join",
+    "vote-review",
     "reflection-loop",
+    "fallback-bar",
     "hierarchical-delegation",
     "idea-validator"
   ],
-  "more": [
-    "minimal-gated-agent",
-    "fan-out-join"
-  ],
+  "more": [],
   "documents": {
     "blank": {
       "schema": "builder.flow/v1",
@@ -61,6 +64,255 @@
           "source": "idea",
           "source_port": "out",
           "target": "result",
+          "target_port": "in"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "single-agent": {
+      "schema": "builder.flow/v1",
+      "name": "Single agent",
+      "version": 1,
+      "input_field": "question",
+      "nodes": [
+        {
+          "id": "question",
+          "kind": "input",
+          "label": "Question",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "question",
+            "label": "What has somebody asked?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the question",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "One agent is about to search and answer this. Approve the question, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "answer",
+          "kind": "agent",
+          "label": "Answer the question",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 6,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "question": "${state.question}"
+            },
+            "role": "Support Agent",
+            "goal": "Answer the question in front of you, and show where the answer came from.",
+            "backstory": "You staff a help desk for a technical product. You would rather look something up than remember it, you say plainly when the search found nothing useful, and you have never once invented a version number.",
+            "task": {
+              "description": "Answer the question below for the person who asked it.\n\nSearch for what practitioners have said about it. Read what comes back. If the first search was too narrow or returned nothing on point, search again with different words before you answer.\n\nThen write the reply: the answer first, in two or three sentences, and under it the pages you used, one URL per line. Cite only URLs the search returned to you. If nothing useful came back, say that in one line and answer from the question alone rather than filling the gap.\n\nQUESTION:\n{question}",
+              "expected_output": "A short answer in plain sentences, then a line reading \"Sources\" with one URL per line under it. Every URL is one the search returned. No preamble and no note about how you searched.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "search",
+          "kind": "tool",
+          "label": "Search the discussion",
+          "position": {
+            "x": 40,
+            "y": 320
+          },
+          "config": {
+            "tool_id": "analyze_community_sentiment",
+            "params": {}
+          }
+        },
+        {
+          "id": "reply",
+          "kind": "output",
+          "label": "Reply",
+          "position": {
+            "x": 340,
+            "y": 480
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "question",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "answer",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "answer",
+          "source_port": "out",
+          "target": "reply",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "search",
+          "source_port": "attach",
+          "target": "answer",
+          "target_port": "attach"
+        }
+      ],
+      "joins": {},
+      "budget": null
+    },
+    "minimal-gated-agent": {
+      "schema": "builder.flow/v1",
+      "name": "Minimal gated agent",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "Request",
+          "position": {
+            "x": 300,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "What should this run work from?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the request",
+          "position": {
+            "x": 300,
+            "y": 180
+          },
+          "config": {
+            "message": "Check the request before this run spends anything. Approve it, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "label": "Draft",
+          "position": {
+            "x": 300,
+            "y": 360
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "scoper",
+            "tools": [],
+            "prompt_inputs": {
+              "idea": "${state.idea}",
+              "human_override": "${state.out__confirm}"
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "Result",
+          "position": {
+            "x": 300,
+            "y": 540
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__draft}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "draft",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "draft",
+          "source_port": "out",
+          "target": "report",
           "target_port": "in"
         }
       ],
@@ -971,6 +1223,1227 @@
       },
       "budget": null
     },
+    "tiered-routing": {
+      "schema": "builder.flow/v1",
+      "name": "Tiered routing",
+      "version": 1,
+      "input_field": "ticket",
+      "nodes": [
+        {
+          "id": "ticket",
+          "kind": "input",
+          "label": "Ticket",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "ticket",
+            "label": "Paste the message that arrived.",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the ticket",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "This message is about to be sorted. Most tickets are answered here without a model at all. Approve it, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "triage",
+          "kind": "router",
+          "label": "Tier 1: can we answer this for free?",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "password",
+                "op": "contains",
+                "key": "ticket",
+                "value": "password"
+              },
+              {
+                "label": "tracking",
+                "op": "contains",
+                "key": "ticket",
+                "value": "where is my order"
+              },
+              {
+                "label": "unclear",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "reset_reply",
+          "kind": "transform",
+          "label": "Self-serve: password",
+          "position": {
+            "x": 40,
+            "y": 480
+          },
+          "config": {
+            "op": "format",
+            "args": {
+              "template": "You can reset your own password without waiting for us.\n\nOpen the sign-in page, choose \"Forgot password\", and enter the address you signed up with. The link we send is good for one hour. If it does not arrive, check the spam folder before writing back.\n\nYou asked:\n{ticket}",
+              "ticket": "${state.ticket}"
+            }
+          }
+        },
+        {
+          "id": "tracking_reply",
+          "kind": "transform",
+          "label": "Self-serve: order status",
+          "position": {
+            "x": 240,
+            "y": 480
+          },
+          "config": {
+            "op": "format",
+            "args": {
+              "template": "Every order has a live tracking page and it is quicker than we are.\n\nOpen Orders in your account and choose the order you are asking about. The page shows the carrier, the tracking number and the last scan. Orders placed after 4pm ship the following working day.\n\nYou asked:\n{ticket}",
+              "ticket": "${state.ticket}"
+            }
+          }
+        },
+        {
+          "id": "classify",
+          "kind": "agent",
+          "label": "Tier 2: how hard is this?",
+          "position": {
+            "x": 620,
+            "y": 480
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "ticket": "${state.ticket}"
+            },
+            "role": "Triage",
+            "goal": "Say in one word how much thinking this ticket needs, and never more than that.",
+            "backstory": "You sort the mail nobody could sort with a list of phrases. You read for the ask rather than the tone, you are paid to be quick rather than right about the answer, and you would rather send a borderline ticket up than guess at it yourself.",
+            "task": {
+              "description": "Read the ticket below and say how hard it is.\n\nAnswer `complex` when it needs judgement: several things going wrong at once, an account history to reconstruct, a policy question, or anything where a wrong answer costs money. Answer `ordinary` for everything else, which is most of it.\n\nTICKET:\n{ticket}",
+              "expected_output": "An object with one key, `difficulty`, whose value is complex or ordinary.",
+              "output_schema": {
+                "difficulty": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "graded",
+          "kind": "transform",
+          "label": "Difficulty",
+          "position": {
+            "x": 620,
+            "y": 640
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__classify}",
+              "key": "difficulty"
+            }
+          }
+        },
+        {
+          "id": "depth",
+          "kind": "router",
+          "label": "Tier 3: which model answers?",
+          "position": {
+            "x": 620,
+            "y": 800
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "deep",
+                "op": "eq",
+                "key": "out__graded",
+                "value": "complex"
+              },
+              {
+                "label": "ordinary",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "specialist",
+          "kind": "agent",
+          "label": "Specialist",
+          "position": {
+            "x": 480,
+            "y": 960
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "ticket": "${state.ticket}"
+            },
+            "role": "Senior Support Specialist",
+            "goal": "Untangle the hard ones completely, so nobody has to write in again.",
+            "backstory": "You take what the desk could not. You reconstruct what happened from what the customer half remembers, you say what you are going to do before you do it, and you name the one thing you still need when you cannot finish.",
+            "task": {
+              "description": "Answer this ticket. It has been marked as needing judgement, so take the time.\n\nSay what you think happened, what you are doing about it, and what happens next. If you need one more fact to finish, ask for exactly that one thing.\n\nTICKET:\n{ticket}",
+              "expected_output": "A reply the customer can read as-is: what happened, what has been done, what happens next, and at most one question.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.8-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "standard",
+          "kind": "agent",
+          "label": "Support desk",
+          "position": {
+            "x": 800,
+            "y": 960
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "ticket": "${state.ticket}"
+            },
+            "role": "Support Agent",
+            "goal": "Answer an ordinary ticket properly the first time.",
+            "backstory": "You clear the queue. You answer what was asked, in the order it was asked, and you do not pad a short answer to look thorough.",
+            "task": {
+              "description": "Answer this ticket.\n\nAnswer what was asked and say what happens next. Keep it short.\n\nTICKET:\n{ticket}",
+              "expected_output": "A short reply the customer can read as-is, with a clear next step.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "gather",
+          "kind": "transform",
+          "label": "Whichever tier answered",
+          "position": {
+            "x": 340,
+            "y": 1120
+          },
+          "config": {
+            "op": "join_text",
+            "args": {
+              "password": "${state.out__reset_reply}",
+              "tracking": "${state.out__tracking_reply}",
+              "deep": "${state.out__specialist}",
+              "ordinary": "${state.out__standard}"
+            }
+          }
+        },
+        {
+          "id": "reply",
+          "kind": "output",
+          "label": "Reply",
+          "position": {
+            "x": 340,
+            "y": 1280
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "ticket",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "triage",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "triage",
+          "source_port": "password",
+          "target": "reset_reply",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "triage",
+          "source_port": "tracking",
+          "target": "tracking_reply",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "triage",
+          "source_port": "unclear",
+          "target": "classify",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "classify",
+          "source_port": "out",
+          "target": "graded",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "graded",
+          "source_port": "out",
+          "target": "depth",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "depth",
+          "source_port": "deep",
+          "target": "specialist",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "depth",
+          "source_port": "ordinary",
+          "target": "standard",
+          "target_port": "in"
+        },
+        {
+          "id": "e10",
+          "source": "reset_reply",
+          "source_port": "out",
+          "target": "gather",
+          "target_port": "in"
+        },
+        {
+          "id": "e11",
+          "source": "tracking_reply",
+          "source_port": "out",
+          "target": "gather",
+          "target_port": "in"
+        },
+        {
+          "id": "e12",
+          "source": "specialist",
+          "source_port": "out",
+          "target": "gather",
+          "target_port": "in"
+        },
+        {
+          "id": "e13",
+          "source": "standard",
+          "source_port": "out",
+          "target": "gather",
+          "target_port": "in"
+        },
+        {
+          "id": "e14",
+          "source": "gather",
+          "source_port": "out",
+          "target": "reply",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "gather": "any"
+      },
+      "budget": null
+    },
+    "fan-out-join": {
+      "schema": "builder.flow/v1",
+      "name": "Fan out and join",
+      "version": 1,
+      "input_field": "idea",
+      "nodes": [
+        {
+          "id": "idea",
+          "kind": "input",
+          "label": "Request",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "idea",
+            "label": "What should the three branches research?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the request",
+          "position": {
+            "x": 340,
+            "y": 180
+          },
+          "config": {
+            "message": "Three research branches are about to run in parallel. Approve the request, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "brief",
+          "kind": "transform",
+          "label": "Shared brief",
+          "position": {
+            "x": 340,
+            "y": 360
+          },
+          "config": {
+            "op": "default",
+            "args": {
+              "value": "${state.out__confirm}",
+              "default": "${state.idea}"
+            }
+          }
+        },
+        {
+          "id": "market",
+          "kind": "agent",
+          "label": "Market",
+          "position": {
+            "x": 60,
+            "y": 540
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "market_analyst",
+            "tools": [
+              "research_market_landscape"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "market_query": "${state.out__brief}",
+              "cached_evidence_block": ""
+            }
+          }
+        },
+        {
+          "id": "signal",
+          "kind": "agent",
+          "label": "Signal",
+          "position": {
+            "x": 340,
+            "y": 540
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "sentiment_analyst",
+            "tools": [
+              "analyze_community_sentiment"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "community_queries_block": "${state.out__brief}"
+            }
+          }
+        },
+        {
+          "id": "build",
+          "kind": "agent",
+          "label": "Build",
+          "position": {
+            "x": 620,
+            "y": 540
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "feasibility_analyst",
+            "tools": [
+              "assess_technical_feasibility"
+            ],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "tech_queries_block": "${state.out__brief}",
+              "cached_evidence_block": ""
+            }
+          }
+        },
+        {
+          "id": "score",
+          "kind": "agent",
+          "label": "Score the evidence",
+          "position": {
+            "x": 340,
+            "y": 720
+          },
+          "config": {
+            "tier": "escalation",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "agent_id": "synthesist",
+            "tools": [],
+            "prompt_inputs": {
+              "scoped_idea_json": "${state.out__brief}",
+              "market_findings_json": "${state.out__market}",
+              "sentiment_findings_json": "${state.out__signal}",
+              "feasibility_findings_json": "${state.out__build}",
+              "human_override": ""
+            }
+          }
+        },
+        {
+          "id": "report",
+          "kind": "output",
+          "label": "Result",
+          "position": {
+            "x": 340,
+            "y": 900
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__score}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "idea",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "brief",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "brief",
+          "source_port": "out",
+          "target": "market",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "brief",
+          "source_port": "out",
+          "target": "signal",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "brief",
+          "source_port": "out",
+          "target": "build",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "market",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "signal",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "build",
+          "source_port": "out",
+          "target": "score",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "score",
+          "source_port": "out",
+          "target": "report",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "score": "all"
+      },
+      "budget": null
+    },
+    "vote-review": {
+      "schema": "builder.flow/v1",
+      "name": "Vote before it ships",
+      "version": 1,
+      "input_field": "draft",
+      "nodes": [
+        {
+          "id": "draft",
+          "kind": "input",
+          "label": "Draft",
+          "position": {
+            "x": 380,
+            "y": 0
+          },
+          "config": {
+            "field": "draft",
+            "label": "What are you about to publish?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the draft",
+          "position": {
+            "x": 380,
+            "y": 160
+          },
+          "config": {
+            "message": "Three reviewers are about to read this at the same time. Approve the draft, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "accuracy",
+          "kind": "agent",
+          "label": "Accuracy",
+          "position": {
+            "x": 80,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "draft": "${state.draft}"
+            },
+            "role": "Fact Checker",
+            "goal": "Find the claims that are not true, and let the rest alone.",
+            "backstory": "You check announcements against what actually shipped. You care about numbers, dates and names, you have no view on the writing, and you would rather flag one real error than five things you would have phrased differently.",
+            "task": {
+              "description": "Review the draft below for accuracy ONLY. Ignore tone and ignore policy; two colleagues are reading for those.\n\nREJECT if any claim is wrong, unverifiable as written, or more confident than the evidence supports. APPROVE otherwise.\n\nDRAFT:\n{draft}",
+              "expected_output": "An object with two keys: `verdict`, which is exactly APPROVE or REJECT, and `reason`, one sentence saying why.",
+              "output_schema": {
+                "verdict": "string",
+                "reason": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "tone",
+          "kind": "agent",
+          "label": "Tone",
+          "position": {
+            "x": 380,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "draft": "${state.draft}"
+            },
+            "role": "Brand Editor",
+            "goal": "Say whether this sounds like us, in the voice we actually publish in.",
+            "backstory": "You have read every announcement this company has sent. You know the difference between plain and blunt, and between warm and salesy, and you can name which one a sentence is.",
+            "task": {
+              "description": "Review the draft below for TONE ONLY. Ignore accuracy and ignore policy; two colleagues are reading for those.\n\nREJECT if it oversells, hedges into meaninglessness, or reads as though somebody else wrote it. APPROVE otherwise.\n\nDRAFT:\n{draft}",
+              "expected_output": "An object with two keys: `verdict`, which is exactly APPROVE or REJECT, and `reason`, one sentence saying why.",
+              "output_schema": {
+                "verdict": "string",
+                "reason": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "policy",
+          "kind": "agent",
+          "label": "Policy",
+          "position": {
+            "x": 680,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "draft": "${state.draft}"
+            },
+            "role": "Compliance Reviewer",
+            "goal": "Catch the sentence that will have to be retracted.",
+            "backstory": "You read for what a regulator, a customer lawyer or a competitor would do with a sentence. You are not looking for reasons to say no; you are looking for the one line that commits somebody to something.",
+            "task": {
+              "description": "Review the draft below for POLICY ONLY. Ignore accuracy and ignore tone; two colleagues are reading for those.\n\nREJECT if it names an unannounced customer, promises a date, states a performance figure without a qualifier, or compares us to a named competitor. APPROVE otherwise.\n\nDRAFT:\n{draft}",
+              "expected_output": "An object with two keys: `verdict`, which is exactly APPROVE or REJECT, and `reason`, one sentence saying why.",
+              "output_schema": {
+                "verdict": "string",
+                "reason": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "votes",
+          "kind": "transform",
+          "label": "The three reviews",
+          "position": {
+            "x": 380,
+            "y": 480
+          },
+          "config": {
+            "op": "join_text",
+            "args": {
+              "accuracy": "${state.out__accuracy}",
+              "tone": "${state.out__tone}",
+              "policy": "${state.out__policy}"
+            }
+          }
+        },
+        {
+          "id": "tally",
+          "kind": "agent",
+          "label": "Count the approvals",
+          "position": {
+            "x": 380,
+            "y": 640
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "reviews": "${state.out__votes}"
+            },
+            "role": "Returning Officer",
+            "goal": "Count what the reviewers said, and add nothing to it.",
+            "backstory": "You count. You have no opinion about the draft, you do not reread it, and you never break a tie yourself.",
+            "task": {
+              "description": "Below are three independent reviews, each carrying a `verdict` of APPROVE or REJECT.\n\nCount how many say APPROVE. Do not read the draft, do not weigh the reasons and do not change a verdict. Return the count, and the reasons from every review that said REJECT.\n\nREVIEWS:\n{reviews}",
+              "expected_output": "An object with two keys: `approvals`, a whole number 0 to 3, and `objections`, the REJECT reasons as one string, or an empty string when there were none.",
+              "output_schema": {
+                "approvals": "number",
+                "objections": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "approvals",
+          "kind": "transform",
+          "label": "Approvals",
+          "position": {
+            "x": 180,
+            "y": 800
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__tally}",
+              "key": "approvals"
+            }
+          }
+        },
+        {
+          "id": "objections",
+          "kind": "transform",
+          "label": "Objections",
+          "position": {
+            "x": 580,
+            "y": 800
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__tally}",
+              "key": "objections"
+            }
+          }
+        },
+        {
+          "id": "threshold",
+          "kind": "router",
+          "label": "Two out of three?",
+          "position": {
+            "x": 380,
+            "y": 960
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "ship",
+                "op": "gte",
+                "key": "out__approvals",
+                "value": 2
+              },
+              {
+                "label": "hold",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "approved",
+          "kind": "transform",
+          "label": "Cleared to publish",
+          "position": {
+            "x": 180,
+            "y": 1120
+          },
+          "config": {
+            "op": "format",
+            "args": {
+              "template": "CLEARED TO PUBLISH: {count} of 3 reviewers approved.\n\nAnything still noted:\n{objections}\n\n---\n\n{draft}",
+              "count": "${state.out__approvals}",
+              "objections": "${state.out__objections}",
+              "draft": "${state.draft}"
+            }
+          }
+        },
+        {
+          "id": "blocked",
+          "kind": "transform",
+          "label": "Held",
+          "position": {
+            "x": 580,
+            "y": 1120
+          },
+          "config": {
+            "op": "format",
+            "args": {
+              "template": "HELD: only {count} of 3 reviewers approved.\n\nWhat has to change:\n{objections}\n\n---\n\n{draft}",
+              "count": "${state.out__approvals}",
+              "objections": "${state.out__objections}",
+              "draft": "${state.draft}"
+            }
+          }
+        },
+        {
+          "id": "outcome",
+          "kind": "transform",
+          "label": "Whichever way it went",
+          "position": {
+            "x": 380,
+            "y": 1280
+          },
+          "config": {
+            "op": "join_text",
+            "args": {
+              "approved": "${state.out__approved}",
+              "blocked": "${state.out__blocked}"
+            }
+          }
+        },
+        {
+          "id": "decision",
+          "kind": "output",
+          "label": "Decision",
+          "position": {
+            "x": 380,
+            "y": 1440
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "draft",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "accuracy",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "tone",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "policy",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "accuracy",
+          "source_port": "out",
+          "target": "votes",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "tone",
+          "source_port": "out",
+          "target": "votes",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "policy",
+          "source_port": "out",
+          "target": "votes",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "votes",
+          "source_port": "out",
+          "target": "tally",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "tally",
+          "source_port": "out",
+          "target": "approvals",
+          "target_port": "in"
+        },
+        {
+          "id": "e10",
+          "source": "tally",
+          "source_port": "out",
+          "target": "objections",
+          "target_port": "in"
+        },
+        {
+          "id": "e11",
+          "source": "approvals",
+          "source_port": "out",
+          "target": "threshold",
+          "target_port": "in"
+        },
+        {
+          "id": "e12",
+          "source": "objections",
+          "source_port": "out",
+          "target": "threshold",
+          "target_port": "in"
+        },
+        {
+          "id": "e13",
+          "source": "threshold",
+          "source_port": "ship",
+          "target": "approved",
+          "target_port": "in"
+        },
+        {
+          "id": "e14",
+          "source": "threshold",
+          "source_port": "hold",
+          "target": "blocked",
+          "target_port": "in"
+        },
+        {
+          "id": "e15",
+          "source": "approved",
+          "source_port": "out",
+          "target": "outcome",
+          "target_port": "in"
+        },
+        {
+          "id": "e16",
+          "source": "blocked",
+          "source_port": "out",
+          "target": "outcome",
+          "target_port": "in"
+        },
+        {
+          "id": "e17",
+          "source": "outcome",
+          "source_port": "out",
+          "target": "decision",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "votes": "all",
+        "threshold": "all",
+        "outcome": "any"
+      },
+      "budget": null
+    },
     "reflection-loop": {
       "schema": "builder.flow/v1",
       "name": "Reflection loop",
@@ -1263,6 +2736,302 @@
       ],
       "joins": {
         "judge": "all"
+      },
+      "budget": null
+    },
+    "fallback-bar": {
+      "schema": "builder.flow/v1",
+      "name": "Fallback that clears the bar",
+      "version": 1,
+      "input_field": "enquiry",
+      "nodes": [
+        {
+          "id": "enquiry",
+          "kind": "input",
+          "label": "Enquiry",
+          "position": {
+            "x": 340,
+            "y": 0
+          },
+          "config": {
+            "field": "enquiry",
+            "label": "What has the customer asked?",
+            "max_chars": 2000,
+            "required": true
+          }
+        },
+        {
+          "id": "confirm",
+          "kind": "gate",
+          "label": "Confirm the enquiry",
+          "position": {
+            "x": 340,
+            "y": 160
+          },
+          "config": {
+            "message": "A reply is about to be written and checked, and rewritten if it does not pass. Approve the enquiry, or send it back.",
+            "editable_fields": [],
+            "max_turns": 1,
+            "expiry_seconds": 1800
+          }
+        },
+        {
+          "id": "answer",
+          "kind": "agent",
+          "label": "Write the reply",
+          "position": {
+            "x": 340,
+            "y": 320
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 2,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "enquiry": "${state.enquiry}",
+              "notes": "${state.out__notes}"
+            },
+            "role": "Customer Reply Writer",
+            "goal": "Write the reply that goes out, and rewrite it when the checker says why.",
+            "backstory": "You write the replies a company signs its name to. You answer the question that was asked before anything else, you never promise a date you were not given, and you take a correction without arguing with it.",
+            "task": {
+              "description": "Write the reply to the enquiry below. If NOTES are present, your previous reply did not pass the check: rewrite it so every point in the notes is addressed.\n\nAnswer what was asked, say what happens next, and commit to nothing that is not in the enquiry.\n\nENQUIRY:\n{enquiry}\n\nNOTES:\n{notes}",
+              "expected_output": "The reply itself, ready to send, with a greeting and a sign-off. Nothing about the reply and no notes to the reader.",
+              "output_schema": null,
+              "markdown": true,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "google/gemini-3.5-flash-lite:nitro",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 2,
+              "backoff_seconds": 2,
+              "fallback_model": "google/gemini-3.8-flash"
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "check",
+          "kind": "agent",
+          "label": "Check it against the bar",
+          "position": {
+            "x": 340,
+            "y": 480
+          },
+          "config": {
+            "tier": "cheap",
+            "max_iter": 1,
+            "guardrail_max_retries": 2,
+            "prompt_inputs": {
+              "enquiry": "${state.enquiry}",
+              "reply": "${state.out__answer}"
+            },
+            "role": "Reply Checker",
+            "goal": "Say whether this reply may be sent, and if not, exactly what is wrong.",
+            "backstory": "You are the last read before a reply leaves. You have a written list and you apply it the same way every time, whoever wrote the draft and whatever model wrote it.",
+            "task": {
+              "description": "Check the reply below against every one of these, and do not add a rule of your own:\n\n1. It answers the question that was actually asked.\n2. It promises no date, price or outcome that the enquiry did not already state.\n3. It names no other customer.\n4. It is signed off and ready to send as written.\n\nENQUIRY:\n{enquiry}\n\nREPLY:\n{reply}",
+              "expected_output": "An object with two keys: `cleared`, true only when all four rules pass, and `notes`, one line per failed rule, or an empty string when it cleared.",
+              "output_schema": {
+                "cleared": "boolean",
+                "notes": "string"
+              },
+              "markdown": false,
+              "async_execution": false
+            },
+            "llm": {
+              "model": "qwen/qwen3.7-flash",
+              "temperature": null,
+              "top_p": null,
+              "max_tokens": null,
+              "timeout": null,
+              "response_format": null,
+              "frequency_penalty": null,
+              "presence_penalty": null,
+              "stop": [],
+              "seed": null,
+              "reasoning_effort": null
+            },
+            "max_rpm": null,
+            "max_execution_time": null,
+            "allow_delegation": false,
+            "memory": false,
+            "cache": true,
+            "respect_context_window": true,
+            "retry": {
+              "max_retries": 0,
+              "backoff_seconds": 0,
+              "fallback_model": null
+            },
+            "system_template": null,
+            "prompt_template": null,
+            "response_template": null,
+            "tool_failure_policy": null,
+            "planning": false,
+            "planning_config": null
+          }
+        },
+        {
+          "id": "cleared",
+          "kind": "transform",
+          "label": "Cleared",
+          "position": {
+            "x": 140,
+            "y": 640
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__check}",
+              "key": "cleared"
+            }
+          }
+        },
+        {
+          "id": "notes",
+          "kind": "transform",
+          "label": "Notes",
+          "position": {
+            "x": 540,
+            "y": 640
+          },
+          "config": {
+            "op": "pick",
+            "args": {
+              "source": "${state.out__check}",
+              "key": "notes"
+            }
+          }
+        },
+        {
+          "id": "bar",
+          "kind": "router",
+          "label": "Did it clear the bar?",
+          "position": {
+            "x": 340,
+            "y": 800
+          },
+          "config": {
+            "branches": [
+              {
+                "label": "again",
+                "op": "eq",
+                "key": "out__cleared",
+                "value": false
+              },
+              {
+                "label": "done",
+                "op": "otherwise",
+                "key": null,
+                "value": null
+              }
+            ]
+          }
+        },
+        {
+          "id": "reply",
+          "kind": "output",
+          "label": "Reply",
+          "position": {
+            "x": 340,
+            "y": 960
+          },
+          "config": {
+            "body_key": "markdown_body",
+            "source": "${state.out__answer}"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "enquiry",
+          "source_port": "out",
+          "target": "confirm",
+          "target_port": "in"
+        },
+        {
+          "id": "e2",
+          "source": "confirm",
+          "source_port": "approve",
+          "target": "answer",
+          "target_port": "in"
+        },
+        {
+          "id": "e3",
+          "source": "answer",
+          "source_port": "out",
+          "target": "check",
+          "target_port": "in"
+        },
+        {
+          "id": "e4",
+          "source": "check",
+          "source_port": "out",
+          "target": "cleared",
+          "target_port": "in"
+        },
+        {
+          "id": "e5",
+          "source": "check",
+          "source_port": "out",
+          "target": "notes",
+          "target_port": "in"
+        },
+        {
+          "id": "e6",
+          "source": "cleared",
+          "source_port": "out",
+          "target": "bar",
+          "target_port": "in"
+        },
+        {
+          "id": "e7",
+          "source": "notes",
+          "source_port": "out",
+          "target": "bar",
+          "target_port": "in"
+        },
+        {
+          "id": "e8",
+          "source": "bar",
+          "source_port": "done",
+          "target": "reply",
+          "target_port": "in"
+        },
+        {
+          "id": "e9",
+          "source": "bar",
+          "source_port": "again",
+          "target": "answer",
+          "target_port": "in"
+        }
+      ],
+      "joins": {
+        "bar": "all"
       },
       "budget": null
     },
@@ -2069,394 +3838,216 @@
         "score": "all"
       },
       "budget": null
-    },
-    "minimal-gated-agent": {
-      "schema": "builder.flow/v1",
-      "name": "Minimal gated agent",
-      "version": 1,
-      "input_field": "idea",
-      "nodes": [
-        {
-          "id": "idea",
-          "kind": "input",
-          "label": "Request",
-          "position": {
-            "x": 300,
-            "y": 0
-          },
-          "config": {
-            "field": "idea",
-            "label": "What should this run work from?",
-            "max_chars": 2000,
-            "required": true
-          }
-        },
-        {
-          "id": "confirm",
-          "kind": "gate",
-          "label": "Confirm the request",
-          "position": {
-            "x": 300,
-            "y": 180
-          },
-          "config": {
-            "message": "Check the request before this run spends anything. Approve it, or send it back.",
-            "editable_fields": [],
-            "max_turns": 1,
-            "expiry_seconds": 1800
-          }
-        },
-        {
-          "id": "draft",
-          "kind": "agent",
-          "label": "Draft",
-          "position": {
-            "x": 300,
-            "y": 360
-          },
-          "config": {
-            "tier": "cheap",
-            "max_iter": 2,
-            "guardrail_max_retries": 2,
-            "agent_id": "scoper",
-            "tools": [],
-            "prompt_inputs": {
-              "idea": "${state.idea}",
-              "human_override": "${state.out__confirm}"
-            }
-          }
-        },
-        {
-          "id": "report",
-          "kind": "output",
-          "label": "Result",
-          "position": {
-            "x": 300,
-            "y": 540
-          },
-          "config": {
-            "body_key": "markdown_body",
-            "source": "${state.out__draft}"
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "e1",
-          "source": "idea",
-          "source_port": "out",
-          "target": "confirm",
-          "target_port": "in"
-        },
-        {
-          "id": "e2",
-          "source": "confirm",
-          "source_port": "approve",
-          "target": "draft",
-          "target_port": "in"
-        },
-        {
-          "id": "e3",
-          "source": "draft",
-          "source_port": "out",
-          "target": "report",
-          "target_port": "in"
-        }
-      ],
-      "joins": {},
-      "budget": null
-    },
-    "fan-out-join": {
-      "schema": "builder.flow/v1",
-      "name": "Fan out and join",
-      "version": 1,
-      "input_field": "idea",
-      "nodes": [
-        {
-          "id": "idea",
-          "kind": "input",
-          "label": "Request",
-          "position": {
-            "x": 340,
-            "y": 0
-          },
-          "config": {
-            "field": "idea",
-            "label": "What should the three branches research?",
-            "max_chars": 2000,
-            "required": true
-          }
-        },
-        {
-          "id": "confirm",
-          "kind": "gate",
-          "label": "Confirm the request",
-          "position": {
-            "x": 340,
-            "y": 180
-          },
-          "config": {
-            "message": "Three research branches are about to run in parallel. Approve the request, or send it back.",
-            "editable_fields": [],
-            "max_turns": 1,
-            "expiry_seconds": 1800
-          }
-        },
-        {
-          "id": "brief",
-          "kind": "transform",
-          "label": "Shared brief",
-          "position": {
-            "x": 340,
-            "y": 360
-          },
-          "config": {
-            "op": "default",
-            "args": {
-              "value": "${state.out__confirm}",
-              "default": "${state.idea}"
-            }
-          }
-        },
-        {
-          "id": "market",
-          "kind": "agent",
-          "label": "Market",
-          "position": {
-            "x": 60,
-            "y": 540
-          },
-          "config": {
-            "tier": "cheap",
-            "max_iter": 2,
-            "guardrail_max_retries": 2,
-            "agent_id": "market_analyst",
-            "tools": [
-              "research_market_landscape"
-            ],
-            "prompt_inputs": {
-              "scoped_idea_json": "${state.out__brief}",
-              "market_query": "${state.out__brief}",
-              "cached_evidence_block": ""
-            }
-          }
-        },
-        {
-          "id": "signal",
-          "kind": "agent",
-          "label": "Signal",
-          "position": {
-            "x": 340,
-            "y": 540
-          },
-          "config": {
-            "tier": "cheap",
-            "max_iter": 2,
-            "guardrail_max_retries": 2,
-            "agent_id": "sentiment_analyst",
-            "tools": [
-              "analyze_community_sentiment"
-            ],
-            "prompt_inputs": {
-              "scoped_idea_json": "${state.out__brief}",
-              "community_queries_block": "${state.out__brief}"
-            }
-          }
-        },
-        {
-          "id": "build",
-          "kind": "agent",
-          "label": "Build",
-          "position": {
-            "x": 620,
-            "y": 540
-          },
-          "config": {
-            "tier": "cheap",
-            "max_iter": 2,
-            "guardrail_max_retries": 2,
-            "agent_id": "feasibility_analyst",
-            "tools": [
-              "assess_technical_feasibility"
-            ],
-            "prompt_inputs": {
-              "scoped_idea_json": "${state.out__brief}",
-              "tech_queries_block": "${state.out__brief}",
-              "cached_evidence_block": ""
-            }
-          }
-        },
-        {
-          "id": "score",
-          "kind": "agent",
-          "label": "Score the evidence",
-          "position": {
-            "x": 340,
-            "y": 720
-          },
-          "config": {
-            "tier": "escalation",
-            "max_iter": 2,
-            "guardrail_max_retries": 2,
-            "agent_id": "synthesist",
-            "tools": [],
-            "prompt_inputs": {
-              "scoped_idea_json": "${state.out__brief}",
-              "market_findings_json": "${state.out__market}",
-              "sentiment_findings_json": "${state.out__signal}",
-              "feasibility_findings_json": "${state.out__build}",
-              "human_override": ""
-            }
-          }
-        },
-        {
-          "id": "report",
-          "kind": "output",
-          "label": "Result",
-          "position": {
-            "x": 340,
-            "y": 900
-          },
-          "config": {
-            "body_key": "markdown_body",
-            "source": "${state.out__score}"
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "e1",
-          "source": "idea",
-          "source_port": "out",
-          "target": "confirm",
-          "target_port": "in"
-        },
-        {
-          "id": "e2",
-          "source": "confirm",
-          "source_port": "approve",
-          "target": "brief",
-          "target_port": "in"
-        },
-        {
-          "id": "e3",
-          "source": "brief",
-          "source_port": "out",
-          "target": "market",
-          "target_port": "in"
-        },
-        {
-          "id": "e4",
-          "source": "brief",
-          "source_port": "out",
-          "target": "signal",
-          "target_port": "in"
-        },
-        {
-          "id": "e5",
-          "source": "brief",
-          "source_port": "out",
-          "target": "build",
-          "target_port": "in"
-        },
-        {
-          "id": "e6",
-          "source": "market",
-          "source_port": "out",
-          "target": "score",
-          "target_port": "in"
-        },
-        {
-          "id": "e7",
-          "source": "signal",
-          "source_port": "out",
-          "target": "score",
-          "target_port": "in"
-        },
-        {
-          "id": "e8",
-          "source": "build",
-          "source_port": "out",
-          "target": "score",
-          "target_port": "in"
-        },
-        {
-          "id": "e9",
-          "source": "score",
-          "source_port": "out",
-          "target": "report",
-          "target_port": "in"
-        }
-      ],
-      "joins": {
-        "score": "all"
-      },
-      "budget": null
     }
   },
   "cards": {
     "blank": {
       "title": "Blank canvas",
-      "blurb": "An input and an output, wired and clean. Drag a kind from the palette, or press 1–7.",
+      "blurb": "An input and an output, wired and clean. Drag a kind from the palette, or press 1 to 7.",
+      "category": "start",
+      "pattern": {
+        "name": "Empty canvas",
+        "source": "none",
+        "aka": null
+      },
+      "useCase": "You know what you want to build and would rather draw it than start from somebody else’s. This is the two ends of a run, already connected, with nothing in between.",
+      "useWhen": "You have the shape in your head already, or you are learning what each kind of node does by putting one down.",
+      "notWhen": "You are new here. One of the working examples below is closer to what you want than an empty page is.",
       "teaches": "Where a run begins and where its body comes back, and that both ends already exist.",
       "modifyFirst": "Drop an agent between the two nodes and connect it. Nothing else is needed.",
       "caveat": null
     },
+    "single-agent": {
+      "title": "Single agent",
+      "blurb": "One agent with one search tool answers a question and shows where the answer came from.",
+      "category": "start",
+      "pattern": {
+        "name": "Single agent",
+        "source": "both",
+        "aka": "Single-agent system"
+      },
+      "useCase": "A help desk gets a product question. One agent decides what to search for, reads what comes back, decides whether that was enough, and writes a reply with the pages it used.",
+      "useWhen": "The job is one job and it needs a tool to do it. Start here, and add structure only when one worker has stopped being enough.",
+      "notWhen": "One model call with no tool would do it, or this worker has quietly grown several unrelated responsibilities.",
+      "teaches": "Single agent, the shape to start from: one worker, one tool, and a loop inside one box that no picture can show.",
+      "modifyFirst": "The backstory. It is the whole of what this agent is, and rewriting it in your own voice changes every answer.",
+      "caveat": null
+    },
+    "minimal-gated-agent": {
+      "title": "Minimal gated agent",
+      "blurb": "Input, a human gate, one agent, one result. The smallest workflow anyone can launch.",
+      "category": "start",
+      "pattern": {
+        "name": "Smallest run",
+        "source": "none",
+        "aka": null
+      },
+      "useCase": "You want to prove the plumbing before you build anything on it: that a run starts, pauses for a person, spends once, and hands a body back.",
+      "useWhen": "You are checking that publishing, launching and approving work end to end, or you want the fewest moving parts to change.",
+      "notWhen": "You want something that does a real job. This one is a proof that the machinery runs, not a piece of work.",
+      "teaches": "Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.",
+      "modifyFirst": "The agent's prompt inputs, which are what the scoping task interpolates.",
+      "caveat": null
+    },
     "sequential-pipeline": {
       "title": "Sequential pipeline",
-      "blurb": "Research, analyse, write — three agents in a line with a keyless search attached.",
-      "teaches": "That an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.",
+      "blurb": "Research, analyse, write. Three agents in a line with a keyless search attached.",
+      "category": "chain",
+      "pattern": {
+        "name": "Prompt chaining",
+        "source": "both",
+        "aka": "Sequential"
+      },
+      "useCase": "A content team turns a topic into a briefing. One agent gathers sources, a second says what they mean together, and a third writes the piece the other two fed.",
+      "useWhen": "The work has stages and each one genuinely needs the last one’s result. Splitting it makes every call an easier call.",
+      "notWhen": "The steps do not depend on each other. A line of independent steps is a slower way to do them side by side.",
+      "teaches": "Prompt chaining, in this builder’s own syntax: an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.",
       "modifyFirst": "The writer's expected output. One sentence there changes the whole deliverable.",
       "caveat": null
     },
     "news-to-social": {
       "title": "News to social post",
       "blurb": "Search this week’s discussion of a topic and write the post about it.",
-      "teaches": "That two agents and one tool are a whole product, and that a workflow with no gate runs unattended for whoever is signed in.",
+      "category": "chain",
+      "pattern": {
+        "name": "Prompt chaining",
+        "source": "both",
+        "aka": "Sequential"
+      },
+      "useCase": "A marketer needs today’s post about a subject. One agent finds what has actually been said in the last week, and a second writes the short and long versions with the links in.",
+      "useWhen": "Two steps are enough and the second needs the first. It is the smallest chain that still ships something you would send.",
+      "notWhen": "Somebody has to approve it before it runs. This one carries no gate, so only a signed-in caller may launch it at all.",
+      "teaches": "Prompt chaining at two nodes: two agents and one tool are a whole product, and a workflow with no gate runs unattended for whoever is signed in.",
       "modifyFirst": "The subject. One box, everything downstream changes, nothing else has to.",
       "caveat": "No human gate, so it runs unattended — which means only a signed-in caller may launch it. Hand the link to somebody signed out and the service answers 403; add a gate above the researcher if you need that. The search is Hacker News, which needs no key; swap it for a Firecrawl web search in the inspector once you have added one."
     },
     "conditional-router": {
       "title": "Conditional router",
       "blurb": "Classify a message, send it to one of three desks, and converge again.",
-      "teaches": "That a router is arithmetic rather than a model, and that the cheap tier belongs where the decision is small.",
+      "category": "route",
+      "pattern": {
+        "name": "Routing",
+        "source": "both",
+        "aka": "Coordinator"
+      },
+      "useCase": "A support inbox takes anything. One cheap classifier reads the message, one of three specialists answers it, and whichever one ran is what comes back.",
+      "useWhen": "Requests fall into kinds that want different handling, and the kinds are distinct enough that a classifier can tell them apart.",
+      "notWhen": "Every request wants the same handling. A classifier that always answers the same way is a call you pay for and never use.",
+      "teaches": "Routing, and the two facts behind it: a router is arithmetic rather than a model, and the cheap tier belongs where the decision is small.",
       "modifyFirst": "The classifier's model. Swap it for the escalation one and watch the meter move for one word.",
+      "caveat": "Four desks is the ceiling, and the catch-all is one of the four. The bound that caps a router’s branches is the same one that caps how many edges may leave any node, so a fifth destination needs a second router below the first rather than a wider one."
+    },
+    "tiered-routing": {
+      "title": "Tiered routing",
+      "blurb": "The easy tickets answered with no model at all, and the rest sorted by the cheapest one.",
+      "category": "route",
+      "pattern": {
+        "name": "Tiered routing",
+        "source": "google",
+        "aka": "Routing"
+      },
+      "useCase": "A support team is paying top prices for password resets. A phrase list answers those for nothing, a one word classifier sizes what is left, and only the hard ones reach the model that thinks.",
+      "useWhen": "You have looked at your own traffic and the easy questions dominate it. Checking that distribution is the step before buying a bigger model.",
+      "notWhen": "You have not measured, or the traffic is uniformly hard. Then a classifier is a stage added to every request that removes none.",
+      "teaches": "Tiered routing, drawn in three: a contains match on the raw text costs nothing, a classifier costs one word, and only what survives both reaches the model that thinks. A contains match is a substring test, not a regular expression, and it is case-sensitive.",
+      "modifyFirst": "The two phrases on the rule branches. They are the whole of tier one, and they are the only edit here that saves money.",
+      "caveat": null
+    },
+    "fan-out-join": {
+      "title": "Fan out and join",
+      "blurb": "Three branches run at the same time and one node waits for all of them.",
+      "category": "parallel",
+      "pattern": {
+        "name": "Parallelization",
+        "source": "both",
+        "aka": "Sectioning"
+      },
+      "useCase": "An analyst wants three readings of one idea at once: the market, the sentiment and what it would take to build. One node waits for all three and scores what they found together.",
+      "useWhen": "The pieces of work do not need each other, and you would rather pay for three at once than wait for three in turn.",
+      "notWhen": "One branch needs another branch’s answer, or you have no rule for combining three answers that disagree.",
+      "teaches": "Parallelization by sectioning: one line, joins, decides whether a node waits for its branches or runs on the first one home.",
+      "modifyFirst": "Delete the joins key and watch the score node fire on one branch out of three.",
+      "caveat": "Four branches is the ceiling, and it is the one bound here that was left where it was on purpose: it caps concurrent work rather than spend. The branches also cannot see each other. Each reads what came before the fan out and nothing a sibling produced, because they are running at the same time."
+    },
+    "vote-review": {
+      "title": "Vote before it ships",
+      "blurb": "Three reviewers read the same draft at once, and two have to agree before it ships.",
+      "category": "parallel",
+      "pattern": {
+        "name": "Voting",
+        "source": "anthropic",
+        "aka": "Parallelization"
+      },
+      "useCase": "A team is about to publish an announcement. Three reviewers read it side by side for accuracy, tone and policy, a fourth counts the approvals, and two out of three sends it.",
+      "useWhen": "Several perspectives raise your confidence more than one long check would, and you want a threshold you can move.",
+      "notWhen": "One reviewer is enough, or the reviewers would have to read each other to be useful. That is a chain wearing this shape.",
+      "teaches": "Voting, which is parallelization doing the same job three times: the branches are independent, and a transform cannot count, so the tally is a model call.",
+      "modifyFirst": "The threshold 2. Move it to 3 and only a clean sweep publishes.",
       "caveat": null
     },
     "reflection-loop": {
       "title": "Reflection loop",
       "blurb": "A drafter and a critic go round until the score clears 8, or four drafts in.",
-      "teaches": "That only a router may close a loop, and that output_schema is what turns prose into a number one can compare.",
+      "category": "review",
+      "pattern": {
+        "name": "Evaluator-optimizer",
+        "source": "both",
+        "aka": "Review and critique"
+      },
+      "useCase": "A writer needs a draft that is actually good. One agent writes, another scores it out of ten and says what to fix, and the loop closes when the score is high enough.",
+      "useWhen": "You can write down what good looks like, and a second pass reliably improves the first. Clear criteria are the precondition.",
+      "notWhen": "The first attempt already meets the requirement, the criteria are a matter of taste, or the wait and the cost matter more than the polish.",
+      "teaches": "Evaluator-optimizer, closed properly: only a router may close a loop, and output_schema is what turns prose into a number one can compare.",
       "modifyFirst": "The threshold 8. It is the only thing deciding how long this runs.",
       "caveat": null
+    },
+    "fallback-bar": {
+      "title": "Fallback that clears the bar",
+      "blurb": "A second model takes over when the first is overloaded, and the same checker reads both.",
+      "category": "review",
+      "pattern": {
+        "name": "Same-bar fallback",
+        "source": "google",
+        "aka": null
+      },
+      "useCase": "A reply has to go out today and the usual model is failing under load. The answerer waits, retries, runs its last attempt on another model, and one checker reads whatever came back.",
+      "useWhen": "Somebody will act on the output, you already have a check it must pass, and a plausible wrong answer would be worse than a slow one.",
+      "notWhen": "There is no check to share. Then this is a retry with a second model rather than a bar, and the standard quietly drops when it fires.",
+      "teaches": "Same-bar fallback, made structural: the retry re-runs the same task with one field swapped, so the checker downstream cannot tell which model wrote what it is reading.",
+      "modifyFirst": "max_retries on the answerer. Set it to 0 and the fallback below it stops meaning anything at all.",
+      "caveat": "The fallback fires on a transport failure only: a 429, a timeout, a 5xx. A poor answer is not a failure, so the second model never sees one; the checker and the loop are what catch that. Set max_retries below 1 and the fallback can never be reached, though it will still look configured. And every retry is priced as a whole node run, which is why this card costs what it does."
     },
     "hierarchical-delegation": {
       "title": "Hierarchical delegation",
       "blurb": "A manager and three specialists, inside one crew node.",
-      "teaches": "That a crew node is a real Crew whose members are agents it owns, wired by member edges rather than flow edges.",
+      "category": "team",
+      "pattern": {
+        "name": "Orchestrator-workers",
+        "source": "both",
+        "aka": "Hierarchical task decomposition"
+      },
+      "useCase": "A brief is too broad for one worker. A manager decides who does what and in which order, three specialists do it, and the manager assembles what comes back.",
+      "useWhen": "The job is open ended enough that you cannot write the steps down in advance, and the result is worth paying a lead to reason about every hand-off.",
+      "notWhen": "You already know the sub-tasks and their order. A line or a fan-out does the same work without paying a lead to rediscover it.",
+      "teaches": "Orchestrator-workers, inside one box: a crew node is a real Crew whose members are agents it owns, wired by member edges rather than flow edges.",
       "modifyFirst": "The process. Flip it to sequential and the manager leaves the inspector and the price together.",
-      "caveat": null
+      "caveat": "The roster is fixed when you draw it. This lead chooses the order and the emphasis over the three specialists it has, and cannot invent a fourth while it runs. Its own reasoning is billed on every hand-off, inside the one box the canvas draws, which is why the crew node declares the dearer tier while its members declare the cheap one."
     },
     "idea-validator": {
       "title": "Idea validator",
-      "blurb": "Six agents, two human gates, two revise loops — the evaluator, drawn.",
-      "teaches": "What a real pipeline looks like at full size: six agents, two gates and two revise loops.",
+      "blurb": "Six agents, two human gates, two revise loops. The evaluator, drawn.",
+      "category": "team",
+      "pattern": {
+        "name": "Hybrid architecture",
+        "source": "anthropic",
+        "aka": null
+      },
+      "useCase": "A founder wants an idea checked. It is scoped with a person’s approval, researched three ways at once, scored against a rubric, and written up once a person has agreed the verdict.",
+      "useWhen": "You want to see what a full size pipeline looks like before drawing your own, or you want this one’s shape as a starting point.",
+      "notWhen": "You want its judgement. The scoring that makes the real validator worth reading is in code, not on this canvas.",
+      "teaches": "Hybrid architecture, at full size: a chain, a fan-out, two review loops and two human gates in one document.",
       "modifyFirst": "The scope gate’s editable fields, which are what an operator may change mid-run.",
       "caveat": "This is the evaluator’s shape, not its judgement. The six agents, the two human gates and both revise loops are the real ones — but the rubric, the confidence arithmetic, the guardrails and the warm evidence cache live in Python, and a drawn graph carries plain text between its nodes. Treat what it produces as a draft an analyst wrote, not as a score."
-    },
-    "minimal-gated-agent": {
-      "title": "Minimal gated agent",
-      "blurb": "Input, a human gate, one agent, one result — the smallest workflow anyone can launch.",
-      "teaches": "Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.",
-      "modifyFirst": "The agent's prompt inputs, which are what the scoping task interpolates.",
-      "caveat": null
-    },
-    "fan-out-join": {
-      "title": "Fan out and join",
-      "blurb": "Three branches run in parallel and one node waits for all of them.",
-      "teaches": "That one line — joins — decides whether a node waits for its branches or runs on the first home.",
-      "modifyFirst": "Delete the joins key and watch the score node fire on one branch out of three.",
-      "caveat": null
     }
   }
 }

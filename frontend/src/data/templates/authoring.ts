@@ -224,6 +224,31 @@ export const roleLlm = (role: ModelRole): LlmConfig => ({
 
 const NO_RETRY: RetryConfig = { max_retries: 0, backoff_seconds: 0, fallback_model: null }
 
+/**
+ * A whole-node retry whose LAST attempt may run on a second model.
+ *
+ * `max_retries` is required rather than defaulted, and the reason is the one
+ * trap this shape has: `model_for` offers the fallback only when
+ * `index == attempts - 1 and index`, so a node with `max_retries: 0` and a
+ * `fallback_model` set never reaches the second model at all. It would be inert
+ * and it would LOOK configured, which is worse than not offering the field.
+ * Asking for the count in the same call as the model is the cheapest way to
+ * make an author of a template state both.
+ *
+ * `fallback` is a ROLE like every other model a template names, not a slug -
+ * `resolveModelRoles` walks every string under a node's config, so
+ * `retry.fallback_model` resolves exactly as `llm.model` does.
+ */
+export const retryWithFallback = (
+  maxRetries: number,
+  backoffSeconds: number,
+  fallback: ModelRole | null = null,
+): RetryConfig => ({
+  max_retries: maxRetries,
+  backoff_seconds: backoffSeconds,
+  fallback_model: fallback ? roleToken(fallback) : null,
+})
+
 interface AuthoredAgentSpec {
   readonly id: string
   readonly label: string
@@ -239,6 +264,8 @@ interface AuthoredAgentSpec {
   readonly promptInputs?: Record<string, JsonScalar>
   readonly outputSchema?: Record<string, ScalarType> | null
   readonly markdown?: boolean
+  /** Defaults to no retry at all, which is what eight of the thirteen documents ship. */
+  readonly retry?: RetryConfig
 }
 
 /**
@@ -280,7 +307,7 @@ export function authoredAgent(spec: AuthoredAgentSpec): BuilderNode {
       memory: false,
       cache: true,
       respect_context_window: true,
-      retry: NO_RETRY,
+      retry: spec.retry ?? NO_RETRY,
       system_template: null,
       prompt_template: null,
       response_template: null,

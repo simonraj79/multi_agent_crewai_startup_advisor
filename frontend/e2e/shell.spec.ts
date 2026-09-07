@@ -25,17 +25,39 @@ import { DEFAULT_SYNTHETIC_USER, storageKeyFor } from './syntheticUser'
  * restated with a pointer back, exactly as `isolation.spec.ts` does.
  */
 
-/** Every template `data/builderTemplates.ts` exports, both gallery rows. */
+/**
+ * Every template `data/builderTemplates.ts` exports, in gallery order.
+ *
+ * Nine until plan 16, when four patterns were added and the demoted second row
+ * was retired (D2). Restated here rather than imported for the reason
+ * `e2e/templates.spec.ts` gives about its own list: the e2e directory is its
+ * own TypeScript program, and a list read from the thing under test would pass
+ * over a template that had silently vanished.
+ *
+ * The order is the gallery's six sections, in the order
+ * `data/templateCategories.ts` declares them: start, chain, route, parallel,
+ * review, team.
+ */
 const TEMPLATE_TITLES = [
+  // start
   'Blank canvas',
+  'Single agent',
+  'Minimal gated agent',
+  // chain
   'Sequential pipeline',
   'News to social post',
+  // route
   'Conditional router',
+  'Tiered routing',
+  // parallel
+  'Fan out and join',
+  'Vote before it ships',
+  // review
   'Reflection loop',
+  'Fallback that clears the bar',
+  // team
   'Hierarchical delegation',
   'Idea validator',
-  'Minimal gated agent',
-  'Fan out and join',
 ] as const
 
 const SAVED_GRAPH_NAME = 'A graph the home should list'
@@ -205,7 +227,7 @@ test.describe('the unified shell', () => {
     await clearLibrary(request)
   })
 
-  test('lists the built-in workflow, a saved document and all nine templates', async ({
+  test('lists the built-in workflow, a saved document and every template', async ({
     page,
     request,
   }) => {
@@ -244,10 +266,12 @@ test.describe('the unified shell', () => {
     await expect(page.locator('a.brand-lockup')).toHaveCount(0)
     await expect(page.locator('.brand-lockup h1')).toHaveText('Crew Studio')
 
-    // All nine, both of the gallery's rows flattened into one list - the
-    // gallery collapses two of them, and a list that hides two of nine is not
-    // a list.
-    await expect(page.locator('[data-testid="home-templates"] > li')).toHaveCount(9)
+    // Every template, in ONE FLAT LIST (D8). The gallery sorts the same cards
+    // into six sections; the home deliberately does not, and this direct-child
+    // count is what a section wrapper here would break.
+    await expect(page.locator('[data-testid="home-templates"] > li')).toHaveCount(
+      TEMPLATE_TITLES.length,
+    )
     for (const title of TEMPLATE_TITLES) {
       await expect(page.locator('[data-testid="home-templates"]'), title).toContainText(title)
     }
@@ -775,10 +799,28 @@ test.describe('the unified shell', () => {
     await expect(gallery.locator('.gallery-lede')).toHaveText(
       'Click one to copy it onto the canvas as a new workflow.',
     )
-    // The action on every card, not on one. Nine cards, two rows, and the
-    // second row is inside an open `details` - which is why this counts rather
-    // than checks the first.
+    // The action on every card, not on one. Thirteen cards across six sections
+    // since plan 16 - which is why this counts rather than checks the first.
     await expect(gallery.locator('.template-action')).toHaveCount(TEMPLATE_TITLES.length)
+
+    /*
+     * D7's jump list and D6's foot note, both added by plan 16 and both about
+     * a gallery that has stopped being one flat row.
+     *
+     * The jump is asserted to be BUTTONS: the fragment belongs to the hash
+     * router, so an `href="#gallery-section-route"` would parse as neither
+     * `run` nor `build` and navigate to the home on every press. Pressing one
+     * here proves the hash is untouched, which is the half a unit test cannot
+     * see.
+     */
+    await expect(gallery.locator('.gallery-jump-link')).toHaveCount(6)
+    await expect(gallery.locator('.gallery-jump a')).toHaveCount(0)
+    await gallery.getByTestId('gallery-jump-review').click()
+    await expect.poll(() => new URL(page.url()).hash).toBe('#/build')
+    await expect(gallery.locator('#gallery-section-review')).toBeInViewport()
+
+    await expect(gallery.locator('.gallery-declined li')).toHaveCount(4)
+    await expect(gallery.locator('.gallery-declined')).toContainText('Not in this gallery')
     await expect(gallery.locator('.template-action').first()).toHaveText(/Use this template/)
 
     // The words it replaced, gone from the whole page.

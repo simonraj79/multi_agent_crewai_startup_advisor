@@ -13,13 +13,10 @@ import {
   Unplug,
   Upload,
 } from 'lucide-vue-next'
-import GraphThumbnail from './GraphThumbnail.vue'
-import {
-  ALL_BUILDER_TEMPLATES,
-  BUILDER_TEMPLATES,
-  MORE_BUILDER_TEMPLATES,
-  documentFromTemplate,
-} from '../../data/builderTemplates'
+import TemplateCard from './TemplateCard.vue'
+import { ALL_BUILDER_TEMPLATES, documentFromTemplate } from '../../data/builderTemplates'
+import { TEMPLATE_CATEGORIES } from '../../data/templateCategories'
+import type { TemplateCategoryId } from '../../data/templateCategories'
 import { loadModels } from '../../data/models'
 import { BuilderConflictError, builderApi } from '../../services/builderApi'
 import type { BuilderApiLike } from '../../services/builderApi'
@@ -99,6 +96,40 @@ const emit = defineEmits<{
   import: [file: File]
 }>()
 
+/**
+ * The cards of one section, in gallery order.
+ *
+ * Derived from `category` on the template rather than from a list kept here, so
+ * a card cannot be in two sections or in none, and adding a template is a data
+ * change rather than a change to this file. `ALL_BUILDER_TEMPLATES` is already
+ * in gallery order, so `filter` preserves it and no sort is needed.
+ */
+function cardsIn(id: TemplateCategoryId) {
+  return ALL_BUILDER_TEMPLATES.filter((template) => template.category === id)
+}
+
+/**
+ * Scroll a section into view inside the GALLERY'S OWN scroller.
+ *
+ * NOT an `href="#gallery-section-route"`. The fragment belongs to the hash
+ * router: `workspaceRoute('#gallery-section-route')` matches neither `run` nor
+ * `build` and falls to the HOME (`useWorkspaceRoute.ts`), so an anchor link
+ * would leave the builder every time it was pressed - and a middle-click would
+ * open a new tab on the wrong screen. Buttons in a `<nav>` cannot produce a
+ * wrong URL, are in the tab order with no `tabindex` of their own, and do
+ * exactly what they say.
+ *
+ * Focus moves to the section, so a keyboard reader lands where the scroll went
+ * rather than continuing from the jump list. The section carries
+ * `tabindex="-1"` for that and nothing else.
+ */
+function jumpTo(id: TemplateCategoryId): void {
+  const section = document.getElementById(`gallery-section-${id}`)
+  if (!section) return
+  section.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  section.focus({ preventScroll: true })
+}
+
 /** What the server said one template costs, or why it did not say. */
 interface Priced {
   readonly billable: number
@@ -122,8 +153,6 @@ const deleteInFlight = ref(false)
 /** The 409: a version is still registered, and only Unpublish lifts it. */
 const deleteRefused = ref(false)
 const unpublishing = ref(false)
-
-const money = (value: number) => `$${value.toFixed(2)}`
 
 const filePicker = ref<HTMLInputElement | null>(null)
 
@@ -605,6 +634,13 @@ const orderedLibrary = computed(() =>
           <span class="gallery-kicker">TEMPLATES</span>
           <h2 id="gallery-templates-title">Start from a working example</h2>
           <p class="gallery-lede">Click one to copy it onto the canvas as a new workflow.</p>
+          <!--
+            The one property of the whole shelf, said once (D1): human approval
+            is not a category, because almost every card has it. Its own class
+            rather than a second `.gallery-lede`, because ruling 4 binds that
+            sentence by name and three suites assert there is exactly one of it.
+          -->
+          <p class="gallery-note">Most of these stop and ask a person before they spend anything.</p>
         </div>
         <div class="gallery-heading-aside">
           <p v-if="pricingProblem" class="gallery-notice" role="status">
@@ -635,178 +671,131 @@ const orderedLibrary = computed(() =>
         </div>
       </header>
 
-      <ul class="template-grid">
-        <li v-for="template in BUILDER_TEMPLATES" :key="template.id">
-          <button class="template-card" type="button" @click="emit('start', template)">
-            <GraphThumbnail class="template-spine" :document="template.document" />
-            <h3>{{ template.title }}</h3>
-            <p class="template-blurb">{{ template.blurb }}</p>
+      <!--
+        THE JUMP LIST (D7). Navigation, not a filter, a tag, a folder or a
+        search box - cut-list 13 and R15 both stand, and nothing here hides a
+        card or narrows the list. Six buttons that move the scroller.
 
-            <!--
-              The two sentences a picture cannot carry. `teaches` is why you
-              would open this one; `modifyFirst` is what you do once you have.
-              Both come off the module verbatim.
-            -->
-            <p class="template-teaches">
-              <span class="template-lede">Teaches</span>{{ template.teaches }}
-            </p>
-            <p class="template-teaches">
-              <span class="template-lede">Change first</span>{{ template.modifyFirst }}
-            </p>
-
-            <!--
-              Rendered verbatim (R14). It is the difference between a template
-              and a booby trap, and paraphrasing it on a card is how the
-              difference gets lost.
-            -->
-            <p v-if="template.caveat" class="template-caveat">{{ template.caveat }}</p>
-
-            <dl class="template-facts">
-              <div>
-                <dt>Nodes</dt>
-                <dd>{{ template.document.nodes.length }}</dd>
-              </div>
-              <div>
-                <dt>Edges</dt>
-                <dd>{{ template.document.edges.length }}</dd>
-              </div>
-              <div>
-                <dt>Billable</dt>
-                <dd>
-                  <template v-if="priced.get(template.id)">{{ priced.get(template.id)!.billable }}</template>
-                  <template v-else-if="pricing">…</template>
-                  <template v-else>—</template>
-                </dd>
-              </div>
-              <div>
-                <dt>Est. run</dt>
-                <dd
-                  :title="
-                    priced.get(template.id)
-                      ? `Published prices ${money(priced.get(template.id)!.floorUsd)}; enforced with the nitro margin ${money(priced.get(template.id)!.staticUsd)}.`
-                      : undefined
-                  "
-                >
-                  <!--
-                    BOTH figures, never the enforced one alone. `static_cost_usd`
-                    carries a 1.8x margin on every cheap node, so showing it by
-                    itself reads as an error beside anyone's mental arithmetic -
-                    the same reasoning BudgetMeter states at length.
-                  -->
-                  <template v-if="priced.get(template.id)">
-                    {{ money(priced.get(template.id)!.floorUsd) }}–{{ money(priced.get(template.id)!.staticUsd) }}
-                  </template>
-                  <template v-else-if="pricing">…</template>
-                  <template v-else>—</template>
-                </dd>
-              </div>
-            </dl>
-
-            <!--
-              WHAT THE CLICK DOES, on the card itself (ROUND-2 X2's rule that
-              every card names its action).
-
-              A `<span>`, not a `<button>`: the whole card IS the button, and a
-              button inside a button is invalid HTML that no browser fixes the
-              way you meant. So this is a label ON the affordance rather than a
-              second affordance - it names the action, the card takes the press,
-              and it reads as the last words of the card's accessible name,
-              which is exactly where "Use this template" belongs.
-            -->
-            <span class="template-action">
-              Use this template
-              <ArrowRight :size="13" aria-hidden="true" />
-            </span>
-          </button>
-        </li>
-      </ul>
+        Buttons rather than `href="#..."` anchors because the fragment is the
+        hash router's (see `jumpTo`). The section title is the label and the
+        category's promise is the tooltip, so the same six words do not have to
+        carry both jobs.
+      -->
+      <nav class="gallery-jump" aria-label="Jump to a section of the gallery">
+        <button
+          v-for="category in TEMPLATE_CATEGORIES"
+          :key="category.id"
+          class="gallery-jump-link"
+          type="button"
+          :data-testid="`gallery-jump-${category.id}`"
+          :title="category.promise"
+          @click="jumpTo(category.id)"
+        >{{ category.title }}</button>
+      </nav>
 
       <!--
-        The second row, collapsed. These two are built from LIBRARY agents,
-        whose prompts live in YAML rather than in the document - excellent
-        proofs that the compiler works, and poor teachers, because a new author
-        opening one sees six dropdown choices rather than a team they could have
-        written. Kept rather than deleted because `e2e/builder.spec.ts` drives
-        them (owner's decision 21), and demoted rather than removed because
-        somebody looking for the smallest launchable graph should still find it.
+        ONE SECTION PER CATEGORY, in the order `templateCategories.ts` declares
+        (D1). The order is the progression both sources recommend - one worker,
+        a line, a fork, side by side, a check, a team - and it is read from the
+        contract rather than restated here, so the gallery cannot disagree with
+        the Python test that asserts it.
 
-        OPEN by default, and that is arithmetic rather than a preference. The
-        grid is `repeat(auto-fill, minmax(232px, 1fr))` inside
-        `width: min(1080px, 100%)`, which resolves to four columns - so six
-        cards occupy two rows and eight cards occupy the same two rows.
-        Shutting it saves no vertical space at all, and it would hide the card
-        six E2E specs click, which is "a template change becomes a suite
-        change": the thing owner's decision 21 was made to avoid. The author
-        can still shut it. The demotion is the heading and the position, which
-        is what a demotion is.
+        The heading is a pair: what the shelf is, and the question a person is
+        asking when it is the right shelf. The question is what makes this a
+        gallery somebody can navigate without knowing the word for what they
+        want.
       -->
-      <details class="template-more" open>
-        <summary>
-          More, built from this repository's own agents
-          <span class="template-more-count">{{ MORE_BUILDER_TEMPLATES.length }}</span>
-        </summary>
-        <ul class="template-grid">
-          <li v-for="template in MORE_BUILDER_TEMPLATES" :key="template.id">
-            <button class="template-card" type="button" @click="emit('start', template)">
-              <GraphThumbnail class="template-spine" :document="template.document" />
-              <h3>{{ template.title }}</h3>
-              <p class="template-blurb">{{ template.blurb }}</p>
-              <p class="template-teaches">
-                <span class="template-lede">Teaches</span>{{ template.teaches }}
-              </p>
-              <p class="template-teaches">
-                <span class="template-lede">Change first</span>{{ template.modifyFirst }}
-              </p>
-              <dl class="template-facts">
-                <div>
-                  <dt>Nodes</dt>
-                  <dd>{{ template.document.nodes.length }}</dd>
-                </div>
-                <div>
-                  <dt>Edges</dt>
-                  <dd>{{ template.document.edges.length }}</dd>
-                </div>
-                <div>
-                  <dt>Billable</dt>
-                  <dd>
-                    <template v-if="priced.get(template.id)">{{ priced.get(template.id)!.billable }}</template>
-                    <template v-else-if="pricing">…</template>
-                    <template v-else>—</template>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Est. run</dt>
-                  <dd>
-                    <template v-if="priced.get(template.id)">
-                      {{ money(priced.get(template.id)!.floorUsd) }}–{{ money(priced.get(template.id)!.staticUsd) }}
-                    </template>
-                    <template v-else-if="pricing">…</template>
-                    <template v-else>—</template>
-                  </dd>
-                </div>
-              </dl>
+      <section
+        v-for="category in TEMPLATE_CATEGORIES"
+        :key="category.id"
+        :id="`gallery-section-${category.id}`"
+        class="gallery-section"
+        tabindex="-1"
+        :aria-labelledby="`gallery-section-${category.id}-title`"
+      >
+        <header class="gallery-section-heading">
+          <h3 :id="`gallery-section-${category.id}-title`">{{ category.title }}</h3>
+          <p class="gallery-section-question">{{ category.question }}</p>
+        </header>
 
-              <span class="template-action">
-                Use this template
-                <ArrowRight :size="13" aria-hidden="true" />
-              </span>
-            </button>
+        <ul class="template-grid">
+          <li v-for="template in cardsIn(category.id)" :key="template.id">
+            <TemplateCard
+              :template="template"
+              :price="priced.get(template.id) ?? null"
+              :pricing="pricing"
+              @start="emit('start', $event)"
+            />
           </li>
         </ul>
-      </details>
+      </section>
+
+      <!--
+        DECLINED IN WRITING, NOT OMITTED (D6).
+
+        Four shapes both sources name that this runtime cannot honestly draw. A
+        gallery that simply left them out would read as a gallery that had not
+        heard of them, and the next person would draw one anyway and call a
+        coordinator a swarm. Each sentence says what it is and why it is not
+        here; none of them is a promise.
+      -->
+      <aside class="gallery-declined" aria-labelledby="gallery-declined-title">
+        <h3 id="gallery-declined-title">Not in this gallery</h3>
+        <ul>
+          <li>
+            A swarm, or a team that talks peer to peer. Those connections are
+            decided while it runs, so a drawn one is a coordinator wearing the
+            name.
+          </li>
+          <li>
+            A publish and subscribe inbox. Waiting for the first of several
+            branches cancels the others, so it is a race, not a queue.
+          </li>
+          <li>
+            A lead that invents its own team while it runs. Every roster here is
+            fixed when it is drawn.
+          </li>
+          <li>
+            A workflow other agents can call as a tool server. Nothing here
+            listens for that; agents in these templates consume tool servers,
+            through the inspector.
+          </li>
+        </ul>
+      </aside>
     </section>
   </div>
 </template>
 
 <style scoped>
+/*
+ * CONVERGED ON THE HOME SHELF'S SYSTEM (plan 16 criterion 12).
+ *
+ * This block used the raw size steps (`--fs-11/12/13/15`) and literal pixels
+ * for almost every gap and pad, while `studio.css`'s `.home-*` block - the same
+ * shelf, one route away - used the semantic type roles and the spacing scale.
+ * `docs/design.md` calls a literal px in `padding`, `margin` or `gap` a bug,
+ * and two shelves styled to two systems is how "improve the UI/UX as the
+ * gallery grows" turns into a choice nobody made. The home is the reference
+ * because it is the compliant one. No token was added; colours, radii, borders
+ * and the card silhouette are untouched.
+ *
+ * Two `--fs-*` survive on purpose and neither has a role: the card action's
+ * `600 var(--fs-12)/1.2` (byte-identical to `.home-card-action`, which is the
+ * thing it must match) and the fact strip's 12px mono figure, which sits
+ * between `--type-meta` at 11 and `--type-metric` at 15.
+ */
 .template-gallery {
   display: grid;
-  gap: 26px;
+  gap: var(--space-8);
   align-content: start;
   width: min(1080px, 100%);
   max-height: 100%;
   overflow: auto;
-  padding: 30px 32px 40px;
+  /* The head is shallower than the sides and the foot deeper than both: every
+     pixel above the first card is a pixel the card's action needs to clear the
+     fold, and a last row flush against the end of the scroller reads as a
+     clipped page. */
+  padding: var(--space-5) var(--space-8) calc(var(--space-8) + var(--space-6));
   margin: 0 auto;
 }
 
@@ -814,194 +803,131 @@ const orderedLibrary = computed(() =>
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
+  gap: var(--space-6);
+  margin-bottom: var(--space-3);
 }
 
-.gallery-kicker { color: var(--on-accent-cyan); font: 700 var(--fs-11)/1 var(--font-mono); letter-spacing: 0.04em; }
-.gallery-heading h2 { margin: 4px 0 0; font-size: 17px; }
+.gallery-kicker { color: var(--on-accent-cyan); font: var(--type-kicker); letter-spacing: var(--track-kicker); }
+.gallery-heading h2 { margin: var(--space-1) 0 0; font: var(--type-title); }
 
 /* The sentence that says what a click does. Under the heading rather than on
-   each card: it is true of every card, and 9 copies of one sentence is 9 places
-   for it to go stale. */
-.gallery-lede { margin: 4px 0 0; max-width: 56ch; color: var(--text-muted); font-size: var(--fs-12); }
-.gallery-notice { display: inline-flex; gap: 6px; align-items: center; margin: 0; color: var(--warn-text); font-size: var(--fs-11); }
-.gallery-heading-aside { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; }
-.gallery-import { min-height: 32px; padding: 0 12px; font-size: var(--fs-12); }
+   each card: it is true of every card, and thirteen copies of one sentence is
+   thirteen places for it to go stale. */
+.gallery-lede { margin: var(--space-1) 0 0; max-width: 56ch; color: var(--text-muted); font: var(--type-body); }
+.gallery-note { margin: var(--space-1) 0 0; max-width: 56ch; color: var(--text-40); font: var(--type-label); }
+.gallery-notice { display: inline-flex; gap: var(--space-2); align-items: center; margin: 0; color: var(--warn-text); font: var(--type-label); }
+.gallery-heading-aside { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: center; justify-content: flex-end; }
+.gallery-import { min-height: 32px; padding: 0 var(--space-5); font: var(--type-label); }
 .gallery-file-picker { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; pointer-events: none; }
+
+/* 640, the width at which the shell already stops reserving a page (studio.css
+   names the number and why). The heading and its aside share a row down to
+   here; below it the row is too narrow for both, and the measured symptom was
+   the note wrapping around an Import button that had itself wrapped to
+   "Import / .builder.json". They stack, and the button keeps its label on one
+   line. */
+@media (max-width: 640px) {
+  .gallery-heading { flex-direction: column; align-items: stretch; }
+  .gallery-heading-aside { justify-content: flex-start; }
+  .gallery-import { white-space: nowrap; }
+}
+
+/* THE JUMP LIST. A row of six, wrapping, quiet: it is a way to get down the
+   page, not a control that changes what is on it, and styling it as a filter
+   bar would promise a filter (cut-list 13). */
+.gallery-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  /* Pulled up under the shelf heading it belongs to, and pushed down off the
+     first section heading it does not: the chips sat directly on "Start here"
+     and read as that section's own controls. */
+  margin-top: calc(-1 * var(--space-4));
+  margin-bottom: var(--space-3);
+}
+
+.gallery-jump-link {
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-muted);
+  font: var(--type-label);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.gallery-jump-link:hover { color: var(--text-title); border-color: var(--border-hover); }
+.gallery-jump-link:focus-visible { outline: 2px solid var(--on-accent-cyan); outline-offset: 2px; }
+
+/* One shelf. `scroll-margin-top` keeps the heading clear of the scroller's own
+   top edge when `jumpTo` lands on it - without it the title sits flush and
+   reads as the top of the page rather than the top of a section.
+
+   The step between shelves is bigger than the step inside one, or six sections
+   read as one long list of cards with headings sprinkled through it. The
+   gallery's own grid gap is the inside step; this is the outside one. */
+.gallery-section {
+  display: grid;
+  gap: var(--space-5);
+  scroll-margin-top: var(--space-5);
+}
+
+.gallery-section + .gallery-section { margin-top: var(--space-6); }
+
+/* The section is focused by `jumpTo` so a keyboard reader lands here; the ring
+   would be a box round the whole shelf, which says nothing a heading does not. */
+.gallery-section:focus { outline: none; }
+
+.gallery-section-heading { display: grid; gap: var(--space-1); }
+.gallery-section-heading h3 { margin: 0; color: var(--text-title); font: var(--type-title); }
+
+/* The question a person is asking when this is the right shelf. It is the
+   index of this gallery: the headings are two words each and this is what
+   tells you whether those two words mean your problem. */
+.gallery-section-question { margin: 0; max-width: 56ch; color: var(--text-muted); font: var(--type-label); }
 
 .template-grid {
   display: grid;
-  gap: 14px;
+  /* The home's `.home-grid` track, to the pixel, so the two screens line their
+     cards up at every width instead of each finding its own column count. */
+  gap: var(--space-5);
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
-/* A COLUMN, not a grid with `align-content: start`.
-   The grid row is as tall as its tallest card, and the tallest card is the
-   validator's - the only one carrying R14's caveat block. Packed to the start,
-   the other three ended their content 206px above their own bottom edge (46% of
-   the card) and read as three unfinished cards beside one finished one. As a
-   flex column with the fact table pushed down, every card's stats sit on its
-   bottom edge and the equal heights read as deliberate. */
-.template-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  height: 100%;
-  padding: 14px;
-  text-align: left;
-  color: var(--text-body);
+/* What is NOT here, and why (D6). A quiet block at the foot rather than a card
+   in the grid: these are not templates and a tile among tiles would read as
+   four more things to click. */
+.gallery-declined {
+  padding: var(--space-5) var(--space-6);
   background: var(--surface-panel);
   border: 1px solid var(--border-default);
   border-radius: var(--r-2xl);
-  cursor: pointer;
-  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 
-.template-card:hover { background: var(--surface-raised); border-color: var(--border-hover); }
+.gallery-declined h3 { margin: 0; color: var(--text-title); font: var(--type-title); }
 
-/* The card's own action. `margin-top: auto` pins it to the bottom of a
-   `flex-direction: column` card, so the row lines up across cards of different
-   heights - the four blurbs are not the same length and a floating action reads
-   as four different controls. */
-.template-action {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: auto;
-  padding-top: 4px;
-  color: var(--on-accent-cyan);
-  font: 600 var(--fs-12)/1.2 var(--font-body);
-}
-
-.template-card:hover .template-action { color: var(--text-title); }
-
-.template-spine {
-  padding: 6px 0;
-  background: var(--surface-well);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-lg);
-}
-
-.template-card h3 { margin: 2px 0 0; font-size: var(--fs-15); }
-.template-blurb { margin: 0; color: var(--text-muted); font-size: var(--fs-12); line-height: 1.45; }
-
-/* The two explanatory lines. Quieter than the blurb, because the blurb says
-   what the graph IS and these say what it is for - and a card whose three
-   paragraphs all shout is a card nobody finishes. */
-.template-teaches {
-  margin: 0;
-  color: var(--text-40);
-  font-size: var(--fs-11);
-  line-height: 1.5;
-}
-
-/* INLINE, not a block. As a block it cost each card two lines, and six cards in
-   two rows then overflowed the gallery's own `max-height: 100%` - which is
-   `builder-layout.spec.ts`'s clipping guard, arriving from the other side. */
-.template-lede {
-  margin-right: 6px;
-  color: var(--text-muted);
-  font: 600 10px/1.6 var(--font-mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* The second row. `details` rather than a toggle of our own: it is a
-   disclosure, the browser already has one, and the native element carries the
-   expanded state to a screen reader without a line of script. */
-.template-more { margin-top: 4px; }
-
-.template-more > summary {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 2px;
-  color: var(--text-muted);
-  font-size: var(--fs-12);
-  cursor: pointer;
-}
-
-.template-more > summary:hover { color: var(--text-title); }
-
-.template-more-count {
-  padding: 1px 6px;
-  color: var(--text-40);
-  font: 600 10px/1.6 var(--font-mono);
-  background: var(--surface-well);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-md);
-}
-
-.template-more .template-grid { margin-top: 10px; }
-
-/* The thumbnail must not stretch to fill a flex column - it is a fixed-ratio
-   spine and a stretched one is a different picture of the same graph. */
-.template-spine { flex: none; }
-
-/* Warn colours, not error. Nothing is wrong with the template; there is
-   something about it the picture cannot say.
-
-   D-15-27: one card carries this block and three do not, so the grid row - as
-   tall as its tallest card - made the validator's card about 3.4x its
-   siblings' content and the block itself 177px of a 232px column. The row
-   offered two answers and this is the second one, "equalise heights and scroll
-   inside the block", because the first - clamp with a disclosure - is not
-   available here: `.template-card` is a `<button>`, and a disclosure control
-   inside a button is invalid HTML that no browser will operate.
-
-   Scrolling keeps R14's ruling intact, which clamping would not: the caveat is
-   rendered VERBATIM and in full, all of it in the DOM and all of it read by a
-   screen reader, which is the difference between a template and a booby trap.
-   What changes is how much of it the card spends its height on. */
-.template-caveat {
-  margin: 0;
-  padding: 8px 10px;
-  /* Three lines plus the padding. The block was nine. */
-  max-height: calc(3 * 1.5 * var(--fs-11) + 18px);
-  overflow-y: auto;
-  /* Or a wheel over the caveat scrolls the gallery behind it once the block
-     reaches its end, which reads as the page jumping. */
-  overscroll-behavior: contain;
-  color: var(--warn-text);
-  font-size: var(--fs-11);
-  line-height: 1.5;
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
-  border-radius: var(--r-md);
-}
-
-.template-facts {
+.gallery-declined ul {
   display: grid;
-  /* Four now, not three - `Edges` joined the row. Two columns below the card's
-     own breakpoint would be a second layout to keep in step, so the cell
-     padding tightens instead. */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  /* The one line that lands the stats on the card's bottom edge. */
-  margin: auto 0 0;
-  overflow: hidden;
-  background: var(--border-default);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-md);
+  gap: var(--space-2);
+  max-width: 78ch;
+  padding: 0 0 0 var(--space-6);
+  margin: var(--space-3) 0 0;
+  color: var(--text-40);
+  font: var(--type-label);
 }
-
-.template-facts div { padding: 7px 6px; background: var(--surface-well); }
-.template-facts dt { color: var(--text-40); font: 600 10px/1 var(--font-mono); text-transform: uppercase; }
-.template-facts dd { margin: 5px 0 0; color: var(--text-title); font: 600 var(--fs-12)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .gallery-empty {
   display: flex;
-  gap: 8px;
+  gap: var(--space-3);
   align-items: center;
   margin: 0;
-  padding: 14px;
+  padding: var(--space-5);
   color: var(--text-muted);
-  font-size: var(--fs-12);
+  font: var(--type-label);
   background: var(--surface-panel);
   border: 1px dashed var(--border-default);
   border-radius: var(--r-lg);
@@ -1009,14 +935,14 @@ const orderedLibrary = computed(() =>
 
 .gallery-empty.is-problem { color: var(--err-text); background: var(--err-bg); border-color: var(--err-border); border-style: solid; }
 
-.library-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.library-list { display: grid; gap: var(--space-3); padding: 0; margin: 0; list-style: none; }
 
 .library-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: var(--space-3);
   align-items: center;
-  padding: 4px 8px 4px 4px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
   background: var(--surface-panel);
   border: 1px solid var(--border-default);
   border-radius: var(--r-lg);
@@ -1024,9 +950,9 @@ const orderedLibrary = computed(() =>
 
 .library-open {
   display: grid;
-  gap: 5px;
+  gap: var(--space-1);
   min-width: 0;
-  padding: 9px 10px;
+  padding: var(--space-3) var(--space-4);
   text-align: left;
   color: var(--text-body);
   background: transparent;
@@ -1048,16 +974,18 @@ const orderedLibrary = computed(() =>
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.library-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: var(--text-40); font: 500 10px/1 var(--font-mono); }
-.library-when { display: inline-flex; gap: 4px; align-items: center; }
+.library-meta { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; color: var(--text-40); font: var(--type-meta); }
+.library-when { display: inline-flex; gap: var(--space-1); align-items: center; }
 
-.status-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); }
+/* The home's `.home-pill` shorthand, so one status pill does not read as two
+   different components on two routes. */
+.status-pill { padding: var(--space-1) var(--space-2); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; border-radius: var(--r-pill); }
 .status-pill.is-draft { color: var(--text-muted); background: var(--surface-raised); }
 .status-pill.is-published { color: var(--on-accent-mint); background: color-mix(in srgb, var(--accent-mint) 14%, transparent); }
 /* Same weight and shape as the status pill beside it - it is a status too,
    about a different version. Cyan rather than mint so "live, and it is not
    what you are editing" reads as distinct from "this head is published". */
-.live-pill { padding: 2px 6px; font: 700 10px/1.4 var(--font-mono); text-transform: uppercase; border-radius: var(--r-pill); color: var(--on-accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
+.live-pill { padding: var(--space-1) var(--space-2); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; border-radius: var(--r-pill); color: var(--on-accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
 
 /* The row's four actions (D-15-15). `auto` in the row's own grid, so the name
    keeps every pixel the actions do not need.
@@ -1069,14 +997,14 @@ const orderedLibrary = computed(() =>
    the same defect on a second surface and a second answer to it would be a
    second thing to keep in step: a separator, a real gap, and the error colour
    AT REST rather than only on hover. */
-.library-actions { display: inline-flex; gap: 2px; align-items: center; }
+.library-actions { display: inline-flex; gap: var(--space-1); align-items: center; }
 /* The row's named action, in the same colour and weight `.template-action`
    uses on every template card, so the two lists' actions read as one kind of
    thing. `margin-right` puts a step between a word and the four icons rather
    than letting it read as a fifth icon with a label. */
 .library-open-action {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
   min-height: 30px;
   margin-right: var(--space-2);
@@ -1093,7 +1021,7 @@ const orderedLibrary = computed(() =>
 .library-actions-separator {
   width: 1px;
   align-self: stretch;
-  margin: 2px 9px;
+  margin: var(--space-1) var(--space-3);
   background: var(--border-default);
 }
 .library-delete { color: var(--err-text); }
@@ -1101,12 +1029,11 @@ const orderedLibrary = computed(() =>
 
 .delete-confirm {
   display: grid;
-  gap: 9px;
-  padding: 12px;
-  margin-top: 6px;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  margin-top: var(--space-2);
   color: var(--text-body);
-  font-size: var(--fs-12);
-  line-height: 1.5;
+  font: var(--type-label);
   background: var(--surface-well);
   border: 1px solid var(--err-border);
   border-radius: var(--r-lg);
@@ -1114,15 +1041,15 @@ const orderedLibrary = computed(() =>
 
 .delete-confirm label { color: var(--text-muted); }
 .delete-confirm strong { color: var(--text-title); }
-.delete-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+.delete-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-3); }
 /* Refused: no text box, so the two buttons sit at the start rather than in a
    column reserved for an input that is not there. */
 .delete-actions.is-refused { grid-template-columns: auto auto; justify-content: start; }
 .delete-actions input {
   min-height: 38px;
-  padding: 0 10px;
+  padding: 0 var(--space-4);
   color: var(--text-body);
-  font-size: var(--fs-13);
+  font: var(--type-body);
   background: var(--surface-panel);
   border: 1px solid var(--border-default);
   border-radius: var(--r-md);

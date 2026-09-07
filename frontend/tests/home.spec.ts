@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomeView from '../src/views/HomeView.vue'
 import { PRODUCT_NAME, PRODUCT_SENTENCE } from '../src/data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../src/data/builderTemplates'
+import { templateCategory } from '../src/data/templateCategories'
 import { HANDOFF_KEY, writeRunHandoff } from '../src/data/builderRunHandoff'
 import { takeRevealHistory } from '../src/components/RunHistory.vue'
 import { scopedKey } from '../src/data/identityStorage'
@@ -157,14 +158,76 @@ describe('the home lists every workflow this account can open', () => {
     expect(wrapper.findAll('[data-testid="home-library"] svg').length).toBeGreaterThan(0)
   })
 
-  it('shows all nine templates by title, both of the gallery rows', async () => {
+  /*
+   * COUNTED FROM THE DATA MODULE, not from a literal `9`.
+   *
+   * It was `toHaveLength(9)` twice, which was two statements of one fact and
+   * both of them a maintenance tax on adding a template. The claim that
+   * matters is EVERY template, whatever there are of them, in ONE FLAT LIST -
+   * the gallery sorts the same cards into six sections and the home
+   * deliberately does not (D8), so the count is the wrong half to pin and the
+   * flatness is the right one. `home-templates > li` is asserted as a direct
+   * child, which is what a section wrapper here would break.
+   */
+  it('shows every template by title, in one flat list', async () => {
     const wrapper = mountHome(false)
     await settle(10)
     const list = wrapper.get('[data-testid="home-templates"]')
-    expect(wrapper.findAll('[data-testid="home-templates"] li')).toHaveLength(9)
-    expect(ALL_BUILDER_TEMPLATES).toHaveLength(9)
+    expect(wrapper.findAll('[data-testid="home-templates"] > li')).toHaveLength(
+      ALL_BUILDER_TEMPLATES.length,
+    )
     for (const template of ALL_BUILDER_TEMPLATES) {
       expect(list.text(), template.id).toContain(template.title)
+    }
+  })
+
+  /*
+   * D8: the home has no sections, so each card carries the two facts a gallery
+   * section heading would have carried - the shelf it is on, and the pattern it
+   * is an instance of. Read off `templateCategories.ts` rather than restated,
+   * so a category renamed in the contract fails here by name.
+   */
+  it('hides the pattern pill on the two cards named after their pattern', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    // Named, because a derived assertion that matched nothing would pass.
+    for (const id of ['single-agent', 'tiered-routing']) {
+      const card = wrapper.get(`[data-testid="home-template-${id}"]`)
+      expect(card.find('.home-pill.is-pattern').exists(), id).toBe(false)
+    }
+    // And it still draws where it earns its place.
+    const chaining = wrapper.get('[data-testid="home-template-sequential-pipeline"]')
+    expect(chaining.get('.home-pill.is-pattern').text()).toBe('Prompt chaining')
+  })
+
+  it('names the shelf and the pattern on every template card', async () => {
+    const wrapper = mountHome(false)
+    await settle(10)
+    for (const template of ALL_BUILDER_TEMPLATES) {
+      const card = wrapper.get(`[data-testid="home-template-${template.id}"]`)
+      const kicker = card.get('.home-card-kicker')
+      expect(kicker.text(), template.id).toBe(templateCategory(template.category).title)
+      // The page's own eyebrow style, not a fourth typeface on the one card
+      // that has three lines of label.
+      expect(kicker.classes(), template.id).toContain('home-kicker')
+
+      /*
+       * The pattern is a PILL beside `template`, not a line under the title
+       * where it repeated it - and it is drawn only when it says something the
+       * title has not. Two rules, both about not saying one thing twice:
+       * `source: 'none'` is the two scaffolds, which are not patterns; and a
+       * pattern whose name IS the title, case-insensitively, was the title in
+       * capitals. The second rule hides exactly two cards today,
+       * `single-agent` and `tiered-routing`, and the assertion below is
+       * derived rather than listing them, so a third one renaming into that
+       * state is covered by the same line.
+       */
+      const shows =
+        template.pattern.source !== 'none' &&
+        template.pattern.name.toLowerCase() !== template.title.toLowerCase()
+      const pattern = card.find('.home-pill.is-pattern')
+      expect(pattern.exists(), template.id).toBe(shows)
+      if (shows) expect(pattern.text(), template.id).toBe(template.pattern.name)
     }
   })
 
@@ -206,7 +269,8 @@ describe('the home lists every workflow this account can open', () => {
     const wrapper = mountHome(false)
     await settle(10)
     const actions = wrapper.findAll('[data-testid="home-templates"] .home-card-action')
-    expect(actions).toHaveLength(9)
+    // From the module: ruling 4 binds the STRING on every card, not a count.
+    expect(actions).toHaveLength(ALL_BUILDER_TEMPLATES.length)
     for (const action of actions) expect(action.text()).toContain('Use this template')
   })
 
@@ -240,7 +304,9 @@ describe('the home lists every workflow this account can open', () => {
     expect(wrapper.find('.home-empty.is-problem').exists()).toBe(true)
     // The templates and the built-in workflow are unaffected: one failed read
     // must not blank a page whose other two sections need nothing from it.
-    expect(wrapper.findAll('[data-testid="home-templates"] li')).toHaveLength(9)
+    expect(wrapper.findAll('[data-testid="home-templates"] li')).toHaveLength(
+      ALL_BUILDER_TEMPLATES.length,
+    )
   })
 })
 

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 /**
- * The News-to-social template, from the HOME to a finished run - U6.
+ * The Single-agent template, from the HOME to a finished run - U6, 16 C9.
  *
  * `docs/ux-shell/DEFINITION-OF-DONE.md` row U6. Written by RV2, who built
  * nothing in the unified-shell programme; it is a test rather than product
@@ -26,18 +26,28 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
  * button that fixes it (`useFlowTest.runBlockedReason`). `test-panel.spec.ts`
  * makes the same three keystrokes for the same reason.
  *
- * ## Why this template, and what its own caveat promises
+ * ## Why THIS template, and why it changed
  *
- * `newsToSocial.ts` is the one template in the gallery with NO human gate: it
- * was written to run unattended, and its card says so in the author's own
- * words. This file asserts the absence rather than assuming it - a gate
- * appearing here would be a change to the template that its caveat, its
- * gallery card and `PublishDialog`'s 403 warning all still described the old
- * way. Two facts follow from being gateless and both are load-bearing:
- * `create_run` answers 403 for an ANONYMOUS caller, and this harness is signed
- * in (`e2e/syntheticUser.ts` - the cookieless context is `e2e-user` at the API
- * as well as on the page), so a 403 here would mean the proxy had stopped
- * forwarding the identity, not that the template had stopped working.
+ * It drove `news-to-social` until plan 16, which is the one template in the
+ * gallery with no human gate. That made it the cheapest journey to write and
+ * the least representative one to assert: eleven of the thirteen cards gate
+ * above their first billable node, and the gate is the step a reader of this
+ * file most needs to see exercised end to end. `single-agent` is the smallest
+ * card that has one - input, gate, one agent with one keyless tool, output -
+ * so the journey now covers the shape almost every template has, and the panel
+ * answering its own gate is the part no unit suite can reach.
+ *
+ * The gateless case is not lost with it. `templates.spec.ts` still publishes
+ * every template including that one, `test-panel.spec.ts` covers the gated
+ * panel run on a saved graph, and `tests/builder/test_templates.py` asserts
+ * the ungated set is exactly `news-to-social` and `idea-validator` and no
+ * third. What this file adds over all of them is the HOME as the starting
+ * point.
+ *
+ * This harness is signed in (`e2e/syntheticUser.ts` - the cookieless context
+ * is `e2e-user` at the API as well as on the page), so a 403 here would mean
+ * the proxy had stopped forwarding the identity rather than that the template
+ * had stopped working.
  *
  * ## TWO runs, and the second one is not a duplicate
  *
@@ -48,9 +58,9 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
  * reaches a terminal state, and that pointer is the only thing a later console
  * load can restore a run from: `RunHistory` deliberately offers a download
  * rather than a re-open, and no route carries a run id. Measured on this
- * backend on 2026-09-06: a News-to-social run completes in ~115 ms, so by the
- * time the panel can show a completed run there is nothing left for the
- * console to pick up.
+ * backend on 2026-09-06: a synthetic run of a template this size completes in
+ * about 115 ms once its gate is answered, so by the time the panel can show a
+ * completed run there is nothing left for the console to pick up.
  *
  * So run 1 is watched to `completed` in the panel, which is the half U6 asks
  * about the panel, and run 2 is handed over the instant it is launched, which
@@ -79,11 +89,12 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 const ALLOWED_CONSOLE_ERROR: RegExp | null = /429 \(Too Many Requests\)/
 
 /** What the template declares, restated so a change to it fails HERE. */
-const TEMPLATE_TITLE = 'News to social post'
-const TEMPLATE_TESTID = 'home-template-news-to-social'
+const TEMPLATE_TITLE = 'Single agent'
+const TEMPLATE_TESTID = 'home-template-single-agent'
+// Input, gate, agent, tool, output; three flow edges and one attach edge.
 const TEMPLATE_NODES = 5
 const TEMPLATE_EDGES = 4
-const TEMPLATE_INPUT_FIELD = 'subject'
+const TEMPLATE_INPUT_FIELD = 'question'
 
 function watchConsole(page: Page): { unexpected: string[] } {
   const watch = { unexpected: [] as string[] }
@@ -169,7 +180,7 @@ async function storedRunId(page: Page): Promise<string | null> {
   })
 }
 
-test.describe('the News-to-social template, opened from the home', () => {
+test.describe('the Single-agent template, opened from the home', () => {
   test.describe.configure({ mode: 'serial' })
 
   test.beforeEach(async ({ request }) => {
@@ -200,7 +211,7 @@ test.describe('the News-to-social template, opened from the home', () => {
       // in the address would be a promise the server has not made yet.
       await expect.poll(() => new URL(page.url()).hash).toBe('#/build')
       await expect(page.locator('.builder-flow')).toBeVisible()
-      await expect(page.locator('.document-name')).toContainText(/news to social/i)
+      await expect(page.locator('.document-name')).toContainText(/single agent/i)
 
       // The shape, asserted against the CANVAS rather than against the module,
       // so a template that lost an edge to a serialisation change fails here.
@@ -235,10 +246,15 @@ test.describe('the News-to-social template, opened from the home', () => {
       const publish = page.locator('[aria-labelledby="publish-title"]')
       await expect(publish).toBeVisible()
       await publish.getByRole('button', { name: /^(Publish|Republish)$/ }).click()
-      // The gateless sentence, which is this template's own trade rendered
-      // where an author sees it before they hand anybody the link.
-      await expect(publish).toContainText(/anyone signed out is refused/i)
-      await expect(publish).toContainText(/403/)
+      // The GATED sentence, which is the other half of the same dialog and
+      // the one eleven of the thirteen templates get. `gated_before_spend` is
+      // the SERVER's boolean off the publish answer, so this asserts what the
+      // service decided about the shape rather than what the client guessed:
+      // a gate above the first billable node is what lets anyone with the link
+      // launch it. The 403 warning is the branch this template must NOT take,
+      // and it is asserted absent for the same reason.
+      await expect(publish).toContainText(/a human gate stops this workflow/i)
+      await expect(publish).not.toContainText(/anyone signed out is refused/i)
       await publish.getByRole('button', { name: 'Close' }).click()
       await expect(publish).toHaveCount(0)
 
@@ -258,6 +274,16 @@ test.describe('the News-to-social template, opened from the home', () => {
       await expect(page.locator('[data-testid="test-run-blocked"]')).toHaveCount(0)
 
       await page.locator('[data-testid="test-run"]').click()
+
+      // THE GATE, which is why this file drives this template. The run pauses
+      // above its only billable node and waits for a person; the panel renders
+      // the forward answer on the author's own canvas node, and nothing after
+      // this line happens until it is pressed. A run that completed without
+      // this appearing would be a run that spent before anybody approved it.
+      const gate = page.locator('[data-testid="test-gate-approve"]')
+      await expect(gate).toBeVisible({ timeout: 60_000 })
+      await gate.click()
+
       await expect(status(page)).toHaveText(/completed/i, { timeout: 180_000 })
 
       // A BODY, not merely a completed run: the whole of what the panel adds
@@ -267,12 +293,10 @@ test.describe('the News-to-social template, opened from the home', () => {
       await expect(result).toBeVisible()
       await expect(result).not.toBeEmpty()
 
-      // NO GATE, which is this template's declaration and not an accident. The
-      // panel renders the forward answer for any gate that opens, so its
-      // absence at a completed run is the assertion - and a gate that DID open
-      // would carry the author's own canvas node, which is `builder-gates`'
-      // subject and `test-panel.spec.ts`'s.
-      await expect(page.locator('[data-testid="test-run-gate"]')).toHaveCount(0)
+      // The gate is answered and gone: a completed run still showing an open
+      // gate would mean the panel had drawn a terminal status over a run that
+      // was still waiting for somebody.
+      await expect(page.locator('[data-testid="test-gate-approve"]')).toHaveCount(0)
       await expect(page.locator('[data-testid="test-panel-problem"]')).toHaveCount(0)
 
       /* 5 ── the console shows the run this panel started ----------------- */

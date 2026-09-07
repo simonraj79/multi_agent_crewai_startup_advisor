@@ -179,3 +179,17 @@ export const CONDITIONAL_ROUTER_DOCUMENT: BuilderDocument = {
   joins: { merge: 'any' },
   budget: null,
 }
+
+/**
+ * What the card must say, word for word (R14).
+ *
+ * The bound is real and it is the same number twice: `MAX_FANOUT_WIDTH` caps a
+ * router's branch count as well as a node's out-degree, and `otherwise` is one
+ * of the four. An author who drew a fifth desk would otherwise meet it as a
+ * problem on a document they thought was finished.
+ */
+export const CONDITIONAL_ROUTER_CAVEAT =
+  'Four desks is the ceiling, and the catch-all is one of the four. The bound '
+  + 'that caps a router’s branches is the same one that caps how many edges may '
+  + 'leave any node, so a fifth destination needs a second router below the '
+  + 'first rather than a wider one.'

@@ -6,6 +6,8 @@ import BrandLockup from '../components/BrandLockup.vue'
 import GraphThumbnail from '../components/builder/GraphThumbnail.vue'
 import { PRODUCT_NAME, PRODUCT_SENTENCE } from '../data/brand'
 import { ALL_BUILDER_TEMPLATES } from '../data/builderTemplates'
+import type { BuilderTemplate } from '../data/builderTemplates'
+import { templateCategory } from '../data/templateCategories'
 import { readRunHandoff, writeRunHandoff } from '../data/builderRunHandoff'
 import { askToRevealHistory } from '../components/RunHistory.vue'
 import { scopedKey } from '../data/identityStorage'
@@ -305,15 +307,39 @@ function when(iso: string): string {
 /* ── the templates ────────────────────────────────────────────────────────── */
 
 /**
- * All nine, in the gallery's own order, both of its rows flattened into one.
+ * Every template, in the gallery's own order, in ONE FLAT LIST (D8).
  *
- * The gallery demotes two of them into a collapsed `<details>` because what
- * they teach is that the compiler works rather than anything an author needs
- * first. That is a judgement about a screen whose whole job is teaching; this
- * page's job is listing what can be opened, and a list that hides two of nine
- * is not one.
+ * The gallery sorts the same cards into six sections, because that screen's
+ * whole job is teaching and a person arriving there has a question rather than
+ * a name. This page's job is listing what can be opened, and a list is one
+ * list: `home-templates > li` is a DIRECT-CHILD selector in two suites, so a
+ * section wrapper here would break them even at nine cards, and the sectioning
+ * is the one thing the two shelves are deliberately allowed to differ on.
+ *
+ * What the home borrows instead is the WORDS: each card carries its category
+ * title as a kicker and its pattern name under the title, so a reader who has
+ * seen the gallery recognises the same shelf, and a reader who has not still
+ * gets the two facts the sections carry.
  */
 const templates = ALL_BUILDER_TEMPLATES
+
+/** The section this template sits in on the gallery, for the card's kicker. */
+function categoryTitle(template: BuilderTemplate): string {
+  return templateCategory(template.category).title
+}
+
+/**
+ * Whether the pattern pill says anything the title has not said already.
+ *
+ * A scaffold has no pattern to name, and two cards are named after the pattern
+ * they are an instance of - `Single agent` and `Tiered routing` - so the pill
+ * beside them was the title in capitals. Case-insensitive, because that is the
+ * only difference between the two strings on those two cards.
+ */
+function showsPattern(template: BuilderTemplate): boolean {
+  if (template.pattern.source === 'none') return false
+  return template.pattern.name.toLowerCase() !== template.title.toLowerCase()
+}
 
 async function loadValidator(): Promise<void> {
   try {
@@ -598,10 +624,33 @@ onBeforeUnmount(() => window.clearInterval(ticker))
                 @click="emit('openTemplate', template.id)"
               >
                 <GraphThumbnail class="home-card-spine" :document="template.document" />
+                <!-- The gallery says these two things in a section heading and
+                     a pattern line; the home has no sections, so the card
+                     carries both (D8). The kicker is the page's own kicker
+                     style - uppercase and tracked, like READY TO RUN and YOUR
+                     WORKFLOWS above it - so it reads as this page's furniture
+                     rather than as a fourth typeface. -->
+                <span class="home-kicker home-card-kicker">{{ categoryTitle(template) }}</span>
                 <span class="home-card-name">{{ template.title }}</span>
                 <span class="home-card-blurb">{{ template.blurb }}</span>
                 <span class="home-card-meta">
                   <span class="home-pill is-template">template</span>
+                  <!--
+                    The pattern, as a second pill rather than a line under the
+                    title, where it repeated it: "Single agent / Single agent",
+                    "Blank canvas / Empty canvas". Beside `template` it is
+                    plainly a label about the card and not a second name for it.
+                    Two rules, and both are about not saying one thing twice:
+                    omitted for `source: 'none'`, because the two scaffolds are
+                    not patterns and a pill reading EMPTY CANVAS would invent
+                    one; and omitted when the pattern IS the title, which on
+                    `single-agent` and `tiered-routing` had the card printing
+                    "Single agent / SINGLE AGENT".
+                  -->
+                  <span
+                    v-if="showsPattern(template)"
+                    class="home-pill is-pattern"
+                  >{{ template.pattern.name }}</span>
                   <span class="home-card-count">
                     <GitBranch :size="12" aria-hidden="true" />{{ template.document.nodes.length }} nodes
                   </span>

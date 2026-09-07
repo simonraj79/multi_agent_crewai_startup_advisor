@@ -1,11 +1,22 @@
 import { BUILDER_SCHEMA_ID, documentId, edgeId, nodeId } from '../types/builder'
+import type { TemplateCategoryId } from './templateCategories'
 import type { BuilderDocument, BuilderEdge, BuilderNode } from '../types/builder'
 import { IDEA_VALIDATOR_CAVEAT, IDEA_VALIDATOR_DOCUMENT } from './templates/ideaValidator'
 import { NEWS_TO_SOCIAL_CAVEAT, NEWS_TO_SOCIAL_DOCUMENT } from './templates/newsToSocial'
-import { CONDITIONAL_ROUTER_DOCUMENT } from './templates/conditionalRouter'
-import { HIERARCHICAL_DELEGATION_DOCUMENT } from './templates/hierarchicalDelegation'
+import {
+  CONDITIONAL_ROUTER_CAVEAT,
+  CONDITIONAL_ROUTER_DOCUMENT,
+} from './templates/conditionalRouter'
+import { FALLBACK_BAR_CAVEAT, FALLBACK_BAR_DOCUMENT } from './templates/fallbackBar'
+import {
+  HIERARCHICAL_DELEGATION_CAVEAT,
+  HIERARCHICAL_DELEGATION_DOCUMENT,
+} from './templates/hierarchicalDelegation'
 import { REFLECTION_LOOP_DOCUMENT } from './templates/reflectionLoop'
 import { SEQUENTIAL_PIPELINE_DOCUMENT } from './templates/sequentialPipeline'
+import { SINGLE_AGENT_DOCUMENT } from './templates/singleAgent'
+import { TIERED_ROUTING_DOCUMENT } from './templates/tieredRouting'
+import { VOTE_REVIEW_DOCUMENT } from './templates/voteReview'
 import { resolveModelRoles } from './templates/modelRoles'
 
 /**
@@ -232,13 +243,56 @@ const FAN_OUT_NODES: BuilderNode[] = [
   },
 ]
 
+/**
+ * Where a pattern's name comes from.
+ *
+ * `both` when Anthropic's whitepaper and Google's design-pattern guide name the
+ * same shape (routing / tiered routing; parallelization / parallel); `none` for
+ * the two scaffolds that are not patterns at all (`blank`, the gated minimum).
+ * The provenance is rendered in the card's pattern line and nowhere else (D5).
+ */
+export type PatternSource = 'anthropic' | 'google' | 'both' | 'none'
+
+/** The pattern a card is an instance of, named the way the literature names it. */
+export interface TemplatePattern {
+  /** The name the card carries: "Routing", "Evaluator-optimizer", "Single agent". */
+  readonly name: string
+  readonly source: PatternSource
+  /** The other name the same shape goes by, when the two sources disagree ("Google calls this tiered routing"). */
+  readonly aka?: string
+}
+
 /** One template card, and the document behind it. */
 export interface BuilderTemplate {
   /** Stable across renames; the gallery keys its cards and its tests on it. */
   readonly id: string
   readonly title: string
-  /** One sentence on the card. What you get, not what it is called. */
+  /** One sentence on the card. What you get, not what it is called. ≤ 140 characters, asserted in Python. */
   readonly blurb: string
+  /**
+   * The gallery section this card sits in (`data/templateCategories.ts`).
+   *
+   * A closed union, and the gallery derives its sections from it rather than
+   * from a hand-kept list, so a card cannot be in two sections or in none.
+   * `tests/builder/test_templates.py` asserts every category has a card and
+   * that gallery order equals category order.
+   */
+  readonly category: TemplateCategoryId
+  /** The pattern this card is an instance of, and who calls it that. */
+  readonly pattern: TemplatePattern
+  /**
+   * The job, narrated: who, what arrives, what goes out. ≤ 240 characters.
+   *
+   * This is the field the owner asked for by name: a template tied to an
+   * authentic use case rather than to a concept. It is the second thing on
+   * the card after the title, because "what would I use this for" is the
+   * first question a person browsing has.
+   */
+  readonly useCase: string
+  /** When to reach for this shape, grounded in the sources' own decision rules. ≤ 170 characters. */
+  readonly useWhen: string
+  /** When NOT to, from the same rules. ≤ 170 characters. */
+  readonly notWhen: string
   /**
    * What opening this teaches, in one sentence, rendered on the card.
    *
@@ -317,7 +371,18 @@ const BLANK_INPUT_FIELD = nodeId('idea')
 export const BLANK: BuilderTemplate = {
   id: 'blank',
   title: 'Blank canvas',
-  blurb: 'An input and an output, wired and clean. Drag a kind from the palette, or press 1–7.',
+  blurb: 'An input and an output, wired and clean. Drag a kind from the palette, or press 1 to 7.',
+  category: 'start',
+  // `none`, and it is the honest answer rather than a missing one: an empty
+  // canvas is scaffolding. A card that claimed a pattern here would be the
+  // first thing a new author read and the first thing that was not true.
+  pattern: { name: 'Empty canvas', source: 'none' },
+  useCase:
+    'You know what you want to build and would rather draw it than start from somebody else’s. This is the two ends of a run, already connected, with nothing in between.',
+  useWhen:
+    'You have the shape in your head already, or you are learning what each kind of node does by putting one down.',
+  notWhen:
+    'You are new here. One of the working examples below is closer to what you want than an empty page is.',
   teaches:
     'Where a run begins and where its body comes back, and that both ends already exist.',
   modifyFirst: 'Drop an agent between the two nodes and connect it. Nothing else is needed.',
@@ -397,7 +462,18 @@ export const BLANK: BuilderTemplate = {
 export const MINIMAL_GATED_AGENT: BuilderTemplate = {
   id: 'minimal-gated-agent',
   title: 'Minimal gated agent',
-  blurb: 'Input, a human gate, one agent, one result — the smallest workflow anyone can launch.',
+  blurb: 'Input, a human gate, one agent, one result. The smallest workflow anyone can launch.',
+  category: 'start',
+  // Also `none`. This is a policy demonstration rather than a pattern: what it
+  // exists to show is the 403 an ungated published workflow answers, which is a
+  // rule of this service and not a shape either source names.
+  pattern: { name: 'Smallest run', source: 'none' },
+  useCase:
+    'You want to prove the plumbing before you build anything on it: that a run starts, pauses for a person, spends once, and hands a body back.',
+  useWhen:
+    'You are checking that publishing, launching and approving work end to end, or you want the fewest moving parts to change.',
+  notWhen:
+    'You want something that does a real job. This one is a proof that the machinery runs, not a piece of work.',
   teaches:
     'Why a gate sits above the first agent: while nobody is signed in, human inaction is the spend cap.',
   modifyFirst: "The agent's prompt inputs, which are what the scoping task interpolates.",
@@ -430,13 +506,41 @@ export const MINIMAL_GATED_AGENT: BuilderTemplate = {
  * Measured: `valid: true`, 4 billable / 1 escalation / 0 cycles,
  * `static_cost_usd $0.6078`.
  */
+
+/**
+ * What the card must say, word for word (R14).
+ *
+ * Two facts, and a reader of the picture would guess wrong about both. Four is
+ * a hard ceiling rather than a suggestion, and it is the one bound that
+ * deliberately did NOT move when the others were raised, because it bounds
+ * concurrent threads and a third-party rate limit rather than money. And the
+ * branches are blind to each other by construction: each one's prompt names
+ * what came before the fan-out, and there is no moment at which one could read
+ * another, because they are running at the same time.
+ */
+export const FAN_OUT_JOIN_CAVEAT =
+  'Four branches is the ceiling, and it is the one bound here that was left '
+  + 'where it was on purpose: it caps concurrent work rather than spend. The '
+  + 'branches also cannot see each other. Each reads what came before the fan '
+  + 'out and nothing a sibling produced, because they are running at the same '
+  + 'time.'
+
 export const FAN_OUT_JOIN: BuilderTemplate = {
   id: 'fan-out-join',
   title: 'Fan out and join',
-  blurb: 'Three branches run in parallel and one node waits for all of them.',
+  blurb: 'Three branches run at the same time and one node waits for all of them.',
+  category: 'parallel',
+  pattern: { name: 'Parallelization', source: 'both', aka: 'Sectioning' },
+  useCase:
+    'An analyst wants three readings of one idea at once: the market, the sentiment and what it would take to build. One node waits for all three and scores what they found together.',
+  useWhen:
+    'The pieces of work do not need each other, and you would rather pay for three at once than wait for three in turn.',
+  notWhen:
+    'One branch needs another branch’s answer, or you have no rule for combining three answers that disagree.',
   teaches:
-    'That one line — joins — decides whether a node waits for its branches or runs on the first home.',
+    'Parallelization by sectioning: one line, joins, decides whether a node waits for its branches or runs on the first one home.',
   modifyFirst: "Delete the joins key and watch the score node fire on one branch out of three.",
+  caveat: FAN_OUT_JOIN_CAVEAT,
   document: {
     schema: BUILDER_SCHEMA_ID,
     id: UNSAVED,
@@ -464,9 +568,22 @@ export const FAN_OUT_JOIN: BuilderTemplate = {
 export const IDEA_VALIDATOR: BuilderTemplate = {
   id: 'idea-validator',
   title: 'Idea validator',
-  blurb: 'Six agents, two human gates, two revise loops — the evaluator, drawn.',
+  blurb: 'Six agents, two human gates, two revise loops. The evaluator, drawn.',
+  category: 'team',
+  // Not orchestrator-workers, though it sits on that shelf. It is a chain, a
+  // fan-out, two review loops and two human gates in one document, which is
+  // the pattern Anthropic's catalogue calls a hybrid architecture and the one
+  // most real pipelines turn out to be. Claiming a single pattern here would
+  // be the neatest sentence and the wrong one.
+  pattern: { name: 'Hybrid architecture', source: 'anthropic' },
+  useCase:
+    'A founder wants an idea checked. It is scoped with a person’s approval, researched three ways at once, scored against a rubric, and written up once a person has agreed the verdict.',
+  useWhen:
+    'You want to see what a full size pipeline looks like before drawing your own, or you want this one’s shape as a starting point.',
+  notWhen:
+    'You want its judgement. The scoring that makes the real validator worth reading is in code, not on this canvas.',
   teaches:
-    'What a real pipeline looks like at full size: six agents, two gates and two revise loops.',
+    'Hybrid architecture, at full size: a chain, a fan-out, two review loops and two human gates in one document.',
   modifyFirst: 'The scope gate’s editable fields, which are what an operator may change mid-run.',
   caveat: IDEA_VALIDATOR_CAVEAT,
   document: IDEA_VALIDATOR_DOCUMENT,
@@ -486,11 +603,47 @@ export const IDEA_VALIDATOR: BuilderTemplate = {
 export const SEQUENTIAL_PIPELINE: BuilderTemplate = {
   id: 'sequential-pipeline',
   title: 'Sequential pipeline',
-  blurb: 'Research, analyse, write — three agents in a line with a keyless search attached.',
+  blurb: 'Research, analyse, write. Three agents in a line with a keyless search attached.',
+  category: 'chain',
+  pattern: { name: 'Prompt chaining', source: 'both', aka: 'Sequential' },
+  useCase:
+    'A content team turns a topic into a briefing. One agent gathers sources, a second says what they mean together, and a third writes the piece the other two fed.',
+  useWhen:
+    'The work has stages and each one genuinely needs the last one’s result. Splitting it makes every call an easier call.',
+  notWhen:
+    'The steps do not depend on each other. A line of independent steps is a slower way to do them side by side.',
   teaches:
-    'That an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.',
+    'Prompt chaining, in this builder’s own syntax: an edge is a listener, ${state.out__x} is how one step reaches the next, and a tool is dropped onto an agent.',
   modifyFirst: "The writer's expected output. One sentence there changes the whole deliverable.",
   document: SEQUENTIAL_PIPELINE_DOCUMENT,
+}
+
+/**
+ * One worker, one tool, one answer, and it is the card both sources say to
+ * read first.
+ *
+ * It sits second rather than first because `blank` is the empty state, and
+ * before `sequential-pipeline` because a line of three is what somebody draws
+ * once one box has stopped being enough. `templates/singleAgent.ts` carries
+ * the reasoning and the measured price.
+ */
+export const SINGLE_AGENT: BuilderTemplate = {
+  id: 'single-agent',
+  title: 'Single agent',
+  blurb: 'One agent with one search tool answers a question and shows where the answer came from.',
+  category: 'start',
+  pattern: { name: 'Single agent', source: 'both', aka: 'Single-agent system' },
+  useCase:
+    'A help desk gets a product question. One agent decides what to search for, reads what comes back, decides whether that was enough, and writes a reply with the pages it used.',
+  useWhen:
+    'The job is one job and it needs a tool to do it. Start here, and add structure only when one worker has stopped being enough.',
+  notWhen:
+    'One model call with no tool would do it, or this worker has quietly grown several unrelated responsibilities.',
+  teaches:
+    'Single agent, the shape to start from: one worker, one tool, and a loop inside one box that no picture can show.',
+  modifyFirst:
+    'The backstory. It is the whole of what this agent is, and rewriting it in your own voice changes every answer.',
+  document: SINGLE_AGENT_DOCUMENT,
 }
 
 /**
@@ -506,8 +659,16 @@ export const NEWS_TO_SOCIAL: BuilderTemplate = {
   id: 'news-to-social',
   title: 'News to social post',
   blurb: 'Search this week’s discussion of a topic and write the post about it.',
+  category: 'chain',
+  pattern: { name: 'Prompt chaining', source: 'both', aka: 'Sequential' },
+  useCase:
+    'A marketer needs today’s post about a subject. One agent finds what has actually been said in the last week, and a second writes the short and long versions with the links in.',
+  useWhen:
+    'Two steps are enough and the second needs the first. It is the smallest chain that still ships something you would send.',
+  notWhen:
+    'Somebody has to approve it before it runs. This one carries no gate, so only a signed-in caller may launch it at all.',
   teaches:
-    'That two agents and one tool are a whole product, and that a workflow with no gate runs unattended for whoever is signed in.',
+    'Prompt chaining at two nodes: two agents and one tool are a whole product, and a workflow with no gate runs unattended for whoever is signed in.',
   modifyFirst: 'The subject. One box, everything downstream changes, nothing else has to.',
   caveat: NEWS_TO_SOCIAL_CAVEAT,
   document: NEWS_TO_SOCIAL_DOCUMENT,
@@ -517,81 +678,197 @@ export const CONDITIONAL_ROUTER: BuilderTemplate = {
   id: 'conditional-router',
   title: 'Conditional router',
   blurb: 'Classify a message, send it to one of three desks, and converge again.',
+  category: 'route',
+  pattern: { name: 'Routing', source: 'both', aka: 'Coordinator' },
+  useCase:
+    'A support inbox takes anything. One cheap classifier reads the message, one of three specialists answers it, and whichever one ran is what comes back.',
+  useWhen:
+    'Requests fall into kinds that want different handling, and the kinds are distinct enough that a classifier can tell them apart.',
+  notWhen:
+    'Every request wants the same handling. A classifier that always answers the same way is a call you pay for and never use.',
   teaches:
-    'That a router is arithmetic rather than a model, and that the cheap tier belongs where the decision is small.',
+    'Routing, and the two facts behind it: a router is arithmetic rather than a model, and the cheap tier belongs where the decision is small.',
   modifyFirst:
     "The classifier's model. Swap it for the escalation one and watch the meter move for one word.",
+  caveat: CONDITIONAL_ROUTER_CAVEAT,
   document: CONDITIONAL_ROUTER_DOCUMENT,
+}
+
+/**
+ * The rule tier, which is the only card in the gallery that answers anybody
+ * without a model. `templates/tieredRouting.ts` carries the reasoning.
+ */
+export const TIERED_ROUTING: BuilderTemplate = {
+  id: 'tiered-routing',
+  title: 'Tiered routing',
+  blurb: 'The easy tickets answered with no model at all, and the rest sorted by the cheapest one.',
+  category: 'route',
+  pattern: { name: 'Tiered routing', source: 'google', aka: 'Routing' },
+  useCase:
+    'A support team is paying top prices for password resets. A phrase list answers those for nothing, a one word classifier sizes what is left, and only the hard ones reach the model that thinks.',
+  useWhen:
+    'You have looked at your own traffic and the easy questions dominate it. Checking that distribution is the step before buying a bigger model.',
+  notWhen:
+    'You have not measured, or the traffic is uniformly hard. Then a classifier is a stage added to every request that removes none.',
+  teaches:
+    'Tiered routing, drawn in three: a contains match on the raw text costs nothing, a classifier costs one word, and only what survives both reaches the model that thinks. A contains match is a substring test, not a regular expression, and it is case-sensitive.',
+  modifyFirst:
+    'The two phrases on the rule branches. They are the whole of tier one, and they are the only edit here that saves money.',
+  document: TIERED_ROUTING_DOCUMENT,
 }
 
 export const REFLECTION_LOOP: BuilderTemplate = {
   id: 'reflection-loop',
   title: 'Reflection loop',
   blurb: 'A drafter and a critic go round until the score clears 8, or four drafts in.',
+  category: 'review',
+  pattern: { name: 'Evaluator-optimizer', source: 'both', aka: 'Review and critique' },
+  useCase:
+    'A writer needs a draft that is actually good. One agent writes, another scores it out of ten and says what to fix, and the loop closes when the score is high enough.',
+  useWhen:
+    'You can write down what good looks like, and a second pass reliably improves the first. Clear criteria are the precondition.',
+  notWhen:
+    'The first attempt already meets the requirement, the criteria are a matter of taste, or the wait and the cost matter more than the polish.',
   teaches:
-    'That only a router may close a loop, and that output_schema is what turns prose into a number one can compare.',
+    'Evaluator-optimizer, closed properly: only a router may close a loop, and output_schema is what turns prose into a number one can compare.',
   modifyFirst: 'The threshold 8. It is the only thing deciding how long this runs.',
   document: REFLECTION_LOOP_DOCUMENT,
+}
+
+/**
+ * A second model when the first is down, and one checker that reads both.
+ * `templates/fallbackBar.ts` carries the three facts its caveat states.
+ */
+export const FALLBACK_BAR: BuilderTemplate = {
+  id: 'fallback-bar',
+  title: 'Fallback that clears the bar',
+  blurb: 'A second model takes over when the first is overloaded, and the same checker reads both.',
+  category: 'review',
+  pattern: { name: 'Same-bar fallback', source: 'google' },
+  useCase:
+    'A reply has to go out today and the usual model is failing under load. The answerer waits, retries, runs its last attempt on another model, and one checker reads whatever came back.',
+  useWhen:
+    'Somebody will act on the output, you already have a check it must pass, and a plausible wrong answer would be worse than a slow one.',
+  notWhen:
+    'There is no check to share. Then this is a retry with a second model rather than a bar, and the standard quietly drops when it fires.',
+  teaches:
+    'Same-bar fallback, made structural: the retry re-runs the same task with one field swapped, so the checker downstream cannot tell which model wrote what it is reading.',
+  modifyFirst:
+    'max_retries on the answerer. Set it to 0 and the fallback below it stops meaning anything at all.',
+  caveat: FALLBACK_BAR_CAVEAT,
+  document: FALLBACK_BAR_DOCUMENT,
 }
 
 export const HIERARCHICAL_DELEGATION: BuilderTemplate = {
   id: 'hierarchical-delegation',
   title: 'Hierarchical delegation',
   blurb: 'A manager and three specialists, inside one crew node.',
+  category: 'team',
+  pattern: {
+    name: 'Orchestrator-workers',
+    source: 'both',
+    aka: 'Hierarchical task decomposition',
+  },
+  useCase:
+    'A brief is too broad for one worker. A manager decides who does what and in which order, three specialists do it, and the manager assembles what comes back.',
+  useWhen:
+    'The job is open ended enough that you cannot write the steps down in advance, and the result is worth paying a lead to reason about every hand-off.',
+  notWhen:
+    'You already know the sub-tasks and their order. A line or a fan-out does the same work without paying a lead to rediscover it.',
   teaches:
-    'That a crew node is a real Crew whose members are agents it owns, wired by member edges rather than flow edges.',
+    'Orchestrator-workers, inside one box: a crew node is a real Crew whose members are agents it owns, wired by member edges rather than flow edges.',
   modifyFirst:
     'The process. Flip it to sequential and the manager leaves the inspector and the price together.',
+  caveat: HIERARCHICAL_DELEGATION_CAVEAT,
   document: HIERARCHICAL_DELEGATION_DOCUMENT,
 }
 
 /**
- * The gallery's seven cards, in the order they are shown.
+ * Three reviewers on one draft, and a threshold. `templates/voteReview.ts`
+ * carries the reasoning and the measured price.
+ */
+export const VOTE_REVIEW: BuilderTemplate = {
+  id: 'vote-review',
+  title: 'Vote before it ships',
+  blurb: 'Three reviewers read the same draft at once, and two have to agree before it ships.',
+  category: 'parallel',
+  pattern: { name: 'Voting', source: 'anthropic', aka: 'Parallelization' },
+  useCase:
+    'A team is about to publish an announcement. Three reviewers read it side by side for accuracy, tone and policy, a fourth counts the approvals, and two out of three sends it.',
+  useWhen:
+    'Several perspectives raise your confidence more than one long check would, and you want a threshold you can move.',
+  notWhen:
+    'One reviewer is enough, or the reviewers would have to read each other to be useful. That is a chain wearing this shape.',
+  teaches:
+    'Voting, which is parallelization doing the same job three times: the branches are independent, and a transform cannot count, so the tally is a model call.',
+  modifyFirst: 'The threshold 2. Move it to 3 and only a clean sweep publishes.',
+  document: VOTE_REVIEW_DOCUMENT,
+}
+
+/**
+ * The gallery's thirteen cards, in the order they are shown: D2's order, which
+ * is `templateCategories.ts`'s order with the cards of each category together.
  *
- * Ordered by how much a reader has to understand before the card helps them:
- * nothing, one line, one line put to work, one fork, one loop, one team, then
- * the whole product. Not by size and not alphabetically - the flagship last is
- * deliberate, because a gallery that opens on the biggest graph teaches an
- * author that the builder is for transcribing something rather than for
- * drawing.
+ * WHAT REPLACED THE OLD ORDERING RULE, AND WHY. Plan 14 D7 ordered these by
+ * how much a reader had to understand before the card helped them - nothing,
+ * one line, one line put to work, one fork, one loop, one team, then the whole
+ * product. That is a good order for somebody learning the BUILDER and the
+ * wrong one for somebody who arrived with a job, because it indexes on the
+ * shape of the drawing rather than on the question being asked. The categories
+ * index on the question, and inside a category the old rule survives intact:
+ * `blank` before `single-agent` before the gated minimum, the line of three
+ * before the two-node chain, the classifier before the rule tier.
  *
- * `news-to-social` is SMALLER than `sequential-pipeline` and still sits after
- * it, which is the ordering rule doing its job rather than an exception to it:
- * the line of three is where the syntax is explained, and the news graph is
- * what somebody builds once they have it. It also carries one idea neither of
- * its neighbours does - a graph with no gate - and that is a thing to meet
- * second rather than first.
+ * TWO POSITIONS ARE STILL DECISIONS RATHER THAN CONSEQUENCES, and both are the
+ * ones plan 14 fixed. `blank` is first, because the first thing a new author
+ * sees should not be somebody else's finished work. `idea-validator` is last,
+ * because a gallery that opens on the biggest document teaches an author that
+ * the builder is for transcribing something rather than for drawing.
+ * `tests/builder/test_templates.py` asserts both by name.
+ *
+ * THE SECOND ROW IS GONE. `MORE_BUILDER_TEMPLATES` held `minimal-gated-agent`
+ * and `fan-out-join` in a demoted row, on the argument that what they teach -
+ * that the compiler works over LIBRARY agents - is not what a first-time
+ * author needs. Owner's decision 21's RULE was never to delete them, and that
+ * stands: both are here, `e2e/builder.spec.ts` still drives
+ * `minimal-gated-agent` through the whole authoring journey, and nothing has
+ * been removed. What has gone is the PLACEMENT, and the reason is that
+ * `fan-out-join` is the cleanest expression of parallelization in the gallery
+ * and it was behind a disclosure triangle, which is not where the pattern a
+ * reader came looking for should be.
  */
 export const BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
+  // start
   BLANK,
+  SINGLE_AGENT,
+  MINIMAL_GATED_AGENT,
+  // chain
   SEQUENTIAL_PIPELINE,
   NEWS_TO_SOCIAL,
+  // route
   CONDITIONAL_ROUTER,
+  TIERED_ROUTING,
+  // parallel
+  FAN_OUT_JOIN,
+  VOTE_REVIEW,
+  // review
   REFLECTION_LOOP,
+  FALLBACK_BAR,
+  // team
   HIERARCHICAL_DELEGATION,
   IDEA_VALIDATOR,
 ]
 
 /**
- * The two library-agent templates, kept and demoted rather than deleted.
+ * Every card the gallery renders, in render order.
  *
- * Owner's decision 21, and the reason is not sentiment: `e2e/builder.spec.ts`
- * drives `MINIMAL_GATED_AGENT` through the whole authoring journey, so deleting
- * it would turn a template change into a suite change and lose the only E2E
- * proof that a LIBRARY-agent graph still publishes. They sit in a second row
- * because what they teach - that the compiler works - is not what a first-time
- * author needs from a gallery.
+ * An ALIAS since the second row was retired, and kept rather than replaced
+ * because five files outside this module import it and the distinction it once
+ * drew - all the cards, versus the first row's cards - is now a distinction
+ * with no difference. A consumer that means "every template" should keep
+ * saying so.
  */
-export const MORE_BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
-  MINIMAL_GATED_AGENT,
-  FAN_OUT_JOIN,
-]
-
-/** Every card the gallery renders, both rows, in render order. */
-export const ALL_BUILDER_TEMPLATES: readonly BuilderTemplate[] = [
-  ...BUILDER_TEMPLATES,
-  ...MORE_BUILDER_TEMPLATES,
-]
+export const ALL_BUILDER_TEMPLATES: readonly BuilderTemplate[] = BUILDER_TEMPLATES
 
 /**
  * A fresh, unshared copy of a template's document, with its model roles resolved.

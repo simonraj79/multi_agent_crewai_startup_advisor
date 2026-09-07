@@ -297,5 +297,118 @@ class SsrfRuleTests(unittest.TestCase):
         )
 
 
+class CredentialInTheUrlTests(unittest.TestCase):
+    """Audit M1: a key in the query string never reaches a frame in plaintext.
+
+    `{credential}` is permitted in the URL because a query-string key is a real
+    API shape (`.../v1?key=...&q=...`). The rendered URL was then written
+    verbatim into the envelope's `query`, its `notes` and each result's `url`,
+    and the serializer copies `query` onto the frame - where the redaction walk
+    cannot help, because it keys on the FIELD NAME and `query` is not a secret
+    name. So the plaintext key reached the 2,000-frame ring, the durable frames
+    table, `GET /api/runs/{id}/frames`, the NDJSON and ZIP export, and Langfuse
+    with content capture on.
+
+    Both spellings are asserted, because the URL substitution is quoted: a key
+    with a `/` or `+` in it appears percent-encoded in the URL and a redaction
+    that only looked for the raw bytes would miss every such key.
+    """
+
+    #: Deliberately carries characters that change under `quote(safe="")`.
+    SECRET = "sk-M1-SECRET/TOKEN+VALUE="
+    QUOTED = "sk-M1-SECRET%2FTOKEN%2BVALUE%3D"
+
+    SPEC = {
+        "name": "key_in_url",
+        "description": "A search API that takes its key as a query parameter.",
+        "properties": [
+            {"name": "q", "type": "string", "description": "query", "required": True}
+        ],
+        "request": {
+            "method": "GET",
+            "url": "https://api.example.test/v1?key={credential}&q={q}",
+            "header_name": "Authorization",
+            "header_template": "Bearer {credential}",
+            "body_template": None,
+            "timeout_seconds": 15,
+            "max_response_bytes": 1048576,
+        },
+    }
+
+    def _tool(self, send: Any) -> Any:
+        spec = parse_custom_tool(self.SPEC, tool_id="ut_0123456789ab")
+        return build_custom_tool(
+            spec,
+            credential={"name": "Authorization", "header_value": self.SECRET},
+            resolve=resolver(PUBLIC),
+            transport=send,
+        )
+
+    def assert_clean(self, rendered: str, where: str) -> None:
+        self.assertNotIn(self.SECRET, rendered, f"the raw key is in {where}")
+        self.assertNotIn(self.QUOTED, rendered, f"the encoded key is in {where}")
+        self.assertIn("***", rendered, f"nothing was redacted in {where}")
+
+    def test_M1_the_envelope_query_and_result_url_carry_no_key_in_either_spelling(self) -> None:
+        seen: list[Any] = []
+        tool = self._tool(transport(200, '{"hits": []}', seen=seen))
+        raw = tool._run(q="rain")
+        envelope = json.loads(raw)
+
+        self.assertEqual(envelope["status"], "ok")
+        self.assert_clean(envelope["query"], "envelope['query']")
+        self.assert_clean(envelope["results"][0]["url"], "results[0]['url']")
+        # The whole serialized envelope, which is what the frame is built from.
+        self.assertNotIn(self.SECRET, raw)
+        self.assertNotIn(self.QUOTED, raw)
+        # The author's own argument is not a secret and must survive.
+        self.assertIn("q=rain", envelope["query"])
+
+    def test_M1_the_notes_of_a_transport_failure_carry_no_key(self) -> None:
+        """httpx names the URL it was dialling; that sentence became `notes`."""
+
+        def boom(_method: str, url: str, *_rest: Any, **__: Any) -> tuple[int, str]:
+            raise TimeoutError(f"read timed out for {url}")
+
+        envelope = json.loads(self._tool(boom)._run(q="rain"))
+        self.assertEqual(envelope["status"], "failed")
+        self.assertIn("TimeoutError", envelope["notes"])
+        self.assert_clean(envelope["notes"], "envelope['notes']")
+        self.assert_clean(envelope["query"], "envelope['query']")
+
+    def test_M1_an_oversize_body_refusal_carries_no_key_either(self) -> None:
+        def oversize(_method: str, url: str, *_rest: Any, **__: Any) -> tuple[int, str]:
+            from brief_crew.builder.tools import _ResponseTooLarge
+
+            raise _ResponseTooLarge(f"the response from {url} was abandoned")
+
+        envelope = json.loads(self._tool(oversize)._run(q="rain"))
+        self.assertEqual(envelope["status"], "failed")
+        self.assert_clean(envelope["notes"], "envelope['notes']")
+
+    def test_M1_a_refused_target_reports_without_the_key(self) -> None:
+        spec = parse_custom_tool(self.SPEC, tool_id="ut_0123456789ab")
+        tool = build_custom_tool(
+            spec,
+            credential={"name": "Authorization", "header_value": self.SECRET},
+            resolve=resolver(PRIVATE),
+            transport=transport(),
+        )
+        envelope = json.loads(tool._run(q="rain"))
+        self.assertEqual(envelope["status"], "failed")
+        self.assert_clean(envelope["query"], "envelope['query']")
+        self.assertNotIn(self.SECRET, envelope["notes"])
+
+    def test_M1_the_request_that_goes_out_still_carries_the_real_key(self) -> None:
+        """Redaction is on the REPORT. The tool would be useless otherwise."""
+
+        seen: list[Any] = []
+        self._tool(transport(200, "{}", seen=seen))._run(q="rain")
+        self.assertEqual(seen[0]["headers"], {"Authorization": f"Bearer {self.SECRET}"})
+        # In the URL it is quoted, so an `&` or `#` in a key cannot truncate it.
+        self.assertIn(f"key={self.QUOTED}", seen[0]["url"])
+        self.assertNotIn(self.SECRET, seen[0]["url"])
+
+
 if __name__ == "__main__":
     unittest.main()

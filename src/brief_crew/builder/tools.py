@@ -59,6 +59,7 @@ from typing import Any, Literal
 from brief_crew import config as project_config
 from brief_crew.builder.bounds import Problem
 from brief_crew.builder.document import ATTACH_TARGET_KINDS, BuilderDocument, ToolConfig
+from brief_crew.events.redaction import REDACTED
 
 # --------------------------------------------------------------------------
 # Problem codes
@@ -1366,11 +1367,30 @@ def build_custom_tool(
     secret = dict(credential or {})
     request = spec.request
 
+    def _redact(text: object) -> str:
+        """Every string this tool emits passes through here.
+
+        `{credential}` is permitted in the URL (query-string keys are a real
+        API shape), and the rendered URL used to be written verbatim into the
+        envelope's `query`, `notes` and each result's `url` - which reach the
+        durable frame table, `GET /api/runs/{id}/frames` and the log export.
+        The redaction walk cannot catch it: the KEY is `query`.
+        """
+        rendered = str(text)
+        for value in secret.values():
+            if value and len(value) >= 8:
+                rendered = rendered.replace(value, REDACTED)
+                rendered = rendered.replace(urllib.parse.quote(value, safe=""), REDACTED)
+        return rendered
+
     def render(template: str, values: Mapping[str, Any], *, quote: bool) -> str:
         def replace(match: re.Match[str]) -> str:
             key = match.group(1)
             if key == "credential":
-                return secret.get("header_value", "")
+                value = secret.get("header_value", "")
+                # Quoted like every other URL substitution: an unencoded `&` or
+                # `#` in a key silently truncates it.
+                return urllib.parse.quote(value, safe="") if quote else value
             raw = values.get(key)
             text = "" if raw is None else str(raw)
             return urllib.parse.quote(text, safe="") if quote else text
@@ -1387,7 +1407,7 @@ def build_custom_tool(
             refusal = refuse_private_target(url, resolve=resolve)
             if refusal is not None:
                 return _envelope(
-                    tool=spec.name, query=url, status="failed", notes=refusal
+                    tool=spec.name, query=_redact(url), status="failed", notes=_redact(refusal)
                 )
             headers: dict[str, str] = {}
             if request.header_name and request.header_template:
@@ -1411,27 +1431,29 @@ def build_custom_tool(
                 )
             except _ResponseTooLarge as exc:
                 return _envelope(
-                    tool=spec.name, query=url, status="failed", notes=str(exc)
+                    tool=spec.name, query=_redact(url), status="failed", notes=_redact(exc)
                 )
             except Exception as exc:  # noqa: BLE001 - a tool reports, never raises
                 return _envelope(
                     tool=spec.name,
-                    query=url,
+                    query=_redact(url),
                     status="failed",
-                    notes=f"{type(exc).__name__}: {exc}",
+                    notes=_redact(f"{type(exc).__name__}: {exc}"),
                 )
             if status_code >= 400:
                 return _envelope(
                     tool=spec.name,
-                    query=url,
+                    query=_redact(url),
                     status="rate_limited" if status_code == 429 else "failed",
                     notes=f"the server answered {status_code}",
                 )
             return _envelope(
                 tool=spec.name,
-                query=url,
+                query=_redact(url),
                 status="ok",
-                results=[{"url": url, "status_code": status_code, "body": text}],
+                results=[
+                    {"url": _redact(url), "status_code": status_code, "body": _redact(text)}
+                ],
             )
 
     return _CustomHttpTool(tool_failure_policy=_policy(failure_policy))

@@ -613,6 +613,32 @@ def _assert_auth_startup_safety() -> None:
             "CORS_ALLOW_ORIGINS is '*' while authentication is required; name "
             "the origins that may carry an Authorization header instead"
         )
+    if not auth_base_url_is_trustworthy(project_config.AUTH_BASE_URL):
+        # SECURITY (audit L2): the signing keys that authenticate EVERY request
+        # are fetched from `${AUTH_BASE_URL}/api/auth/jwks`, and `iss`/`aud`
+        # are pinned to the same string. Over cleartext, whoever sits on the
+        # path substitutes their own keys and mints tokens this service
+        # believes. Loopback is allowed for a developer's own machine; nothing
+        # else is reachable without TLS.
+        raise RuntimeError(
+            "AUTH_BASE_URL must be https:// when authentication is required "
+            f"(it is {project_config.AUTH_BASE_URL!r}); the JWKS that verifies "
+            "every bearer token is fetched from it, and a cleartext fetch can be "
+            "answered by anyone on the path. http:// is accepted for loopback only"
+        )
+
+
+def auth_base_url_is_trustworthy(base_url: str) -> bool:
+    """https anywhere, or plain http on the developer's own loopback."""
+
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(base_url)
+    if parts.scheme == "https":
+        return True
+    if parts.scheme != "http":
+        return False
+    return (parts.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
 
 
 #: Plan 01 D8: the header a zero-cost test sets to BE somebody. Honoured only

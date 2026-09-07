@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from io import BytesIO
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -670,6 +671,68 @@ class ReadyResponse(HealthResponse):
     observability: dict[str, Any] = Field(default_factory=dict)
 
 
+class _StripQueryCredentials(logging.Filter):
+    """Replace the value of an `access_token` query parameter in a log line.
+
+    SECURITY (audit L1). The WebSocket handshake carries the 15-minute bearer
+    token as a QUERY PARAMETER, and that is forced rather than chosen: the
+    browser WebSocket API cannot set a header on the handshake, so
+    `Authorization` is unavailable there. uvicorn's access log writes the
+    request line verbatim, so every handshake put a live credential into
+    Render's log stream and into any drain attached to it - and the run id
+    beside it, which after audit H1 was the other half of a working attack.
+
+    Filtering the value out is the cheap half of the answer. The expensive
+    halves, both left to whoever owns the deployment and the client: run
+    uvicorn with `--no-access-log`, and carry the token in
+    `Sec-WebSocket-Protocol`, which the browser API *can* set.
+
+    The quantifier is bounded, for the same reason `_URL_CREDENTIALS` is
+    (audit C1): a log filter runs on every request and must never be the
+    slowest thing in one.
+    """
+
+    _CREDENTIAL = re.compile(r"([?&]access_token=)[^&\s\"]{1,8192}")
+    _REPLACEMENT = r"\1***"
+
+    def _scrub(self, value: str) -> str:
+        return self._CREDENTIAL.sub(self._REPLACEMENT, value)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn.access carries the request line in `args`, not in `msg`.
+        # `msg` is scrubbed too, and cheaply: it is a format string there and
+        # can never match, so this only does work for a caller that logged an
+        # already-formatted line.
+        args = record.args
+        if isinstance(args, tuple):
+            record.args = tuple(
+                self._scrub(item) if isinstance(item, str) else item for item in args
+            )
+        elif isinstance(args, dict):
+            record.args = {
+                key: self._scrub(item) if isinstance(item, str) else item
+                for key, item in args.items()
+            }
+        if isinstance(record.msg, str):
+            record.msg = self._scrub(record.msg)
+        # A filter that drops records would lose the access log entirely.
+        return True
+
+
+def _install_access_log_filter() -> None:
+    """Attach `_StripQueryCredentials` to `uvicorn.access`, exactly once.
+
+    Idempotent by CLASS rather than by identity: this suite builds hundreds of
+    apps in one process, and a filter added per app would run the same
+    substitution hundreds of times over every request line.
+    """
+
+    access_log = logging.getLogger("uvicorn.access")
+    if any(isinstance(item, _StripQueryCredentials) for item in access_log.filters):
+        return
+    access_log.addFilter(_StripQueryCredentials())
+
+
 def create_app(
     *,
     registry: RunRegistry | None = None,
@@ -698,6 +761,7 @@ def create_app(
     _assert_openrouter_startup_safety()
     _assert_auth_startup_safety()
     _assert_credential_vault_startup_safety()
+    _install_access_log_filter()
 
     try:
         from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response

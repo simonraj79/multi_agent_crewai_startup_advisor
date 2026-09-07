@@ -3043,6 +3043,12 @@ AUTH_JWKS_TIMEOUT_SECONDS = _env_positive_int("AUTH_JWKS_TIMEOUT_SECONDS", 45)
 # the future must not be rejected as invalid.
 AUTH_JWT_LEEWAY_SECONDS = _env_positive_int("AUTH_JWT_LEEWAY_SECONDS", 60)
 
+# After a JWKS refetch that failed to find the `kid` it was asked for, further
+# unknown kids are refused WITHOUT a fetch for this long. A real rotation is
+# unaffected (its refetch finds the key); a flood of junk-kid tokens costs one
+# outbound request per window instead of one per token.
+AUTH_JWKS_MIN_REFRESH_SECONDS = _env_positive_int("AUTH_JWKS_MIN_REFRESH_SECONDS", 30)
+
 # Ed25519. Declared here AND in frontend/server/auth.ts's `keyPairConfig`,
 # because a verifier that accepts whatever the token's own header claims is a
 # verifier that can be talked into accepting `alg: none` or an HMAC forged with

@@ -398,5 +398,127 @@ class HeaderAndPolicyTests(unittest.TestCase):
                 verify_token("a.b.c")
 
 
+class AuditM4JwksRefetchThrottleTests(unittest.TestCase):
+    """A junk `kid` must not be a lever on the auth service - audit M4.
+
+    ``kid`` is read out of the token header *before* the signature is checked,
+    so it is entirely attacker-chosen. Every unknown one used to call
+    ``_refresh()`` while holding ``JwksCache._lock``, and that refresh is a
+    network round trip bounded only by ``AUTH_JWKS_TIMEOUT_SECONDS`` (45)
+    against an auth origin on a Render plan that sleeps - measured at 40 s
+    cold. So an unauthenticated stream of tokens bearing random key ids
+    serialised every authenticated request in the process behind an outbound
+    fetch, and pointed an amplifier at the auth service at the same time.
+
+    The bound is one futile fetch per ``AUTH_JWKS_MIN_REFRESH_SECONDS``. What
+    it costs is written down in the last test here rather than left to be
+    discovered: a rotation that lands inside a window an attacker has just
+    opened is deferred by at most that long.
+    """
+
+    def setUp(self) -> None:
+        self.private, self.entry = _keypair()
+        self.calls: list[str] = []
+        self.document: dict[str, Any] = {"keys": [self.entry]}
+        patcher = patch.object(config, "AUTH_BASE_URL", ISSUER)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _fetcher(self, url: str) -> dict[str, Any]:
+        self.calls.append(url)
+        return self.document
+
+    def cache(self, **kwargs: Any) -> JwksCache:
+        return JwksCache(ISSUER, fetcher=self._fetcher, **kwargs)
+
+    def test_m4_fifty_junk_kids_cost_exactly_one_fetch(self) -> None:
+        cache = self.cache()
+        # A real signature every time, so nothing here is refused for any
+        # reason except the key id - the flood is indistinguishable from
+        # honest traffic until the key lookup.
+        for index in range(50):
+            with self.assertRaises(AuthError):
+                verify_token(_sign(self.private, kid=f"junk-{index}"), cache=cache)
+
+        self.assertEqual(
+            len(self.calls),
+            1,
+            f"50 junk key ids cost {len(self.calls)} JWKS fetches; each one is "
+            "up to AUTH_JWKS_TIMEOUT_SECONDS under the cache lock",
+        )
+
+    def test_m4_the_flood_does_not_lock_out_a_holder_of_a_known_key(self) -> None:
+        """The throttle keys on `unknown`, so a valid token never waits on it."""
+        cache = self.cache()
+        verify_token(_sign(self.private), cache=cache)
+        for index in range(20):
+            with self.assertRaises(AuthError):
+                verify_token(_sign(self.private, kid=f"junk-{index}"), cache=cache)
+
+        self.assertEqual(verify_token(_sign(self.private), cache=cache).id, "user_abc123")
+
+    def test_m4_a_genuine_rotation_still_succeeds_on_the_first_try(self) -> None:
+        """Inside the TTL, an unknown-but-real kid still costs its one refetch.
+
+        This is the property the throttle must not break: the cache is fresh
+        (nothing is expired), the key is simply new, and the very first token
+        signed with it has to work - otherwise a rotation logs everyone out
+        until AUTH_JWKS_CACHE_SECONDS elapses.
+        """
+        cache = self.cache(ttl_seconds=3600)
+        verify_token(_sign(self.private), cache=cache)
+        self.assertEqual(len(self.calls), 1)
+
+        rotated, rotated_entry = _keypair(kid="rotated-key")
+        self.document = {"keys": [self.entry, rotated_entry]}
+
+        user = verify_token(_sign(rotated, kid="rotated-key"), cache=cache)
+
+        self.assertEqual(user.id, "user_abc123")
+        self.assertEqual(len(self.calls), 2, "one refetch, on the first try")
+
+    def test_m4_a_rotation_after_a_flood_succeeds_once_the_window_passes(self) -> None:
+        """The accepted cost of the bound, pinned so it is not a surprise.
+
+        Any scheme that bounds outbound fetches spends its budget on whoever
+        asks first, and the attacker asks first. So a rotation landing inside a
+        window a flood has just opened is deferred - never lost - by at most
+        AUTH_JWKS_MIN_REFRESH_SECONDS, after which the first token carrying the
+        new kid works.
+        """
+        cache = self.cache(ttl_seconds=3600)
+        verify_token(_sign(self.private), cache=cache)
+        with self.assertRaises(AuthError):
+            verify_token(_sign(self.private, kid="junk"), cache=cache)
+        fetches_after_flood = len(self.calls)
+
+        rotated, rotated_entry = _keypair(kid="rotated-key")
+        self.document = {"keys": [self.entry, rotated_entry]}
+
+        # Inside the window: deferred, and it cost no fetch.
+        with self.assertRaises(AuthError):
+            verify_token(_sign(rotated, kid="rotated-key"), cache=cache)
+        self.assertEqual(len(self.calls), fetches_after_flood)
+
+        # The window passes. `min_refresh_seconds` is set rather than the clock
+        # patched, because the throttle's own arithmetic is what is under test.
+        cache.min_refresh_seconds = 0
+        self.assertEqual(
+            verify_token(_sign(rotated, kid="rotated-key"), cache=cache).id,
+            "user_abc123",
+        )
+
+    def test_m4_the_futile_marker_starts_unset_rather_than_at_zero(self) -> None:
+        """`time.monotonic()` has an unspecified origin.
+
+        On Linux it is the host's uptime, so a `0.0` sentinel puts a container
+        that boots inside the window into a state where the FIRST token is
+        refused without any fetch ever happening - and the cache is empty, so
+        nothing works until the window passes. `None` cannot mean "recently".
+        """
+        cache = self.cache()
+        self.assertIsNone(cache._futile_at)
+
+
 if __name__ == "__main__":
     unittest.main()

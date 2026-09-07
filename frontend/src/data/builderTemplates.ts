@@ -1,4 +1,5 @@
 import { BUILDER_SCHEMA_ID, documentId, edgeId, nodeId } from '../types/builder'
+import type { TemplateCategoryId } from './templateCategories'
 import type { BuilderDocument, BuilderEdge, BuilderNode } from '../types/builder'
 import { IDEA_VALIDATOR_CAVEAT, IDEA_VALIDATOR_DOCUMENT } from './templates/ideaValidator'
 import { NEWS_TO_SOCIAL_CAVEAT, NEWS_TO_SOCIAL_DOCUMENT } from './templates/newsToSocial'
@@ -232,13 +233,56 @@ const FAN_OUT_NODES: BuilderNode[] = [
   },
 ]
 
+/**
+ * Where a pattern's name comes from.
+ *
+ * `both` when Anthropic's whitepaper and Google's design-pattern guide name the
+ * same shape (routing / tiered routing; parallelization / parallel); `none` for
+ * the two scaffolds that are not patterns at all (`blank`, the gated minimum).
+ * The provenance is rendered in the card's pattern line and nowhere else (D5).
+ */
+export type PatternSource = 'anthropic' | 'google' | 'both' | 'none'
+
+/** The pattern a card is an instance of, named the way the literature names it. */
+export interface TemplatePattern {
+  /** The name the card carries: "Routing", "Evaluator-optimizer", "Single agent". */
+  readonly name: string
+  readonly source: PatternSource
+  /** The other name the same shape goes by, when the two sources disagree ("Google calls this tiered routing"). */
+  readonly aka?: string
+}
+
 /** One template card, and the document behind it. */
 export interface BuilderTemplate {
   /** Stable across renames; the gallery keys its cards and its tests on it. */
   readonly id: string
   readonly title: string
-  /** One sentence on the card. What you get, not what it is called. */
+  /** One sentence on the card. What you get, not what it is called. ≤ 140 characters, asserted in Python. */
   readonly blurb: string
+  /**
+   * The gallery section this card sits in (`data/templateCategories.ts`).
+   *
+   * A closed union, and the gallery derives its sections from it rather than
+   * from a hand-kept list, so a card cannot be in two sections or in none.
+   * `tests/builder/test_templates.py` asserts every category has a card and
+   * that gallery order equals category order.
+   */
+  readonly category: TemplateCategoryId
+  /** The pattern this card is an instance of, and who calls it that. */
+  readonly pattern: TemplatePattern
+  /**
+   * The job, narrated: who, what arrives, what goes out. ≤ 240 characters.
+   *
+   * This is the field the owner asked for by name: a template tied to an
+   * authentic use case rather than to a concept. It is the second thing on
+   * the card after the title, because "what would I use this for" is the
+   * first question a person browsing has.
+   */
+  readonly useCase: string
+  /** When to reach for this shape, grounded in the sources' own decision rules. ≤ 170 characters. */
+  readonly useWhen: string
+  /** When NOT to, from the same rules. ≤ 170 characters. */
+  readonly notWhen: string
   /**
    * What opening this teaches, in one sentence, rendered on the card.
    *

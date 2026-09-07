@@ -72,6 +72,35 @@ export const TEMPLATE_TEST_INPUTS: readonly TemplateTestInput[] = [
     label: 'Sample idea',
     value: 'An AI tool that turns Figma files into production React',
   },
+  {
+    // A question with a searchable noun in it. The agent behind this box has a
+    // keyword search attached, and a sample phrased as a bare "how do I..."
+    // teaches somebody to type the one shape the tool is worst at.
+    templateId: 'single-agent',
+    label: 'Sample question',
+    value: 'How do teams handle rate limits when calling an LLM API in production?',
+  },
+  {
+    // Deliberately NOT one of the two phrases on the rule branches. A sample
+    // that matched `password` would answer for free every time and nobody
+    // would ever see tiers 2 and 3 run, which is most of what this card is.
+    templateId: 'tiered-routing',
+    label: 'Sample ticket',
+    value: 'I was charged twice, then the second charge vanished, and now my plan says free.',
+  },
+  {
+    // Something three reviewers can genuinely disagree about: one unverifiable
+    // number, one comparison and one date.
+    templateId: 'vote-review',
+    label: 'Sample draft',
+    value:
+      'Today we are launching Atlas, the fastest sync engine on the market. Atlas is 10x quicker than anything else and will be generally available on 1 March.',
+  },
+  {
+    templateId: 'fallback-bar',
+    label: 'Sample enquiry',
+    value: 'My order has not arrived and the tracking page has not moved for six days.',
+  },
 ]
 
 /**
@@ -99,6 +128,12 @@ export const TEMPLATE_INPUT_FIELDS: Readonly<Record<string, readonly string[]>> 
   // `minimal-gated-agent` and `fan-out-join` declare `idea` too, and share this
   // one sample; `COVERED_TEMPLATE_IDS` is what names them.
   'idea-validator': ['idea'],
+  // The four pattern templates added with the categories, each with a field of
+  // its own for exactly the reason the note above gives.
+  'single-agent': ['question'],
+  'tiered-routing': ['ticket'],
+  'vote-review': ['draft'],
+  'fallback-bar': ['enquiry'],
 }
 
 /**
@@ -114,6 +149,10 @@ export const COVERED_TEMPLATE_IDS: readonly string[] = [
   'idea-validator',
   'minimal-gated-agent',
   'fan-out-join',
+  'single-agent',
+  'tiered-routing',
+  'vote-review',
+  'fallback-bar',
 ]
 
 const SAMPLE_BY_FIELD: Readonly<Record<string, TemplateTestInput>> = Object.fromEntries(

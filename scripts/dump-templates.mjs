@@ -101,19 +101,45 @@ const payload = {
   // the two halves agree rather than merely both existing.
   roles: resolved,
   order: templates.BUILDER_TEMPLATES.map((entry) => entry.id),
-  more: templates.MORE_BUILDER_TEMPLATES.map((entry) => entry.id),
+  /**
+   * EMPTY, AND KEPT, which is a deliberate choice between the two the plan
+   * offered.
+   *
+   * The second row is gone (16 D2): `BUILDER_TEMPLATES` is all thirteen and
+   * `ALL_BUILDER_TEMPLATES` aliases it, so there is nothing for this key to
+   * hold. Dropping it outright is the tidier answer and it breaks a reader
+   * this script does not own - `tests/builder/test_client_fixtures.py:444`
+   * asserts `sorted(documents) == sorted(order + more)`, which is a real
+   * property worth keeping and which a `KeyError` would replace with a crash.
+   * An empty list satisfies it unchanged and says, to anybody reading the
+   * committed file, that the row was retired rather than forgotten. Delete the
+   * key in the same commit as that assertion, and not before.
+   */
+  more: [],
   documents: Object.fromEntries(
     templates.ALL_BUILDER_TEMPLATES.map((entry) => [
       entry.id,
       serialize.forValidate(templates.documentFromTemplate(entry)),
     ]),
   ),
+  // Every field the card renders, so the Python side can assert over the copy
+  // and not only over the document (16 D4). `category` and `pattern` are what
+  // make D1's closed union and D9's pattern-naming rule checkable at all.
   cards: Object.fromEntries(
     templates.ALL_BUILDER_TEMPLATES.map((entry) => [
       entry.id,
       {
         title: entry.title,
         blurb: entry.blurb,
+        category: entry.category,
+        pattern: {
+          name: entry.pattern.name,
+          source: entry.pattern.source,
+          aka: entry.pattern.aka ?? null,
+        },
+        useCase: entry.useCase,
+        useWhen: entry.useWhen,
+        notWhen: entry.notWhen,
         teaches: entry.teaches,
         modifyFirst: entry.modifyFirst,
         caveat: entry.caveat ?? null,

@@ -49,27 +49,67 @@ from scripts.emit_builder_fixtures import (  # noqa: E402
     template_documents,
 )
 
-#: The gallery's first row, in the order it is drawn. Restated here rather than
-#: read from the dump, because the ORDER is a judgement plan 14 D7 makes -
-#: by how much a reader has to understand before the card helps them - and a
-#: test that read it from the file it is checking would ratify any order at all.
+#: The thirteen cards, in the order the gallery draws them - 16 D2. Restated
+#: here rather than read from the dump, because the ORDER is a judgement two
+#: plans make (14 D7 inside a category, 16 D1 across them) and a test that read
+#: it from the file it is checking would ratify any order at all.
 GALLERY_ORDER = (
+    # start
     "blank",
+    "single-agent",
+    "minimal-gated-agent",
+    # chain
     "sequential-pipeline",
     "news-to-social",
+    # route
     "conditional-router",
+    "tiered-routing",
+    # parallel
+    "fan-out-join",
+    "vote-review",
+    # review
     "reflection-loop",
+    "fallback-bar",
+    # team
     "hierarchical-delegation",
     "idea-validator",
 )
 
-#: The second row: library-agent templates kept because `e2e/builder.spec.ts`
-#: drives them (owner's decision 21).
-MORE_ROW = ("minimal-gated-agent", "fan-out-join")
+#: The six sections, in `frontend/src/data/templateCategories.ts`'s order, which
+#: is the order the gallery renders them in. Restated for the same reason
+#: `GALLERY_ORDER` is: the progression is the decision, and reading it off the
+#: thing under test would ratify anything.
+CATEGORY_ORDER = ("start", "chain", "route", "parallel", "review", "team")
+
+#: The four templates added with the categories. Named so the assertions that
+#: are ABOUT them read as being about them, rather than as a slice.
+NEW_TEMPLATES = ("single-agent", "tiered-routing", "vote-review", "fallback-bar")
 
 #: Every template that has something to launch. `blank` is the two ends of a run
 #: and nothing between them.
-LAUNCHABLE = tuple(t for t in GALLERY_ORDER + MORE_ROW if t != "blank")
+LAUNCHABLE = tuple(t for t in GALLERY_ORDER if t != "blank")
+
+#: The one `input_field` more than one template declares, and every template
+#: that declares it.
+#:
+#: 16 D9 asks for "no two templates share an `input_field`", and the tree it was
+#: written against already had four templates sharing `idea`: the empty canvas,
+#: the two library-agent cards and the flagship. That is deliberate and
+#: documented at `frontend/src/data/templates/testInputs.ts:20-26` - the field
+#: means the same thing in each and one sample serves all of them - so the rule
+#: is asserted here in the only form that is both true and useful: every field
+#: is declared by exactly one template EXCEPT this one, and this one is declared
+#: by exactly these four. A fifth sharer fails, and a new template quietly
+#: reusing somebody's field fails, which is what the rule is for
+#: (`testInputs.ts` resolves a sample BY FIELD and `Object.fromEntries` keeps
+#: the last write, so a collision silently hands one template another's sample).
+SHARED_INPUT_FIELD = "idea"
+SHARES_THE_IDEA_FIELD = (
+    "blank",
+    "minimal-gated-agent",
+    "idea-validator",
+    "fan-out-join",
+)
 
 #: The two launchable templates that are NOT gated above their first billable
 #: node. Both are shapes rather than oversights, and they arrive at the same
@@ -90,6 +130,22 @@ LAUNCHABLE = tuple(t for t in GALLERY_ORDER + MORE_ROW if t != "blank")
 #: is a template SILENTLY not launching, and neither of these does that.
 UNGATED_BY_DESIGN = ("news-to-social", "idea-validator")
 
+#: The word on each caveat that makes it THAT caveat. R14 renders a caveat
+#: verbatim, so a card whose text was replaced with a different truth has to
+#: fail here rather than pass on a non-empty string. Six cards carry one and
+#: seven carry none; both halves are asserted.
+CAVEAT_MARKERS = {
+    "news-to-social": "403",
+    "conditional-router": "Four desks",
+    "fan-out-join": "Four branches",
+    "fallback-bar": "transport failure",
+    "hierarchical-delegation": "roster is fixed",
+    "idea-validator": "judgement",
+}
+
+#: 16 D4's caps, in characters.
+LENGTH_CAPS = {"blurb": 140, "useCase": 240, "useWhen": 170, "notWhen": 170}
+
 
 def documents() -> dict[str, BuilderDocument]:
     """Every template parsed, keyed by id."""
@@ -108,53 +164,273 @@ DOCUMENTS = documents()
 
 
 class GalleryTests(unittest.TestCase):
-    """The set of templates, and the order they are offered in."""
+    """The set of templates, the sections they sit in, and their order."""
 
-    def test_the_gallery_ships_the_six_and_keeps_the_two(self) -> None:
+    def test_the_gallery_ships_the_thirteen_and_the_second_row_is_gone(self) -> None:
         dumped = template_documents()
         self.assertEqual(tuple(dumped["order"]), GALLERY_ORDER)
-        self.assertEqual(tuple(dumped["more"]), MORE_ROW)
         self.assertEqual(
             sorted(dumped["documents"]),
-            sorted(GALLERY_ORDER + MORE_ROW),
-            "the dumped documents and the two rendered rows disagree",
+            sorted(GALLERY_ORDER),
+            "the dumped documents and the rendered order disagree",
         )
+        # `more` is EMPTY and still emitted. The demoted second row is retired
+        # (16 D2) and `ALL_BUILDER_TEMPLATES` aliases `BUILDER_TEMPLATES`, so
+        # there is nothing left for the key to hold - but `test_client_fixtures`
+        # asserts `sorted(documents) == sorted(order + more)`, which is a real
+        # property, and a missing key would replace it with a KeyError. The
+        # dump's own comment says to delete the key in the same commit as that
+        # assertion and not before.
+        self.assertEqual(list(dumped["more"]), [])
 
     def test_the_flagship_is_last_and_the_blank_is_first(self) -> None:
         """The one ordering property that is a decision rather than a list.
 
-        A gallery that opens on the biggest graph teaches an author that the
+        A gallery that opens on the biggest document teaches an author that the
         builder is for transcribing something rather than for drawing, which is
-        the failure mode the ordering rule exists to avoid.
+        the failure mode the ordering rule exists to avoid. Plan 14 D7 and 16 D2
+        fix these two positions by name; everything between them is now decided
+        by the category a card declares.
         """
 
         self.assertEqual(GALLERY_ORDER[0], "blank")
         self.assertEqual(GALLERY_ORDER[-1], "idea-validator")
 
-    def test_every_card_carries_what_it_teaches_and_what_to_change(self) -> None:
+    def test_every_template_declares_a_category_from_the_closed_six(self) -> None:
         cards = template_documents()["cards"]
-        for template_id in GALLERY_ORDER + MORE_ROW:
+        for template_id in GALLERY_ORDER:
+            with self.subTest(template=template_id):
+                self.assertIn(
+                    cards[template_id]["category"],
+                    CATEGORY_ORDER,
+                    "a card in no section is a card the gallery cannot draw",
+                )
+
+    def test_every_section_has_at_least_one_card(self) -> None:
+        """A section heading over an empty shelf is a promise nothing keeps."""
+
+        cards = template_documents()["cards"]
+        declared = {cards[template_id]["category"] for template_id in GALLERY_ORDER}
+        self.assertEqual(sorted(declared), sorted(CATEGORY_ORDER))
+
+    def test_gallery_order_is_category_order_with_the_sections_unbroken(self) -> None:
+        """The gallery renders sections, so the list has to be sorted into them.
+
+        Asserted as "the categories in order, with consecutive repeats
+        collapsed" rather than as a sort, because that fails BOTH ways a
+        sectioned gallery can be wrong: a section out of place, and a card of
+        one section stranded among another's.
+        """
+
+        cards = template_documents()["cards"]
+        seen: list[str] = []
+        for template_id in GALLERY_ORDER:
+            category = cards[template_id]["category"]
+            if not seen or seen[-1] != category:
+                seen.append(category)
+        self.assertEqual(tuple(seen), CATEGORY_ORDER)
+
+    def test_no_two_templates_share_an_input_field_but_the_declared_four(self) -> None:
+        """A shared field silently shares a saved sample. See `SHARED_INPUT_FIELD`."""
+
+        by_field: dict[str, list[str]] = {}
+        for template_id in GALLERY_ORDER:
+            field = str(DOCUMENTS[template_id].input_field)
+            by_field.setdefault(field, []).append(template_id)
+
+        self.assertEqual(
+            sorted(by_field[SHARED_INPUT_FIELD]),
+            sorted(SHARES_THE_IDEA_FIELD),
+            "the one field more than one template declares has changed hands",
+        )
+        for field, owners in sorted(by_field.items()):
+            if field == SHARED_INPUT_FIELD:
+                continue
+            with self.subTest(field=field):
+                self.assertEqual(
+                    owners,
+                    owners[:1],
+                    f"{owners} all declare '{field}', so they share one saved "
+                    "sample: `testInputs.ts` resolves by field and the last "
+                    "write wins",
+                )
+
+    def test_each_new_template_brought_its_own_input_field(self) -> None:
+        """16 criterion 4, stated about the four rather than inferred."""
+
+        fields = {t: str(DOCUMENTS[t].input_field) for t in NEW_TEMPLATES}
+        self.assertEqual(
+            fields,
+            {
+                "single-agent": "question",
+                "tiered-routing": "ticket",
+                "vote-review": "draft",
+                "fallback-bar": "enquiry",
+            },
+        )
+
+    def test_every_pattern_card_names_its_pattern_in_its_own_copy(self) -> None:
+        """The ask itself, made a test - `AUDIT-REPO.md` section 1.4.
+
+        Not one card named its pattern before this plan: every `teaches` string
+        was written in the vocabulary of this builder's syntax. A card whose
+        copy quietly regressed to syntax would look fine and would lose the one
+        thing that lets a reader match a job to a shape, so the name has to
+        appear in a field the card renders. The `none` cards are exempt because
+        they are instances of nothing: `blank` is the empty state and
+        `minimal-gated-agent` demonstrates a rule of this service.
+        """
+
+        cards = template_documents()["cards"]
+        for template_id in GALLERY_ORDER:
+            card = cards[template_id]
+            pattern = card["pattern"]
+            with self.subTest(template=template_id):
+                self.assertIn(pattern["source"], ("anthropic", "google", "both", "none"))
+                if pattern["source"] == "none":
+                    continue
+                copy = " ".join(
+                    str(card[field]) for field in ("blurb", "useCase", "useWhen", "teaches")
+                )
+                self.assertIn(
+                    pattern["name"],
+                    copy,
+                    f"{template_id} is offered as {pattern['name']!r} and never "
+                    "says so in a field a reader sees",
+                )
+
+    def test_every_card_carries_every_field_the_gallery_renders(self) -> None:
+        cards = template_documents()["cards"]
+        for template_id in GALLERY_ORDER:
             with self.subTest(template=template_id):
                 card = cards[template_id]
-                for field in ("title", "blurb", "teaches", "modifyFirst"):
+                for field in (
+                    "title",
+                    "blurb",
+                    "useCase",
+                    "useWhen",
+                    "notWhen",
+                    "teaches",
+                    "modifyFirst",
+                ):
                     self.assertGreater(
                         len(card[field] or ""),
                         10,
-                        f"{template_id}.{field} is the card's whole explanation",
+                        f"{template_id}.{field} is part of the card's explanation",
                     )
-                # R14: a caveat is a truth the picture cannot carry, and only
-                # two graphs have one. The flagship's is that its shape is not
-                # its judgement; `news-to-social`'s is that it has no gate, so
-                # a signed-out visitor handed the link gets a 403 rather than a
-                # run. Each is asserted by the WORD that makes it that caveat,
-                # so a card whose text was replaced with a different truth fails
-                # here rather than passing on a non-empty string.
-                if template_id == "idea-validator":
-                    self.assertIn("judgement", card["caveat"])
-                elif template_id in UNGATED_BY_DESIGN:
-                    self.assertIn("403", card["caveat"])
+
+    def test_the_four_copy_fields_stay_inside_their_caps(self) -> None:
+        """16 D4. A card is read at a glance in a grid, not opened and studied.
+
+        The caps are what stop one long card making its neighbours look
+        unfinished - the defect D-15-27 fixed for the caveat - and what keeps
+        `e2e/builder-layout.spec.ts`'s tallest-to-shortest content ratio under
+        two as the gallery grows from nine cards to thirteen.
+        """
+
+        cards = template_documents()["cards"]
+        for template_id in GALLERY_ORDER:
+            for field, cap in LENGTH_CAPS.items():
+                length = len(cards[template_id][field] or "")
+                with self.subTest(template=template_id, field=field):
+                    self.assertLessEqual(
+                        length,
+                        cap,
+                        f"{template_id}.{field} is {length} characters against a "
+                        f"cap of {cap}",
+                    )
+
+    def test_six_cards_carry_a_caveat_and_the_rest_carry_none(self) -> None:
+        """R14, asserted by the word that makes each caveat that caveat."""
+
+        cards = template_documents()["cards"]
+        for template_id in GALLERY_ORDER:
+            with self.subTest(template=template_id):
+                caveat = cards[template_id]["caveat"]
+                marker = CAVEAT_MARKERS.get(template_id)
+                if marker is None:
+                    self.assertIsNone(
+                        caveat,
+                        "a caveat on a card that needs none dilutes the ones that do",
+                    )
                 else:
-                    self.assertIsNone(card["caveat"])
+                    self.assertIsNotNone(caveat, "the caveat this card must carry is gone")
+                    self.assertIn(marker, caveat)
+
+    def test_no_card_calls_the_thing_a_graph(self) -> None:
+        """ROUND-2 section 5 ruling 1, over the copy this plan wrote.
+
+        TWO STRINGS ARE EXEMPT AND THEY ARE NAMED HERE, because the exemption
+        is a contradiction worth seeing rather than hiding. 16 criterion 6
+        requires `idea-validator`'s and `news-to-social`'s caveats to keep their
+        existing sentences word for word, and the flagship's contains "a drawn
+        graph carries plain text between its nodes". The two specs that enforce
+        the ban scan the home and the run shell, and the home renders no
+        caveat, so nothing shipped contradicts the ruling today. A gallery-wide
+        scan added later would catch that string, and whoever adds one has to
+        rule on it rather than discover it.
+        """
+
+        cards = template_documents()["cards"]
+        exempt = {cards["idea-validator"]["caveat"], cards["news-to-social"]["caveat"]}
+        for template_id in GALLERY_ORDER:
+            card = cards[template_id]
+            for field in (
+                "title",
+                "blurb",
+                "useCase",
+                "useWhen",
+                "notWhen",
+                "teaches",
+                "modifyFirst",
+                "caveat",
+            ):
+                value = card[field]
+                if not value or value in exempt:
+                    continue
+                with self.subTest(template=template_id, field=field):
+                    self.assertNotRegex(str(value), r"(?i)\bgraphs?\b")
+
+    def test_no_card_names_a_vendor_or_a_source_in_its_prose(self) -> None:
+        """16 D5, twice over.
+
+        No vendor model name anywhere - the rule the model-role tokens exist
+        for, applied to prose - and provenance in the pattern line only, so a
+        card reads as advice about work rather than as a citation. The two
+        verbatim caveats are exempt for the reason the test above gives; neither
+        names a vendor today, and the exemption is here so that a future edit to
+        one fails for the right reason.
+        """
+
+        banned = (
+            "Gemini",
+            "Claude",
+            "GPT",
+            "OpenAI",
+            "Anthropic",
+            "Google",
+            "Qwen",
+            "DeepSeek",
+        )
+        cards = template_documents()["cards"]
+        offenders: list[str] = []
+        for template_id in GALLERY_ORDER:
+            card = cards[template_id]
+            for field in (
+                "title",
+                "blurb",
+                "useCase",
+                "useWhen",
+                "notWhen",
+                "teaches",
+                "modifyFirst",
+                "caveat",
+            ):
+                value = str(card[field] or "")
+                for word in banned:
+                    if word in value:
+                        offenders.append(f"{template_id}.{field}: {word}")
+        self.assertEqual(offenders, [])
 
 
 class ValidationTests(unittest.TestCase):
@@ -294,6 +570,32 @@ class ModelRoleTests(unittest.TestCase):
                     offenders.append(f"{path.name}:{line_no}: {line.strip()}")
         self.assertEqual(offenders, [])
 
+    def test_a_fallback_model_is_a_ROLE_and_resolves_like_any_other(self) -> None:
+        """16 criterion 5. `retry.fallback_model` is the fifth model-carrying field.
+
+        `resolveModelRoles` walks every string under a node's config rather than
+        naming the four paths it knew about, which is the only reason this
+        works without a client change - a path list is the kind of mirror that
+        rots without saying so. What is asserted here is the outcome: the token
+        is gone, and what replaced it is the escalation preset this build names.
+        """
+
+        node = next(
+            node
+            for node in DOCUMENTS["fallback-bar"].nodes
+            if node.id == "answer"
+        )
+        config = node.config
+        assert isinstance(config, AuthoredAgentConfig)
+        fallback = config.retry.fallback_model
+        self.assertIsNotNone(fallback, "the whole template is this one field")
+        self.assertNotIn("{{", str(fallback), "an unresolved role token shipped")
+        self.assertIn(str(fallback).split(":", 1)[0], MODEL_BY_ID)
+        self.assertEqual(
+            str(fallback).removeprefix("openrouter/").split(":", 1)[0],
+            MODEL_PRESETS["escalation"].removeprefix("openrouter/").split(":", 1)[0],
+        )
+
     def test_every_authored_model_resolved_to_a_registry_row(self) -> None:
         dumped = template_documents()["documents"]
         seen = 0
@@ -423,6 +725,140 @@ class PatternTests(unittest.TestCase):
         self.assertEqual(len(attachments), 1)
         self.assertEqual(attachments[0].target, "research")
 
+        tool = next(node for node in document.nodes if node.kind == "tool")
+        self.assertEqual(tool.config.tool_id, "analyze_community_sentiment")
+
+    def test_the_fallback_retries_at_least_once_or_it_is_inert(self) -> None:
+        """The trap this template exists to name, asserted against the document.
+
+        `model_for` offers the fallback only when `index == attempts - 1 and
+        index`, so a node carrying a `fallback_model` with `max_retries: 0`
+        never reaches the second model at all. It would look configured on the
+        canvas, price as though it were, and do nothing - which is worse than
+        not offering the field, and is exactly the state a copy-paste of this
+        template into a smaller graph would arrive at.
+        """
+
+        by_id = {node.id: node for node in DOCUMENTS["fallback-bar"].nodes}
+        answer = by_id["answer"].config
+        assert isinstance(answer, AuthoredAgentConfig)
+        self.assertGreaterEqual(
+            answer.retry.max_retries,
+            1,
+            "a fallback model behind zero retries is inert and looks configured",
+        )
+        self.assertIsNotNone(answer.retry.fallback_model)
+        self.assertGreater(answer.retry.backoff_seconds, 0)
+
+        # The bar itself: one checker, downstream of the answerer, reading
+        # whatever came back without knowing which model wrote it. Google's
+        # pattern is the single choke point rather than the second model.
+        check = by_id["check"].config
+        assert isinstance(check, AuthoredAgentConfig)
+        self.assertEqual(check.task.output_schema, {"cleared": "boolean", "notes": "string"})
+        self.assertEqual(
+            [edge.source for edge in DOCUMENTS["fallback-bar"].edges if edge.target == "check"],
+            ["answer"],
+        )
+
+    def test_the_fallback_loop_is_one_cycle_closed_by_a_router(self) -> None:
+        document = DOCUMENTS["fallback-bar"]
+        self.assertEqual(estimate_budget(document).cycles, 1)
+        back = back_edge_indices(document)
+        self.assertEqual(len(back), 1)
+        closer = document.edges[back[0]]
+        kinds = {node.id: node.kind for node in document.nodes}
+        self.assertEqual(kinds[closer.source], "router")
+        self.assertEqual(closer.target, "answer")
+
+    def test_the_rule_tier_reaches_the_output_past_no_billable_node(self) -> None:
+        """The whole claim of `tiered-routing`, and the only one worth a test.
+
+        Walked rather than asserted about named nodes, so it stays true if the
+        phrases, the labels or the number of self-serve replies change: from
+        the input, follow flow edges, refuse to enter an agent or a crew, and
+        see whether an output is still reachable. If it is, some real traffic
+        reaches an answer having paid for nothing, which is what the card
+        promises. `conditional-router` is the control: every one of its paths
+        goes through the classifier, so the same walk finds nothing there.
+        """
+
+        def free_path_exists(template_id: str) -> bool:
+            document = DOCUMENTS[template_id]
+            kinds = {node.id: node.kind for node in document.nodes}
+            forward: dict[str, list[str]] = {}
+            for edge in document.edges:
+                if edge.target_port == "in":
+                    forward.setdefault(str(edge.source), []).append(str(edge.target))
+            start = next(node.id for node in document.nodes if node.kind == "input")
+            seen: set[str] = set()
+            stack = [str(start)]
+            while stack:
+                current = stack.pop()
+                if current in seen:
+                    continue
+                seen.add(current)
+                if kinds[current] in ("agent", "crew"):
+                    continue
+                if kinds[current] == "output":
+                    return True
+                stack.extend(forward.get(current, []))
+            return False
+
+        self.assertTrue(
+            free_path_exists("tiered-routing"),
+            "the rule tier is the card's claim and it now costs a model call",
+        )
+        self.assertFalse(
+            free_path_exists("conditional-router"),
+            "the control: every path through the classifier template bills",
+        )
+
+    def test_the_vote_is_three_independent_reviewers_and_a_counted_tally(self) -> None:
+        """The two facts that make it a vote rather than a chain.
+
+        Independence first: no reviewer's `prompt_inputs` may name another
+        reviewer's output, or the second one agrees with the first and the
+        third agrees with both. Then the join, because `joins: 'all'` is what
+        stops the tally counting one opinion out of three having paid for all
+        three.
+        """
+
+        document = DOCUMENTS["vote-review"]
+        by_id = {node.id: node for node in document.nodes}
+        reviewers = ("accuracy", "tone", "policy")
+        for reviewer in reviewers:
+            config = by_id[reviewer].config
+            assert isinstance(config, AuthoredAgentConfig)
+            with self.subTest(reviewer=reviewer):
+                self.assertEqual(sorted(config.prompt_inputs), ["draft"])
+                for other in reviewers:
+                    self.assertNotIn(
+                        f"out__{other}",
+                        str(config.prompt_inputs),
+                        "a reviewer that can read another reviewer is a chain",
+                    )
+
+        self.assertEqual(document.joins["votes"], "all")
+        arrivals = [edge.source for edge in document.edges if edge.target == "votes"]
+        self.assertEqual(sorted(arrivals), sorted(reviewers))
+
+        # A transform cannot count, so the tally is a model call and the card
+        # says so. Asserted here so the card cannot quietly stop being true.
+        tally = by_id["tally"].config
+        assert isinstance(tally, AuthoredAgentConfig)
+        self.assertEqual(
+            tally.task.output_schema,
+            {"approvals": "number", "objections": "string"},
+        )
+        self.assertEqual(document.joins["outcome"], "any")
+
+    def test_the_single_agent_is_one_billable_node_with_one_keyless_tool(self) -> None:
+        document = DOCUMENTS["single-agent"]
+        self.assertEqual(estimate_budget(document).billable_nodes, 1)
+        attachments = [edge for edge in document.edges if edge.target_port == "attach"]
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].target, "answer")
         tool = next(node for node in document.nodes if node.kind == "tool")
         self.assertEqual(tool.config.tool_id, "analyze_community_sentiment")
 

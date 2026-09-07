@@ -96,7 +96,15 @@ _GATE_WATCH_STATUSES = frozenset({"expired", "alerted"})
 # added to `redaction.py` would have reached the ring and not the row - the
 # exact two-walks-two-answers drift that module exists to end.
 _SECRET_KEYS = SECRET_KEYS
-_URL_CREDENTIALS = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^/@\s]+@", re.I)
+# SECURITY: every quantifier is BOUNDED. The unbounded `[a-z0-9+.-]*` before a
+# literal `://` whose first character the class also matches made this
+# quadratic - measured 13.9 s on a 65,490-character subject, with the GIL held,
+# from ONE 64 KiB gate reply on the event loop. The output is unchanged for
+# every real URL: scheme, user and password lengths are generous, and the
+# password half still admits `:`.
+_URL_CREDENTIALS = re.compile(
+    r"(?P<scheme>[a-z][a-z0-9+.-]{0,31}://)[^/@\s:]{1,256}:[^/@\s]{1,256}@", re.I
+)
 
 
 def _utcnow() -> datetime:

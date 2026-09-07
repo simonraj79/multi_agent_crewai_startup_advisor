@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 import json
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+from brief_crew.config import WS_MAX_GATE_FIELD_CHARS
 from brief_crew.config import (
     MAX_RUN_INPUT_BYTES,
     MAX_RUN_INPUT_KEYS,
@@ -451,7 +452,12 @@ class GateReplyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     outcome: str = Field(min_length=1, max_length=64)
-    fields: dict[str, str] = Field(default_factory=dict)
+    # The WebSocket transport bounds each value at WS_MAX_GATE_FIELD_CHARS
+    # (app.py, handle_gate_reply); the HTTP one did not, and the two must not
+    # disagree about what a gate reply may carry.
+    fields: dict[str, Annotated[str, Field(max_length=WS_MAX_GATE_FIELD_CHARS)]] = Field(
+        default_factory=dict
+    )
 
 
 class GateReplyResponse(BaseModel):

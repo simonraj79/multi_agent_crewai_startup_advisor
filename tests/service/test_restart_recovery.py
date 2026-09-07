@@ -661,5 +661,108 @@ class StaleRunScanTests(RestartRecoveryTestCase):
         self.assertEqual(store.list_stale_runs(updated_before=cutoff), [])
 
 
+class AuditH1OwnershipSurvivesRehydrationTests(RestartRecoveryTestCase):
+    """A rehydrated run must come back with its owner - audit H1.
+
+    ``_run_dict`` never selected ``user_id`` into the snapshot and
+    ``_restore_record`` never set it, so a record rebuilt from the database
+    carried ``user_id=None``. ``require_own_run`` defines None as "a pre-auth
+    row, readable by anyone" - correct for a row written before authentication
+    existed, catastrophic for one whose owner was simply dropped in transit.
+
+    A record is evicted from memory six hours after it finishes and on every
+    restart, and both Render services carry ``autoDeploy: yes``, so every push
+    to `main` is a restart. After either, anyone holding the run id could read
+    the prompt, the report and every frame, download the logs, cancel the run
+    and answer its gates.
+    """
+
+    def test_h1_a_run_restored_by_a_second_registry_keeps_its_owner(self) -> None:
+        """One store, two registries. The second registry IS the restart."""
+        store = self._store()
+        first = self._registry(store)
+        record = first.create_run(
+            session_id="restart-recovery",
+            workflow_id=VALIDATOR_GRAPH.id,
+            inputs={"idea": "A no-cost synthetic idea"},
+            user_id="alice",
+        )
+        run_id = record.run_id
+        self.assertEqual(record.user_id, "alice")
+        # Durably too, or the read below would only be proving the cache.
+        # `.get`, not `[...]`: on the unfixed code the key is absent entirely,
+        # and a KeyError says less than the sentence below it.
+        self.assertEqual(
+            store.get_run(run_id).get("user_id"),
+            "alice",
+            "the snapshot the registry rebuilds from carries no owner",
+        )
+
+        second = self._registry(store)
+
+        restored = second.require(run_id)
+        self.assertEqual(
+            restored.user_id,
+            "alice",
+            "the rehydrated run lost its owner; every ownership check on it "
+            "now fails open",
+        )
+
+    def test_h1_eviction_and_rehydration_in_one_registry_keeps_the_owner(self) -> None:
+        """The six-hourly eviction is the same door as a restart, without one."""
+        store = self._store()
+        registry = self._registry(store)
+        record = registry.create_run(
+            session_id="restart-recovery",
+            workflow_id=VALIDATOR_GRAPH.id,
+            inputs={"idea": "A no-cost synthetic idea"},
+            user_id="alice",
+        )
+        run_id = record.run_id
+        registry.start_run(run_id)
+        registry.wait(run_id, timeout=5)
+        registry.answer_gate(
+            run_id,
+            record.pending_gate["gate_id"],
+            outcome="approve",
+            fields={},
+        )
+        registry.wait(run_id, timeout=5)
+        registry.answer_gate(
+            run_id,
+            registry.require(run_id).pending_gate["gate_id"],
+            outcome="approve",
+            fields={},
+        )
+        registry.wait(run_id, timeout=5)
+        self.assertIn(
+            registry.require(run_id).status,
+            (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED),
+        )
+
+        # Past the retention horizon rather than patching the constant: the
+        # sweep takes the moment it is judged against.
+        evicted = registry.evict_stale_runs(
+            now=datetime.now(timezone.utc) + timedelta(days=1)
+        )
+        self.assertIn(run_id, evicted)
+
+        self.assertEqual(registry.require(run_id).user_id, "alice")
+
+    def test_h1_a_genuinely_unowned_row_still_rehydrates_as_unowned(self) -> None:
+        """The carve-out this fix must not break.
+
+        Rows written before authentication existed have no owner and cannot be
+        given one; refusing them would make deploying auth destroy the history
+        it organises. `None` must keep meaning `None`.
+        """
+        store = self._store()
+        self._seed_run(store, run_id="pre-auth-row", status="completed")
+
+        registry = self._registry(store)
+
+        self.assertIsNone(registry.require("pre-auth-row").user_id)
+
+
 if __name__ == "__main__":  # pragma: no cover - parity with the other suites
     unittest.main()

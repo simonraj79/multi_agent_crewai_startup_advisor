@@ -3467,6 +3467,9 @@ class RunRegistry:
             workflow_id=str(snapshot["workflow_id"]),
             graph_version=str(snapshot["graph_version"]),
             inputs=dict(snapshot.get("inputs", {})),
+            # The owner comes back with the run, or every ownership check on a
+            # run this process did not create fails open after a restart.
+            user_id=snapshot.get("user_id"),
             node_registry=runtime.node_registry,
             flow_id=str(flow_id) if flow_id else None,
             on_frames=self._enqueue_frames,
@@ -3476,6 +3479,19 @@ class RunRegistry:
             # not the one it was admitted under, and its already-spent total
             # comes back with it in `usage` below - so a run restored mid-flight
             # trips at the same place it would have without the restart.
+            #
+            # FOLLOW-UP (audit H1, deliberately not fixed here): `ceiling_kind`
+            # and `account_cap_usd` are NOT restored either, and unlike the
+            # owner above there is nowhere to restore them from - `runs` has no
+            # column for any of the three, and `create_all()` never alters a
+            # table that already shipped. So a rehydrated run comes back under
+            # the global per-run ceiling with `ceiling_kind="run"`, its promise
+            # is invisible to `account_spend`'s committed figure, and its stop
+            # message reverts to the per-run wording. Recomputing the cap from
+            # config here would be WRONG: `config.user_spend_cap_usd` exempts
+            # by e-mail as well as by id, and the row carries no e-mail, so the
+            # exempt owner would silently be capped after every deploy. Closing
+            # it needs an additive column, which is a schema change.
             stop_reason=_restored_stop_reason(snapshot.get("error")),
             status=RunStatus(str(snapshot["status"])),
             created_at=snapshot["created_at"],

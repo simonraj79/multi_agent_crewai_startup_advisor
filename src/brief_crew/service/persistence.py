@@ -1844,6 +1844,10 @@ class PostgresFlowPersistence(FlowPersistence):
         return {
             "run_id": row["id"],
             "session_id": row["session_id"],
+            # SECURITY: ownership must survive the round trip. `require_own_run`
+            # keys on `RunRecord.user_id`, and a missing key rehydrates as None,
+            # which that check reads as "pre-auth row, readable by anyone".
+            "user_id": row["user_id"],
             "workflow_id": row["workflow_id"],
             "flow_id": row["flow_id"],
             "graph_version": row["graph_version"],

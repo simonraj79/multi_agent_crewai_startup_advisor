@@ -28,9 +28,18 @@ quietly-divergent double this repository keeps warning about.
 **The third is that stdio is a process.** An arbitrary stdio command would let
 an author's record name a program to run on this server, which is the one thing
 `BUILDER_ACTION_REFS`' closed set exists to prevent. Production is remote-only:
-`MCP_STDIO_ENABLED` is off, and even lifted, the command must be on
-`MCP_ALLOWED_COMMANDS`, which is empty by default (PLANS.md decision 7,
+`MCP_STDIO_ENABLED` is off, and even lifted, the whole command LINE must be on
+`MCP_ALLOWED_ARGV`, which is empty by default (PLANS.md decision 7,
 provisional).
+
+**The line, not the command** - audit M12. The allow-list used to name the
+command and let the arguments through on a shell-metacharacter check, and
+`npx -y attacker-pkg` contains no metacharacter: with the flag lifted and `npx`
+permitted, the allow-list was doing no work at all, because a package name in
+an argument is as much code as the command is. `MCP_ALLOWED_ARGV` holds
+complete command lines, `shlex.split` parses each and the match is exact.
+`MCP_ALLOWED_COMMANDS` is kept readable for an existing deployment but is
+demoted: alone, it now admits a bare command with no arguments.
 """
 
 from __future__ import annotations
@@ -245,6 +254,22 @@ class McpServerRecord:
 _SHELL_METACHARACTERS = set(";|&$`><\n\r\\\"'*?()[]{}!#~")
 
 
+
+def _argv_text(argv: Sequence[str]) -> str:
+    """The refused command line as one bounded string - audit M12.
+
+    The argv is author data and the refusal is echoed into a 422 body, a log
+    line and the canvas, so the sentence bounds it rather than quoting whatever
+    the author typed.
+    """
+
+    text = " ".join(argv)
+    limit = project_config.MCP_REFUSED_ARGV_MAX_CHARS
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
 def transport_refusal(
     *,
     transport: str,
@@ -282,15 +307,49 @@ def transport_refusal(
         )
     if not command:
         return "a stdio server needs a command"
-    if command not in project_config.MCP_ALLOWED_COMMANDS:
+    argv = (str(command), *(str(argument) for argument in args))
+    # SECURITY (audit M12) - the belt, checked first because it is a statement
+    # about the SHAPE of the author's data and so gives the more useful
+    # sentence. It is redundant against the exact match below (a line carrying
+    # a metacharacter is off the allow-list too, unless an operator wrote it
+    # there deliberately), which is exactly why the order is free.
+    for argument in args:
+        if set(str(argument)) & _SHELL_METACHARACTERS:
+            return f"{argument!r} contains shell metacharacters and will not be passed"
+    # SECURITY (audit M12) - the braces, and the actual control: match the WHOLE
+    # command line. `MCP_ALLOWED_COMMANDS` matched the command alone, and
+    # `npx -y attacker-pkg` carries no shell metacharacter, so with
+    # `MCP_STDIO_ENABLED=1` and `npx` permitted the loop above was the only
+    # thing between a signed-in author's row and arbitrary npm code running in
+    # this container - and it let that row straight through. The unit of the
+    # allow-list has to be the unit of the code, which is the line.
+    if project_config.MCP_ALLOWED_ARGV:
+        if argv not in project_config.MCP_ALLOWED_ARGV:
+            return (
+                f"{_argv_text(argv)!r} is not one of this deployment's permitted "
+                "MCP command lines; the allow-list names COMPLETE command lines, "
+                "because a package name in an argument is as much code as the "
+                "command is"
+            )
+    elif command not in project_config.MCP_ALLOWED_COMMANDS:
         allowed = ", ".join(project_config.MCP_ALLOWED_COMMANDS) or "nothing"
         return (
             f"{command!r} is not on this deployment's MCP command allow-list, "
             f"which permits {allowed}"
         )
-    for argument in args:
-        if set(str(argument)) & _SHELL_METACHARACTERS:
-            return f"{argument!r} contains shell metacharacters and will not be passed"
+    elif args:
+        # The demotion. `MCP_ALLOWED_COMMANDS` stays readable so an existing
+        # deployment does not silently change meaning, but on its own it can
+        # only ever speak for the command - so alone it now admits a BARE
+        # command and nothing after it. `config.py` logs the migration once at
+        # import when this is the configuration in force.
+        return (
+            f"{_argv_text(argv)!r} is refused: {command!r} is on this "
+            "deployment's MCP command allow-list, which since audit M12 permits "
+            "a bare command only. Name the whole command line in "
+            "MCP_ALLOWED_ARGV instead, because a package name in an argument is "
+            "as much code as the command is"
+        )
     for key in env_keys:
         if key not in project_config.MCP_ALLOWED_ENV_VARS:
             allowed = ", ".join(project_config.MCP_ALLOWED_ENV_VARS) or "nothing"

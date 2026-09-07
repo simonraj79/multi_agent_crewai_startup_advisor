@@ -297,5 +297,60 @@ class McpRouteTests(AuthenticatedTwoUserCase):
         self.assertIn(MCP_SERVER_UNAVAILABLE, self.codes(self.as_alice(), doc))
 
 
+@unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI service extra is not installed")
+class AuditM12StdioArgvAtTheRouteTests(AuthenticatedTwoUserCase):
+    """Audit M12 through the door an author actually uses.
+
+    `POST /api/builder/mcp/servers` is the only way a signed-in person names a
+    stdio command, and it echoes `transport_refusal`'s sentence verbatim into a
+    422 - so what is asserted here is that the route inherits the argv match
+    rather than carrying a policy of its own, and that the sentence an author
+    reads names the whole line and tells them where to put it.
+    """
+
+    FILESYSTEM = ("npx", "-y", "@modelcontextprotocol/server-filesystem", "/srv/docs")
+
+    def _post(self, command: str, args: list[str]):
+        return self.client.post(
+            SERVERS,
+            json={
+                "label": "local",
+                "transport": "stdio",
+                "command": command,
+                "args": args,
+            },
+            headers=self.as_alice(),
+        )
+
+    def test_M12_the_route_refuses_the_attack_line_under_the_OLD_list(self) -> None:
+        """`npx -y attacker-pkg` carries no shell metacharacter, so before the
+        fix this created a row and every later run of it executed whatever npm
+        package the author named, inside the API container."""
+
+        with patch.object(project_config, "MCP_STDIO_ENABLED", True), patch.object(
+            project_config, "MCP_ALLOWED_COMMANDS", ("npx",)
+        ), patch.object(project_config, "MCP_ALLOWED_ARGV", ()):
+            response = self._post("npx", ["-y", "attacker-pkg"])
+        self.assertEqual(response.status_code, 422, response.text)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], MCP_TRANSPORT_DISALLOWED)
+        self.assertIn("attacker-pkg", detail["message"])
+        self.assertIn("MCP_ALLOWED_ARGV", detail["message"])
+
+    def test_M12_the_route_admits_the_exact_permitted_line(self) -> None:
+        """The control: the same door, the same flags, one different argument."""
+
+        with patch.object(project_config, "MCP_STDIO_ENABLED", True), patch.object(
+            project_config, "MCP_ALLOWED_ARGV", (self.FILESYSTEM,)
+        ):
+            good = self._post("npx", list(self.FILESYSTEM[1:]))
+            bad = self._post(
+                "npx", ["-y", "@modelcontextprotocol/server-filesystem", "/etc"]
+            )
+        self.assertEqual(good.status_code, 201, good.text)
+        self.assertEqual(bad.status_code, 422, bad.text)
+        self.assertIn("/etc", bad.json()["detail"]["message"])
+
+
 if __name__ == "__main__":
     unittest.main()

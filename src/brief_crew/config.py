@@ -10,8 +10,10 @@ retrieval quality just quietly degrades.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pathlib
+import shlex
 from collections.abc import Iterable
 from typing import NamedTuple
 from urllib.parse import urlsplit
@@ -3516,17 +3518,68 @@ MCP_MAX_SERVERS_PER_USER = 16
 # and stdio is behind this flag, which is OFF. An arbitrary stdio command would
 # let an author's document name a process to run on the server, which is the one
 # thing BUILDER_ACTION_REFS' closed set exists to prevent. With the flag off
-# every stdio server is refused at create, whatever MCP_ALLOWED_COMMANDS says.
+# every stdio server is refused at create, whatever the allow-lists below say.
 MCP_STDIO_ENABLED = _env_flag("MCP_STDIO_ENABLED", False)
-#: The allow-list a stdio command must be on even once the flag is lifted.
-#: EMPTY by default, so the flag alone opens nothing. Flowise arrived at the
-#: same shape (`CUSTOM_MCP_ALLOWED_COMMANDS`); a local developer may set
-#: `npx,uvx`, and `render.yaml` sets neither this nor the flag.
+#: **AUDIT M12 - this is the control.** Complete stdio command LINES, one per
+#: entry, separated by a newline or by `;;` (a one-line env var in a dashboard
+#: cannot hold a newline, and `render.yaml` sets neither knob). Each line is
+#: parsed with `shlex.split` and matched EXACTLY against `(command, *args)`.
+#:
+#: The knob it replaces matched the COMMAND and let the arguments through on a
+#: shell-metacharacter check alone - and `npx -y attacker-pkg` contains no
+#: metacharacter. With `MCP_STDIO_ENABLED=1` and `npx` on the old list, any
+#: signed-in author's MCP row therefore ran arbitrary npm code in the API
+#: container: **a package name in an argument is as much code as the command
+#: is**, so the unit the allow-list is written in has to be the whole line.
+#:
+#: EMPTY by default, so the flag alone still opens nothing. A deployment that
+#: wants one server writes the line it wants:
+#:
+#:     MCP_ALLOWED_ARGV="npx -y @modelcontextprotocol/server-filesystem /srv/docs"
+try:
+    MCP_ALLOWED_ARGV: tuple[tuple[str, ...], ...] = tuple(
+        tuple(shlex.split(line))
+        for chunk in os.getenv("MCP_ALLOWED_ARGV", "").split(";;")
+        for line in chunk.splitlines()
+        if line.strip()
+    )
+except ValueError as _exc:  # an unbalanced quote, and nothing else raises here
+    raise ValueError(
+        "MCP_ALLOWED_ARGV is not parseable as shell words - each entry is one "
+        f"complete command line, split with shlex: {_exc}"
+    ) from _exc
+#: **DEMOTED by audit M12, and kept only so an existing deployment does not
+#: silently change meaning.** Still read, still refuses everything not on it -
+#: but while `MCP_ALLOWED_ARGV` is empty a command on this list is now permitted
+#: only with **no arguments at all**, because that is the only case in which
+#: matching the command really did match the code. When `MCP_ALLOWED_ARGV` is
+#: set it decides alone and this list is not consulted.
+#:
+#: Flowise arrived at the older shape (`CUSTOM_MCP_ALLOWED_COMMANDS`) and has
+#: the same hole. `render.yaml` sets neither this, nor the argv list, nor the
+#: flag above.
 MCP_ALLOWED_COMMANDS: tuple[str, ...] = tuple(
     part.strip()
     for part in os.getenv("MCP_ALLOWED_COMMANDS", "").split(",")
     if part.strip()
 )
+if MCP_ALLOWED_COMMANDS and not MCP_ALLOWED_ARGV:
+    # One line, at import, naming the migration - because the demotion changes
+    # what an existing MCP_ALLOWED_COMMANDS deployment can dial, and a server
+    # that stops working with no sentence anywhere is the worse failure.
+    logging.getLogger(__name__).warning(
+        "MCP_ALLOWED_COMMANDS is set and MCP_ALLOWED_ARGV is empty: since the "
+        "audit M12 fix a command on MCP_ALLOWED_COMMANDS is permitted only "
+        "with no arguments, because an argument is code too "
+        "(`npx -y attacker-pkg` names a package, not a flag). Move each server "
+        "to MCP_ALLOWED_ARGV as a complete command line, newline- or "
+        "`;;`-separated."
+    )
+#: A stdio refusal quotes the whole command line back, and that line is AUTHOR
+#: data - a stored `args` tuple has no length bound of its own, and the sentence
+#: reaches a 422 body, a log line and the canvas. 200 characters is enough to
+#: recognise the line that was refused (audit M12).
+MCP_REFUSED_ARGV_MAX_CHARS = 200
 #: The environment keys a stdio server may be handed. Empty by default; a key
 #: outside this set is refused rather than dropped, so an author is told.
 MCP_ALLOWED_ENV_VARS: tuple[str, ...] = tuple(

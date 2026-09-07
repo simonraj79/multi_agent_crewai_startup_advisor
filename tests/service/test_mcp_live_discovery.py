@@ -19,7 +19,8 @@ test that could.
 **Both transports the criterion names are here.** An HTTP server over loopback
 (`MCP_ALLOW_INSECURE_LOCAL`, the flag whose docstring names this fixture) and a
 stdio server on the allow-list (`MCP_STDIO_ENABLED` plus
-`MCP_ALLOWED_COMMANDS`, both off in every deployment and both patched on here).
+`MCP_ALLOWED_ARGV`, both off in every deployment and both patched on here;
+the argv list replaced `MCP_ALLOWED_COMMANDS` as the control in audit M12).
 The stdio arm is the only place in the suite where those two flags are lifted
 together and a process is actually started.
 
@@ -253,8 +254,14 @@ class LiveStdioDiscoveryTests(unittest.TestCase):
 
     def test_a_permitted_stdio_server_is_spawned_and_answers(self) -> None:
         record = self._record()
+        # AUDIT M12: the permitted unit is the whole command LINE, not the
+        # command. This patched `MCP_ALLOWED_COMMANDS` until 2026-09-07, and
+        # that is exactly the shape the finding is about - an interpreter on
+        # the command list, and the SCRIPT it runs handed over in an argument.
         with patch.object(project_config, "MCP_STDIO_ENABLED", True), patch.object(
-            project_config, "MCP_ALLOWED_COMMANDS", (record.command,)
+            project_config,
+            "MCP_ALLOWED_ARGV",
+            ((record.command, *record.args),),
         ):
             result = mcp_module.discover(record)
 

@@ -163,6 +163,14 @@ class RegistryModel(NamedTuple):
     #: preserves it across a price refresh rather than guessing it from
     #: NITRO_PRICE_FACTOR, because the measured per-model ratios run 1.0x to
     #: 9.5x and no single constant was ever going to be right.
+    #:
+    #: Since audit M14 this is not merely descriptive: `budget._endpoint_
+    #: multiplier` prices EVERY model at `cost_in_max_endpoint / cost_in`,
+    #: because the request states `provider.max_price` and no `provider.sort`,
+    #: so any endpoint under the ceiling may serve any slug. There is no
+    #: `cost_out_max_endpoint` column, so that one ratio is applied to both
+    #: halves of the price; add the column here if the completion spread ever
+    #: needs to be measured separately.
     cost_in_max_endpoint: float
     speed_tier: str
     recommended_for: tuple[str, ...]
@@ -2487,18 +2495,36 @@ MAX_CREW_MEMBERS = 6
 # being admitted on the strength of that one calibration.
 GRAPH_STATIC_BUDGET_MARGIN = 1.25
 
-# `:nitro` routes to the FASTEST provider, not the cheapest, so the cheap
-# tier's entry in PRICES is a floor rather than a bound - the note above
-# CHEAP_MODEL says exactly that. Measured against the live catalogue: eight
-# endpoints serve `gemini-3.5-flash-lite`, from $0.15/$1.25 to $0.54/$4.50,
-# with the configured $0.30/$2.50 sitting in the middle. 1.8 is that spread's
-# top over the recorded price, applied to every cheap-tier node in the STATIC
-# estimate only.
+# ⚠️ NO LONGER THE STATIC ESTIMATE'S MULTIPLIER - audit M14 demoted it to a
+# fallback, and the number is kept rather than deleted because two live readers
+# still name it.
 #
-# Interim, and it says so: drop the factor once a provider is pinned. It is
-# deliberately NOT applied inside `compute_cost_usd`, which reports what a call
-# is believed to have actually cost and must not inflate a figure an operator
-# reads as a measurement.
+# What it was: `:nitro` routes to the FASTEST provider, not the cheapest, so
+# the cheap tier's entry in PRICES is a floor rather than a bound - the note
+# above CHEAP_MODEL says exactly that. Measured against the live catalogue:
+# eight endpoints serve `gemini-3.5-flash-lite`, from $0.15/$1.25 to
+# $0.54/$4.50, with the configured $0.30/$2.50 sitting in the middle. 1.8 is
+# that spread's top over the recorded price.
+#
+# What M14 found: the SAME argument applies to a plain slug. This file states
+# `provider.max_price` and deliberately no `provider.sort` on an authored node
+# (`openrouter_authored_params`), so any endpoint under the ceiling may serve
+# any slug - and `openai/gpt-oss-120b` spreads 9.5x between its headline
+# ($0.037/M) and its dearest endpoint ($0.350/M). One constant was wrong for
+# nine of the ten roster rows in one direction or the other, so
+# `builder/budget.py::_endpoint_multiplier` now reads the registry's own
+# MEASURED `cost_in_max_endpoint / cost_in` per model, for every slug, and
+# `:nitro` is no longer a special case.
+#
+# Why it is still here. Two readers: `_endpoint_multiplier` returns it for a
+# model with NO registry row - an unmeasured spread, where 1.0 is the one
+# reading the evidence contradicts - and
+# `frontend/src/components/builder/BudgetMeter.vue` mirrors it as a client-side
+# constant that `frontend/tests/budgetMeter.spec.ts` pins against this value.
+# Deleting it would be a frontend change in a commit that owns no frontend
+# file. It is still deliberately NOT applied inside `compute_cost_usd`, which
+# reports what a call is believed to have actually cost and must not inflate a
+# figure an operator reads as a measurement.
 NITRO_PRICE_FACTOR = 1.8
 
 # The two token terms in the static estimate, both taken from the first paid

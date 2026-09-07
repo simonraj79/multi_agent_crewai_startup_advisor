@@ -30,13 +30,15 @@ TWO THINGS IT IS HONEST ABOUT.
    own shape prices at about a third of what the same shape's worst case does.
 2. It inherits `compute_cost_usd`'s blind spots wholesale - embeddings, rerank
    and Firecrawl raise no LLM event and are absent from both - and adds one of
-   its own: `:nitro` routes on speed, not price, so a nitro id's published rate
-   is a floor. Since plan 05 the inflation is the registry's MEASURED
-   `cost_in_max_endpoint / cost_in` for that slug, with NITRO_PRICE_FACTOR as a
-   floor rather than as the whole answer - the measured per-model ratios run
-   1.0x to 9.5x and one constant was never going to be right for ten rows.
-   `floor_cost_usd` keeps the un-inflated figure beside the enforced one so the
-   two can be told apart.
+   its own: A PUBLISHED PRICE IS NOT WHAT A REQUEST BILLS. This project states
+   `provider.max_price` and deliberately no `provider.sort` on an authored
+   node, so any endpoint under the ceiling may serve any slug, and the dearest
+   one is what the call may cost. Since audit M14 EVERY model is inflated by
+   the registry's MEASURED `cost_in_max_endpoint / cost_in` - the ratios run
+   1.0x to 9.5x across ten rows, so no single constant was ever going to be
+   right and `:nitro` is no longer a special case. `floor_cost_usd` keeps the
+   un-inflated headline figure beside the enforced one so the two can be told
+   apart.
 
 WHICH MODEL A NODE IS PRICED AT changed with plan 05 and is `node_model` below:
 an AUTHORED node is priced at the model it names, a LIBRARY node at its tier's
@@ -99,8 +101,10 @@ def node_model(node: BuilderNode) -> str:
     author is watching.
 
     The spelling returned is a `PRICES` key. `resolve_price_model` accepts all
-    four, but building the prefixed one here keeps the `:nitro` question (D5,
-    below) answerable from one string.
+    four, and `_endpoint_multiplier` below reaches the same registry row from
+    any of them, so the prefixed spelling built here is a convention rather
+    than a load-bearing one - it was load-bearing while D5 made `:nitro` a
+    special case, and audit M14 retired that case.
     """
 
     config = node.config
@@ -139,32 +143,63 @@ def fallback_model(node: BuilderNode) -> str | None:
     return _prefixed(str(model)) if model else None
 
 
-def _nitro_multiplier(model: str) -> float:
-    """What a `:nitro` id may bill above its published rate, as a factor.
+def _endpoint_multiplier(model: str) -> float:
+    """What ANY slug may bill above its headline rate, as a factor. Audit M14.
 
-    D5, narrowed by the 2026-09-04 endpoint measurement. `:nitro` routes on
-    SPEED, not price, so a nitro id's published rate is a floor and the dearest
-    endpoint serving that slug is what it can actually cost. Where the registry
-    records that endpoint the factor is `max(measured, NITRO_PRICE_FACTOR)` -
-    the measurement, with the constant as a floor so a re-measure that came back
-    suspiciously low cannot quietly reduce the enforced figure.
+    THE `:nitro` SPECIAL CASE IS GONE, and deleting it is the fix. The old
+    reading was that `:nitro` routes on SPEED so its headline is only a floor,
+    while a plain slug "is not routed on speed, so its headline is what it
+    bills". The second half of that sentence was never true of this project's
+    own requests. `openrouter_escalation_params` and `openrouter_authored_params`
+    state `provider.max_price` and DELIBERATELY no `provider.sort` for an
+    authored node - so OpenRouter is free to serve a plain slug from ANY
+    endpoint under the ceiling, and the dearest one under it is what the request
+    may actually cost. The registry measures that spread and it is not small:
+    `openai/gpt-oss-120b` publishes $0.037/M and its dearest endpoint is
+    $0.350/M, 9.5x. A graph of those nodes priced at the headline was admitted
+    at a ninth of what it could bill, which is the same shape as the defect that
+    reported 128,069 real tokens at $0.00 - an estimate that is not an upper
+    bound is not a bound.
 
-    A PLAIN id gets 1.0, and that is a decision the measurement now supports
-    rather than an omission. Applying 1.8 to a plain id would invent a number in
-    both directions: the three OpenAI first-party rows spread 1.1x and
-    `openai/gpt-oss-120b` spreads 9.5x, so one constant is wrong for nine of the
-    ten rows. A plain slug is not routed on speed, so its headline is what it
-    bills.
+    So every model is priced at `cost_in_max_endpoint / cost_in`, the registry's
+    own MEASURED ratio, refreshed from the live catalogue by
+    `scripts/refresh_models.py` and never typed by hand. `:nitro` reaches the
+    same row through `registry_model`, which strips the variant - a nitro id and
+    its plain spelling name one slug with one set of endpoints, so they get one
+    answer rather than two.
+
+    THE RATIO IS APPLIED TO BOTH HALVES OF THE PRICE, and only because the
+    registry carries one column. `RegistryModel` records `cost_in_max_endpoint`
+    and has no `cost_out_max_endpoint`, so there is no measured completion
+    spread to apply; the input ratio is used for both, which is what multiplying
+    `compute_cost_usd`'s two-tuple result by a single factor does. If a
+    `cost_out_max_endpoint` is ever added, split this into two ratios here
+    rather than leaving the assumption unstated.
+
+    IT OVER-PRICES RATHER THAN UNDER-PRICES WHERE THE TWO DISAGREE, which is the
+    safe direction for a bound and is worth naming because the two are not the
+    same quantity. `cost_in_max_endpoint` is the dearest endpoint serving the
+    slug FULL STOP, not the dearest that survives `provider.max_price` - so
+    `google/gemini-3.8-flash`, whose dearest endpoint is $1.35/M against a
+    $1.00/M ceiling, is priced at an endpoint the ceiling would refuse. A
+    tighter figure would mean recording the per-endpoint prices rather than
+    their maximum, and inventing one here from the ceiling would be inventing a
+    number - the failure this whole pricing region exists to correct.
+
+    NITRO_PRICE_FACTOR SURVIVES AS THE UNMEASURED FALLBACK, not as the answer.
+    A model with no registry row has no measured spread, and 1.0 would be the
+    one reading the evidence contradicts; 1.8 is the roster's own cheap preset
+    ratio and the constant `frontend/src/components/builder/BudgetMeter.vue`
+    still mirrors. A priceable model always HAS a row - `PRICES` is built from
+    the registry - so this arm is reachable only when `PRICES` is patched.
     """
 
-    if ":nitro" not in model.casefold():
-        return 1.0
     from brief_crew.config import registry_model
 
     row = registry_model(model)
     if row is None or row.cost_in <= 0:
         return NITRO_PRICE_FACTOR
-    return max(row.cost_in_max_endpoint / row.cost_in, NITRO_PRICE_FACTOR)
+    return row.cost_in_max_endpoint / row.cost_in
 
 
 @dataclass(frozen=True)
@@ -180,13 +215,13 @@ class NodeCost:
 class BudgetEstimate:
     """The static price of one graph, and the counts that produced it."""
 
-    # What admission enforces: the floor price with NITRO_PRICE_FACTOR applied
-    # to every cheap-tier node.
+    # What admission enforces: every node priced at the DEAREST endpoint the
+    # registry records for its model, per `_endpoint_multiplier` (audit M14).
     static_cost_usd: float
-    # The same graph at the PUBLISHED prices, with no nitro inflation. Kept
-    # beside the enforced figure because the two answer different questions -
-    # this one is comparable with a `compute_cost_usd` total from a real run,
-    # and the one above deliberately is not.
+    # The same graph at the PUBLISHED headline prices, with no endpoint
+    # inflation. Kept beside the enforced figure because the two answer
+    # different questions - this one is comparable with a `compute_cost_usd`
+    # total from a real run, and the one above deliberately is not.
     floor_cost_usd: float
     # Model calls the worst case makes. The unit the frontier was solved in.
     modelled_calls: int
@@ -467,7 +502,7 @@ def estimate_budget(document: BuilderDocument) -> BudgetEstimate:
                         unpriced.append(candidate)
                     continue
                 priced.append(
-                    (per_call * _nitro_multiplier(candidate), per_call, candidate)
+                    (per_call * _endpoint_multiplier(candidate), per_call, candidate)
                 )
             if not priced:
                 continue

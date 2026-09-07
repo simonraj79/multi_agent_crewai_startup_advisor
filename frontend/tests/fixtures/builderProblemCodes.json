@@ -156,7 +156,7 @@
       "problem": {
         "code": "budget-over-ceiling",
         "severity": "error",
-        "message": "this graph's worst case prices at $8.24 over 288 model calls, and $10.30 with the 1.25x margin, against a per-run ceiling of $10.00. Remove a node that calls a model, move one to the cheap tier, take a node off a cycle, or lower a retry ceiling",
+        "message": "this graph's worst case prices at $14.83 over 288 model calls, and $18.54 with the 1.25x margin, against a per-run ceiling of $10.00. Remove a node that calls a model, move one to the cheap tier, take a node off a cycle, or lower a retry ceiling",
         "node_id": null,
         "edge_id": null
       }

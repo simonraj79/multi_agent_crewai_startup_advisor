@@ -1589,6 +1589,18 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
    fetched, so nothing under the reader's pointer moves when it lands. */
 .home-card-spine.is-empty { min-height: 60px; }
 
+/* The gallery's section title, on the card, because the home has no sections
+   (D8). `.home-kicker` carries the type and the colour - it is the same eyebrow
+   the two section headings above it use - and this only closes the gap to the
+   name under it, which is one label in two lines. */
+.home-card-kicker {
+  margin-bottom: calc(-1 * var(--space-2));
+  /* The two headings above it are uppercase because their strings are typed
+     that way; this one is DATA, so the transform does what the literal does
+     there and the three eyebrows on the page read as one thing. */
+  text-transform: uppercase;
+}
+
 .home-card-name {
   overflow: hidden;
   color: var(--text-title);
@@ -1596,6 +1608,7 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 
 .home-card-blurb { color: var(--text-muted); font: var(--type-body); }
 
@@ -1639,4 +1652,7 @@ a.breadcrumb-crumb:hover { text-decoration: underline; }
 }
 
 .home-pill.is-published { color: var(--on-accent-mint); }
+/* The pattern, beside `template`. Quieter than the two status colours: it says
+   what KIND of thing this is, not what state it is in. */
+.home-pill.is-pattern { color: var(--text-40); }
 .home-pill.is-run-only { color: var(--on-accent-cyan); }

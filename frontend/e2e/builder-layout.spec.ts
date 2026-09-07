@@ -318,9 +318,10 @@ test.describe('Flow builder layout', () => {
     // rails are absent first is what makes the width assertion meaningful: a
     // 236px gallery is only possible while a column that holds nothing is
     // still being reserved for it.
-    // NINE: plan 14's seven first-row cards plus the two library-agent
-    // templates in the demoted second row.
-    await expect(gallery(page).locator('.template-card')).toHaveCount(9)
+    // THIRTEEN: plan 16's four new patterns on top of plan 14's nine, and the
+    // demoted second row retired (D2) - every card is now on the shelf its own
+    // `category` names.
+    await expect(gallery(page).locator('.template-card')).toHaveCount(13)
     await expect(page.locator('.builder-palette')).toHaveCount(0)
     await expect(page.locator('.builder-inspector')).toHaveCount(0)
 
@@ -371,24 +372,63 @@ test.describe('Flow builder layout', () => {
     const galleryBox = await gallery(page).boundingBox()
     expect(galleryBox, 'the gallery should have a box').not.toBeNull()
 
+    /*
+     * AMENDED 2026-09-07 (plan 16), and the amendment is a STRONGER claim than
+     * the one it replaces rather than a relaxed one.
+     *
+     * It asserted the first grid held SEVEN cards and that cards 0 and 3 ended
+     * above the fold. The first half is simply a different number now: the
+     * gallery is six sections (D7), so the first grid is the `start` shelf and
+     * holds THREE - there is no index 3 in it.
+     *
+     * The second half is re-aimed. The card gained five copy fields (D4) and
+     * first came out about 660px tall, which put its action 56px below the
+     * fold; the information architecture was then reworked - the blurb left
+     * the gallery card, the job leads, the two decision lines became one
+     * scannable block, and the thumbnail's height was capped - and it is 524px.
+     * MEASURED at 1440x900 with an empty library: the `Use this template`
+     * action ends 16px ABOVE the fold, and the card's own bottom edge clears it
+     * by 3px. So this asserts the ACTION, which is the thing that has to be
+     * reachable without scrolling and has a real 16px margin, rather than the
+     * card's bottom edge, whose 3px is not a margin worth a suite.
+     *
+     * What the assertion was FOR is unchanged: the defect it caught was a
+     * gallery squeezed into a 236px column inside a 0px grid row, which
+     * reported 1356px of cards as scrollHeight and drew a sliver. A gallery
+     * whose first shelf shows three whole cards, action and all, cannot be
+     * that - and the reachability half below is untouched.
+     */
     const firstRow = gallery(page).locator('.template-grid').first()
     const firstRowCards = firstRow.locator('.template-card')
-    await expect(firstRowCards).toHaveCount(7)
-    // The first and fourth card: the ends of the grid's FIRST VISUAL row, which
-    // is four wide at this viewport. Both must be whole and above the fold, and
-    // they stay the right two whether the section holds six cards or seven.
-    for (const index of [0, 3]) {
-      const cardBox = await firstRowCards.nth(index).boundingBox()
+    await expect(firstRowCards).toHaveCount(3)
+
+    const headingBox = await gallery(page).locator('.gallery-section-heading').first().boundingBox()
+    expect(headingBox, 'the first section heading should have a box').not.toBeNull()
+    expect
+      .soft(
+        headingBox!.y + headingBox!.height,
+        'the first section heading is below the fold before anybody has scrolled',
+      )
+      .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height + 1)
+
+    // The ends of the section's first visual row. Three cards at this viewport,
+    // so 0 and 2 - and they stay the right two however wide the section is.
+    for (const index of [0, 2]) {
+      const card = firstRowCards.nth(index)
+      const cardBox = await card.boundingBox()
       expect(cardBox, `template card ${index} should have a box`).not.toBeNull()
       expect
         .soft(cardBox!.height, `template card ${index} collapsed`)
         .toBeGreaterThan(200)
+
+      const actionBox = await card.locator('.template-action').boundingBox()
+      expect(actionBox, `template card ${index} should name its action`).not.toBeNull()
       expect
         .soft(
-          cardBox!.y + cardBox!.height,
-          `template card ${index} is below the fold before anybody has scrolled`,
+          actionBox!.y + actionBox!.height,
+          `template card ${index}'s action is below the fold before anybody has scrolled`,
         )
-        .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height + 1)
+        .toBeLessThanOrEqual(galleryBox!.y + galleryBox!.height)
     }
 
     // And the rest is REACHABLE rather than clipped: scrolling the gallery to

@@ -13,6 +13,7 @@ import {
   BUILDER_TEMPLATES,
   IDEA_VALIDATOR,
 } from '../src/data/builderTemplates'
+import { TEMPLATE_CATEGORIES } from '../src/data/templateCategories'
 import { HOTKEY_BINDINGS } from '../src/composables/useBuilderHotkeys'
 import { clearRunHandoff, readRunHandoff, writeRunHandoff } from '../src/data/builderRunHandoff'
 import { resetVocabulary } from '../src/data/builderVocabulary'
@@ -441,15 +442,77 @@ describe('the gallery is the empty state and the way back into saved work', () =
     )
   })
 
-  it('names its action on every card, without nesting a button in a button', async () => {
+  /*
+   * AMENDED, and the amendment is the inverse of what it used to say.
+   *
+   * It asserted `.template-card button` was EMPTY, because the card WAS the
+   * button and a `<button>` inside a `<button>` is invalid HTML no browser
+   * repairs the way the author meant. Plan 16 criterion 11 puts a native
+   * `<details>` on the card - and `<details>` is interactive content, so inside
+   * a `<button>` it is the same defect from the other side: invalid, and the
+   * button swallows the press so the disclosure never opens.
+   *
+   * So the card stopped being a button. What replaces the old rule is the same
+   * rule one level down: EXACTLY ONE control per card, it is the action, and
+   * its `::after` is stretched over the tile so the whole card is still one
+   * press. Two buttons in a card would be the defect the old assertion was
+   * written to catch, and this still fails on it.
+   */
+  it('names its action on every card, with exactly one control in the card', async () => {
     const { wrapper } = await gallery()
     const actions = wrapper.findAll('.template-action')
     expect(actions).toHaveLength(ALL_BUILDER_TEMPLATES.length)
     for (const action of actions) expect(action.text()).toContain('Use this template')
-    // The card IS the button. A `<button>` inside a `<button>` is invalid HTML
-    // that no browser repairs the way the author meant, so the action is a
-    // label on the affordance rather than a second affordance.
-    expect(wrapper.findAll('.template-card button')).toHaveLength(0)
+
+    for (const card of wrapper.findAll('.template-card')) {
+      expect(card.element.tagName).toBe('ARTICLE')
+      const controls = card.findAll('button')
+      expect(controls).toHaveLength(1)
+      expect(controls[0].classes()).toContain('template-action')
+    }
+  })
+
+  /*
+   * D7's jump list: navigation, and NOT an `href="#..."` anchor.
+   *
+   * The fragment belongs to the hash router - `#gallery-section-route` matches
+   * neither `run` nor `build` and falls to the HOME - so an anchor would leave
+   * the builder on every press. Buttons cannot produce a URL at all, which is
+   * why this asserts there is no `<a href="#">` in the list rather than only
+   * that the six labels are right.
+   */
+  it('offers one jump per section, and never as a hash link', async () => {
+    const { wrapper } = await gallery()
+    const jumps = wrapper.findAll('.gallery-jump-link')
+    expect(jumps.map((jump) => jump.text())).toEqual(
+      TEMPLATE_CATEGORIES.map((category) => category.title),
+    )
+    for (const [index, jump] of jumps.entries()) {
+      expect(jump.element.tagName).toBe('BUTTON')
+      expect(jump.attributes('title')).toBe(TEMPLATE_CATEGORIES[index].promise)
+    }
+    expect(wrapper.findAll('.gallery-jump a')).toHaveLength(0)
+  })
+
+  /*
+   * D6: four shapes both sources name that this runtime cannot honestly draw,
+   * declined in writing at the foot rather than quietly left out. A gallery
+   * that omitted them reads as one that has not heard of them, and the next
+   * person draws a coordinator and calls it a swarm.
+   */
+  it('says at the foot what is not in the gallery, and why', async () => {
+    const { wrapper } = await gallery()
+    const declined = wrapper.get('.gallery-declined')
+    expect(declined.get('h3').text()).toBe('Not in this gallery')
+    expect(declined.findAll('li')).toHaveLength(4)
+    // The four subjects, each named in its own sentence.
+    const text = declined.text()
+    for (const subject of ['swarm', 'subscribe', 'invents its own team', 'tool server']) {
+      expect(text, subject).toContain(subject)
+    }
+    // The foot, not the head: it is the last thing on the shelf.
+    const html = wrapper.html()
+    expect(html.indexOf('gallery-declined-title')).toBeGreaterThan(html.indexOf('template-card'))
   })
 
   it('renders every caveat verbatim and on those cards alone', async () => {

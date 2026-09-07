@@ -433,6 +433,26 @@ class MalformedFilesEchoNothing(ImportRouteCase):
         self.assertEqual(response.status_code, 413, response.text[:200])
         self.assertNotIn(padding[:64], response.json()["detail"])
 
+    def test_L2_a_file_that_nests_too_deeply_is_422_and_not_500(self) -> None:
+        """Audit L2: `json.loads` raises `RecursionError`, not `ValueError`.
+
+        The decoder recurses once per nesting level, so 100,000 `[` exhausts
+        the C stack. `RecursionError` is not a `ValueError`, so it walked past
+        `_import_envelope`'s handler and this route answered 500 over a file
+        whose author could be told about it in one sentence - which is the
+        whole design of D-15-9 and the reason the envelope is parsed by hand
+        here rather than by FastAPI.
+        """
+
+        response = self.post_raw(b"[" * 100_000)
+        self.assertEqual(response.status_code, 422, response.text[:200])
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail, str)
+        self.assertIn("not JSON", detail)
+        self.assertLessEqual(len(detail), 200)
+        # And, like every other refusal on this route, it quotes none of it.
+        self.assertNotIn("[[[", response.text)
+
     def test_a_document_the_schema_refuses_is_a_422_naming_the_node(self) -> None:
         _, envelope = self.exported_by_ada()
         envelope["document"]["nodes"][0]["kind"] = "teleporter"

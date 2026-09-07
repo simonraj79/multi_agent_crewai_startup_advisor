@@ -365,11 +365,19 @@ def pack_directory(pack: SkillPack) -> pathlib.Path:
 
     if pack.owner == "builtin" or pack.user_id is None:
         return builtin_root() / pack.name
-    return skills_root() / "users" / _safe_segment(pack.user_id) / pack.name
+    # `_safe_segment` on the NAME as well as on the user id (audit L2). The
+    # name is checked against CrewAI's own pattern at parse, which is the only
+    # validator - so this is belt to that brace rather than a second rule, and
+    # it is here because a directory name is not the place to find out that a
+    # compiled pattern let something through: `re` anchors `$` before a
+    # trailing newline, so a name ending in one matched the pattern and would
+    # have made a directory whose name ended in a newline. One segment, no
+    # separators, no newline, bounded.
+    return skills_root() / "users" / _safe_segment(pack.user_id) / _safe_segment(pack.name)
 
 
 def _safe_segment(value: str) -> str:
-    """A user id as one path segment. Ids are opaque and can hold anything."""
+    """One path segment. A user id is opaque and a pack name is author input."""
 
     return "".join(
         character if character.isalnum() or character in "-_" else "_"
@@ -398,8 +406,19 @@ def materialise(pack: SkillPack) -> pathlib.Path:
                 return directory
         except OSError:  # pragma: no cover - unreadable file is rewritten
             pass
-    directory.mkdir(parents=True, exist_ok=True)
-    target.write_text(pack.body, encoding="utf-8")
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target.write_text(pack.body, encoding="utf-8")
+    except OSError as exc:
+        # A SENTENCE, not a 500 (audit L2). The filesystem is the one part of
+        # this path the author does not control: a full disk, a read-only
+        # mount, a name this platform will not take. `SkillError` is what every
+        # other refusal here raises and the route already answers it with a
+        # 422 the author can read; the errno is named and the path is not,
+        # because the path is the deployment's business.
+        raise SkillError(
+            f"this skill's {SKILL_FILENAME} could not be written ({exc.strerror or exc})"
+        ) from exc
     return directory
 
 

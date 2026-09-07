@@ -2516,12 +2516,20 @@ def _import_envelope(raw: bytes) -> "BuilderImportRequest":
         )
     try:
         payload = json.loads(raw)
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         # `JSONDecodeError.msg` is the decoder's own phrase ("Expecting value")
         # and the position; neither quotes the file.
+        #
+        # `RecursionError` is caught beside it, and it is not a theoretical
+        # branch: `json.loads` recurses once per nesting level, so 200 KB of
+        # `[` exhausts the C stack and used to leave this route answering 500
+        # over a file the author could have been told about in one sentence
+        # (audit L2). It is a malformed file like any other.
         where = (
             f" ({exc.msg} at line {exc.lineno} column {exc.colno})"
             if isinstance(exc, json.JSONDecodeError)
+            else " (it nests too deeply)"
+            if isinstance(exc, RecursionError)
             else ""
         )
         raise HTTPException(

@@ -232,6 +232,62 @@ class AttachmentTests(TemporaryRootCase):
         self.assertEqual(loaded_skill(self.pack()).frontmatter.name, "my-method")
 
 
+class PackDirectoryTests(TemporaryRootCase):
+    """Audit L2: a pack name reaches the filesystem as one safe segment.
+
+    The name is validated once, by CrewAI's compiled pattern at parse. `re`
+    anchors `$` before a trailing newline, so a name ending in one matched it,
+    and `pack_directory` interpolated the name straight into a path - making a
+    directory whose name ends in a newline, which nothing else in the tree
+    would ever spell the same way twice. `_safe_segment` was already applied to
+    the user id, which is opaque; the name is author input and had less
+    protection than the id.
+    """
+
+    def _pack(self, name: str) -> SkillPack:
+        return SkillPack(
+            id="sk_0123456789ab",
+            name=name,
+            description="A method of mine. Use when testing.",
+            version=1,
+            body=BODY,
+            owner="me",
+            user_id="user_alice",
+        )
+
+    def test_L2_a_name_ending_in_a_newline_makes_no_such_directory(self) -> None:
+        directory = pack_directory(self._pack("ok\n"))
+        self.assertFalse(directory.name.endswith("\n"), repr(directory.name))
+        self.assertEqual(directory.name, "ok_")
+
+    def test_L2_a_name_carrying_a_separator_stays_one_segment(self) -> None:
+        for name in ("../escape", "a/b", "a\\b", "a:b"):
+            with self.subTest(name=name):
+                directory = pack_directory(self._pack(name))
+                self.assertEqual(directory.parent.name, "user_alice")
+                self.assertNotIn("/", directory.name)
+                self.assertNotIn("\\", directory.name)
+                self.assertNotIn("..", directory.name.strip("_"))
+
+    def test_L2_an_ordinary_name_is_unchanged(self) -> None:
+        """The sanitiser must not rename every pack that was always fine."""
+
+        self.assertEqual(pack_directory(self._pack("my-method")).name, "my-method")
+
+    def test_L2_a_filesystem_refusal_is_a_sentence_rather_than_a_500(self) -> None:
+        """`mkdir` is the one step here the author does not control."""
+
+        pack = self._pack("my-method")
+        with patch.object(
+            pathlib.Path, "mkdir", side_effect=OSError(28, "No space left on device")
+        ):
+            with self.assertRaises(SkillError) as caught:
+                materialise(pack)
+        detail = str(caught.exception)
+        self.assertIn("could not be written", detail)
+        self.assertIn("No space left on device", detail)
+
+
 class AliasBombTests(unittest.TestCase):
     """Audit H3: a 400-byte body must not stall the process for minutes.
 

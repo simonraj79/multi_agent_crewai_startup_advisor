@@ -155,7 +155,26 @@ services:
       #
       # What actually bounds an unattended run is MAX_RUN_COST_USD (default
       # $10), enforced at the CrewAI step boundary by HookAborted, plus the
-      # per-user rate limit and MAX_QUEUED_RUNS.
+      # per-user rate limit and MAX_QUEUED_RUNS - and, since 2026-09-07, the
+      # per-ACCOUNT cap below.
+
+      # Every signed-in account may spend ONE estimated dollar in total across
+      # all of its runs on this deployment. Enforced at admission (402) and at
+      # the CrewAI step boundary (the same brake MAX_RUN_COST_USD uses, with
+      # the run's ceiling set to the account's remaining headroom). It is an
+      # estimate over config.PRICES, not an invoice - the same three blind
+      # spots as the per-run ceiling. "0" disables it; unset does NOT (the
+      # code default is 1.0), so this line exists to make the choice visible
+      # rather than to change it.
+      - key: USER_SPEND_CAP_USD
+        value: "1.00"
+      # The accounts the cap skips: the owner's. A Better Auth user id or an
+      # email, comma-separated; the email is matched case-insensitively. An
+      # email in a public manifest is a small disclosure - swap it for the
+      # opaque user id once that is known (SELECT id FROM "user" WHERE email
+      # = ... on the Render database), and this line keeps working.
+      - key: USER_SPEND_CAP_EXEMPT
+        value: "simoraj@gmail.com"
 
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"

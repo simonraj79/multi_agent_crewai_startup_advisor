@@ -1528,6 +1528,45 @@ class PostgresFlowPersistence(FlowPersistence):
             rows = connection.execute(statement).mappings().all()
         return [dict(row) for row in rows]
 
+    def user_spend_usd(
+        self,
+        user_id: str,
+        *,
+        exclude_run_ids: Sequence[str] = (),
+    ) -> Decimal:
+        """Everything one account has spent, in estimated USD, from the rows.
+
+        Summed over ``run_node_metrics`` joined to ``runs.user_id`` rather than
+        over the ``usage`` JSON column, because a JSON path extract is spelled
+        differently on SQLite and PostgreSQL and a ``SUM`` over a ``Numeric``
+        column is spelled the same on both. The two figures agree by
+        construction: ``RunRecord._record_usage`` adds the same ``priced``
+        amount to ``usage["cost_usd"]`` and to the node's row, and
+        ``_persist_status`` writes both in one pass.
+
+        ``exclude_run_ids`` is for the runs the registry still holds in
+        memory, whose in-memory total is fresher than their last persisted
+        status - the caller adds those itself. An empty ``user_id`` answers 0
+        rather than the whole table, for the reason ``list_runs_for_user``
+        gives: "no user" must never read as "no filter".
+        """
+        if not user_id:
+            return Decimal("0")
+        owner = _identifier(user_id, label="user_id")
+        statement = (
+            select(func.coalesce(func.sum(run_node_metrics.c.cost_usd), 0))
+            .select_from(run_node_metrics.join(runs, runs.c.id == run_node_metrics.c.run_id))
+            .where(runs.c.user_id == owner)
+        )
+        excluded = [
+            _identifier(run_id, label="run_id") for run_id in exclude_run_ids
+        ]
+        if excluded:
+            statement = statement.where(runs.c.id.not_in(excluded))
+        with self._connect() as connection:
+            total = connection.execute(statement).scalar_one()
+        return Decimal(str(total or 0))
+
     def list_stale_runs(
         self,
         *,

@@ -73,6 +73,7 @@ from brief_crew.service.models import (
 )
 from brief_crew.service.registry import (
     TERMINAL_STATUSES as TERMINAL_RUN_STATUSES,
+    AccountSpendCapError,
     GateFieldError,
     RunAdmissionError,
     RunBusyError,
@@ -1731,6 +1732,19 @@ def create_app(
         # both halves are ownership questions, and neither should be answerable
         # by a caller the rate limiter or the ceiling would have refused.
         plan = derived_plan(request, user)
+        # The per-ACCOUNT cap. `user_spend_cap_usd` answers None for an
+        # anonymous caller, an exempt account or a disabled knob, and the
+        # registry does the arithmetic - it is the one place that knows what
+        # this account's live runs have been promised. Resolved here, beside
+        # the other ownership questions, and BELOW every check above: a
+        # stranger's probe must not learn an account's balance, and a
+        # malformed request must be told it is malformed before it is told
+        # it is broke.
+        account_cap = (
+            project_config.user_spend_cap_usd(user.id, user.email)
+            if user is not None
+            else None
+        )
         try:
             record = registry.create_run(
                 session_id=session_id,
@@ -1739,7 +1753,22 @@ def create_app(
                 user_id=user.id if user is not None else None,
                 mode=request.mode,
                 derived=plan,
+                account_cap_usd=account_cap,
             )
+        except AccountSpendCapError as exc:
+            # 402, and not 403 or 429: the request is well formed, the caller
+            # is who they say they are, the server is not full, and no amount
+            # of waiting changes the answer. The sentence carries both figures
+            # so the person can see how far over they are rather than guess.
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"this account has used its ${exc.cap:.2f} spend allowance "
+                    f"on this deployment (an estimated ${exc.spent:.2f} spent or "
+                    "reserved by runs still in flight); ask the owner to raise "
+                    "USER_SPEND_CAP_USD or to exempt your account"
+                ),
+            ) from exc
         except RunAdmissionError as exc:
             # 429, not 503: nothing is broken and the service is not down for
             # anyone else. The queue is full and this caller should come back.

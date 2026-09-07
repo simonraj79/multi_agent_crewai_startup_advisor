@@ -1489,6 +1489,83 @@ RUN_ADMISSION_RETRY_AFTER_SECONDS = 30
 MAX_RUN_COST_USD = _env_non_negative_float("MAX_RUN_COST_USD", 10.0)
 
 # --------------------------------------------------------------------------
+# The per-ACCOUNT spend cap - what one signed-in person may spend, in total,
+# across every run they ever launch on this deployment.
+# --------------------------------------------------------------------------
+# MAX_RUN_COST_USD above is a runaway brake on ONE run. It says nothing about
+# the person: a signed-in stranger could launch a $9 run ten times a minute
+# (RUN_RATE_LIMIT_MAX_RUNS) and the only thing between them and a $90 bill was
+# the owner noticing. This is the knob for that - a lifetime ceiling per
+# account, denominated in the same estimated dollars `compute_cost_usd`
+# produces, and enforced at the same two places the per-run ceiling already
+# is: at admission (`POST /api/sessions/{id}/runs` answers 402 once the total
+# is spent) and mid-flight (a run is admitted with `max_cost_usd` set to the
+# account's REMAINING headroom, so the existing step-boundary brake stops it
+# where the account runs dry, not where the run would).
+#
+# What "spent" means, and the one subtlety that makes the figure honest:
+# the sum of `usage.cost_usd` over every run the account owns - the durable
+# rows for finished runs, the in-memory record for live ones - PLUS the
+# headroom already GRANTED to each live run. A run in flight has been promised
+# its remaining ceiling; without counting that promise, eight concurrent
+# launches at $0 spent would each be granted the whole cap and the account
+# could spend eight times it. So the second launch sees the first one's
+# promise as already spent, and the sum of promises never exceeds the cap.
+# The price of that is a run parked at a human gate holds its headroom until
+# it finishes, which is the right way round for a cap.
+#
+# $1.00 IS THE DEFAULT, AND UNSET MEANS ON - the same escape-hatch spelling as
+# the per-run ceiling: `USER_SPEND_CAP_USD=0` disables it deliberately. A
+# dollar is roughly five to seven clean validator runs at the measured
+# $0.13-$0.18, which is a demo allowance and not a working one - the owner
+# raises it per deployment, or exempts an account, below.
+#
+# It applies to SIGNED-IN accounts only. An anonymous caller has no account to
+# cap and is bounded the way it always was - gates, the rate limiter and the
+# per-run ceiling - so a deployment with no auth configured is not changed by
+# this knob at all. A synthetic identity (`X-Synthetic-User`) IS an account for
+# this purpose, which is what lets the cap be tested for free.
+#
+# The three things the per-run ceiling does not do, it does not do either -
+# estimate not invoice, one call of overshoot, blind to embeddings, rerank and
+# Firecrawl - because it is the same arithmetic summed over more runs.
+USER_SPEND_CAP_USD = _env_non_negative_float("USER_SPEND_CAP_USD", 1.0)
+
+#: Accounts the cap does NOT apply to: comma-separated Better Auth user ids or
+#: email addresses, matched case-insensitively on the email and exactly on the
+#: id. Empty by default, so nobody is exempt unless somebody says so. The
+#: owner's own account goes here; `render.yaml` sets it for the deployment.
+#: An email is accepted alongside an id because it is the handle a person
+#: knows - the Better Auth id is a random string nobody has memorised - and
+#: the JWT carries both, so matching on either is one lookup, not two.
+USER_SPEND_CAP_EXEMPT: tuple[str, ...] = tuple(
+    part.strip()
+    for part in os.getenv("USER_SPEND_CAP_EXEMPT", "").split(",")
+    if part.strip()
+)
+_USER_SPEND_CAP_EXEMPT_LOWER = frozenset(part.lower() for part in USER_SPEND_CAP_EXEMPT)
+
+
+def user_spend_cap_usd(user_id: str | None, email: str | None = None) -> float | None:
+    """The lifetime spend cap that applies to this account, or ``None``.
+
+    ``None`` means "no cap": nobody is signed in, the knob is 0, or the account
+    is on ``USER_SPEND_CAP_EXEMPT``. A float is the cap itself, never the
+    headroom - the registry subtracts what the account has spent.
+
+    Read through a function rather than the constants directly so a test can
+    patch one place and so every caller asks the same question the same way;
+    ``auth_is_required`` in ``service/auth.py`` is the precedent.
+    """
+    if not user_id or USER_SPEND_CAP_USD <= 0:
+        return None
+    if user_id in USER_SPEND_CAP_EXEMPT:
+        return None
+    if email and email.strip().lower() in _USER_SPEND_CAP_EXEMPT_LOWER:
+        return None
+    return float(USER_SPEND_CAP_USD)
+
+# --------------------------------------------------------------------------
 # The terminal result - what a COMPLETED run hands back over HTTP
 # --------------------------------------------------------------------------
 # `SerializerLimits.max_string` (4,096) exists to bound a STREAMING FRAME: one

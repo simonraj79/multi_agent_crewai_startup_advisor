@@ -279,6 +279,7 @@ def authored_agent_node(
     response_format: str | None = None,
     reasoning_effort: str | None = None,
     credential_id: str | None = None,
+    max_iter: int = 2,
 ) -> dict[str, Any]:
     """An agent the AUTHOR wrote, which is the only arm that NAMES a model.
 
@@ -297,7 +298,11 @@ def authored_agent_node(
         "agent",
         {
             "tier": tier,
-            "max_iter": 2,
+            # Parameterised for `crew-max-iter-ignored`, whose whole subject is
+            # a member whose ceiling differs from its crew's. The default is the
+            # literal that was here, so every scenario written before this
+            # parameter existed serialises byte-identical to what it did then.
+            "max_iter": max_iter,
             "guardrail_max_retries": 2,
             "prompt_inputs": {},
             "role": "Market analyst",
@@ -1032,6 +1037,37 @@ PROBLEM_SCENARIOS: list[dict[str, Any]] = [
             "empty crew",
             [input_node(), authored_crew_node("team"), output_node()],
             [edge("e1", "idea", "team"), edge("e2", "team", "report")],
+        ),
+    },
+    {
+        "name": "an authored crew whose own max_iter is not its members'",
+        "expects": ["crew-max-iter-ignored"],
+        "why": (
+            "The third instance of plan 12's shape, found by the 2026-09-07 security "
+            "audit (M7). `runtime.authored_crew` builds one "
+            "`Agent(max_iter=member.max_iter)` and one "
+            "`Task(guardrail_max_retries=member.guardrail_max_retries)` per MEMBER, and "
+            "hands `Crew(...)` neither of the crew node's own two numbers - so the crew "
+            "form renders two spinners that configure nothing. It priced the same "
+            "discarded field: a `tier: cheap` crew at `max_iter: 1` over six escalation "
+            "members at `max_iter: 8` metered 12 calls and zero escalation nodes against "
+            "a runtime making 54, all on the escalation tier. A WARNING rather than an "
+            "error because the document is legal and runs - it simply runs at numbers "
+            "other than the ones on screen."
+        ),
+        "document": document(
+            "crew ceilings that reach nothing",
+            [
+                input_node(),
+                authored_crew_node("team", task_order=["worker"]),
+                authored_agent_node("worker", max_iter=8),
+                output_node(),
+            ],
+            [
+                edge("e1", "idea", "team"),
+                edge("e2", "team", "report"),
+                member_edge("e3", "worker", "team"),
+            ],
         ),
     },
     {

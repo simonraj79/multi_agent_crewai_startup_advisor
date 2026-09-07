@@ -642,7 +642,22 @@ def one_authored_agent(**overrides: Any) -> BuilderDocument:
     )
 
 
-def authored_crew(*, process: str, members: int, **overrides: Any) -> BuilderDocument:
+def authored_crew(
+    *,
+    process: str,
+    members: int,
+    member_config: dict[str, Any] | None = None,
+    **overrides: Any,
+) -> BuilderDocument:
+    """A crew and its members. `member_config` is what each MEMBER declares.
+
+    Parameterised for audit M7: until it was fixed, an authored crew was priced
+    at the crew's own `max_iter` times a member COUNT, so every test here held
+    with members that happened to share the crew's ceilings and none of them
+    could see the field the runtime discards. A member that differs is the only
+    shape that tells the two arithmetics apart.
+    """
+
     member_ids = [f"m{index}" for index in range(members)]
     config: dict[str, Any] = {
         "process": process,
@@ -656,7 +671,10 @@ def authored_crew(*, process: str, members: int, **overrides: Any) -> BuilderDoc
         [
             input_node("idea"),
             {"id": "team", "kind": "crew", "label": "team", "config": config},
-            *[authored_agent(member_id) for member_id in member_ids],
+            *[
+                authored_agent(member_id, **(member_config or {}))
+                for member_id in member_ids
+            ],
             raw_node("report", "output", {"body_key": "markdown_body", "source": "${state.out__team}"}),
         ],
         [
@@ -750,6 +768,146 @@ class CrewMembershipPricingTests(unittest.TestCase):
         estimate = estimate_budget(authored_crew(process="sequential", members=3))
         self.assertEqual(estimate.billable_nodes, 1)
         self.assertEqual(sorted(estimate.per_node), ["team"])
+
+
+class CrewIsPricedAtItsMembersTests(unittest.TestCase):
+    """Audit M7: a crew bills for its MEMBERS, at each member's own numbers.
+
+    `runtime.authored_crew` builds one `Agent(max_iter=member.max_iter)` and one
+    `Task(guardrail_max_retries=member.guardrail_max_retries)` per member, and
+    hands `Crew(...)` NEITHER of the crew node's own two numbers. The estimate
+    priced the crew's `max_iter` times a member count, which is the one field
+    the runtime throws away - and it priced every member at the crew's TIER
+    preset rather than at the model each one names, so an escalation team drawn
+    inside a `tier: cheap` crew counted as zero escalation nodes.
+    """
+
+    def poc(self) -> BuilderDocument:
+        """The audit's proof of concept, verbatim.
+
+        Sequential, `tier: cheap`, `max_iter: 1`; six members at `max_iter: 8`
+        on the escalation model. Before the fix this metered 12 calls and 0
+        escalation nodes; the runtime makes 54, every one of them escalation.
+        """
+
+        return authored_crew(
+            process="sequential",
+            members=6,
+            max_iter=1,
+            guardrail_max_retries=0,
+            member_config={
+                "tier": "escalation",
+                "max_iter": 8,
+                "guardrail_max_retries": 0,
+                "llm": {"model": ESCALATION_MODEL.split("openrouter/", 1)[-1]},
+            },
+        )
+
+    def test_the_proof_of_concept_prices_the_members_calls(self) -> None:
+        estimate = estimate_budget(self.poc())
+        # 6 members x (0 guardrail retries + 1 attempt) x (max_iter 8 + 1). The
+        # crew's own max_iter 1 appears nowhere, because Crew() never receives
+        # it. Before the fix: 1 attempt x (1 + 1) x 6 members = 12.
+        self.assertEqual(estimate.modelled_calls, 54)
+        self.assertEqual(estimate.per_node["team"].calls, 54)
+
+    def test_the_proof_of_concept_counts_an_escalation_node(self) -> None:
+        estimate = estimate_budget(self.poc())
+        self.assertEqual(estimate.escalation_nodes, 1)
+        self.assertEqual(
+            estimate.per_node["team"].model,
+            ESCALATION_MODEL,
+            "the members' model is what the crew's calls are billed at",
+        )
+
+    def test_the_escalation_ceiling_sees_the_members(self) -> None:
+        """MAX_ESCALATION_NODES was derived from a list that dropped them."""
+
+        # Six escalation members against a ceiling of 8: under it, so the
+        # audit's own document is not refused here - the count including them
+        # is what the next document proves, by crossing the ceiling with
+        # members alone.
+        self.assertEqual(
+            [
+                problem.code
+                for problem in structural_problems(self.poc())
+                if problem.code == "escalation-count"
+            ],
+            [],
+        )
+        crowded = authored_crew(
+            process="sequential",
+            members=MAX_ESCALATION_NODES + 1,
+            member_config={"tier": "escalation"},
+        )
+        self.assertIn(
+            "escalation-count",
+            [problem.code for problem in structural_problems(crowded)],
+        )
+
+    def test_a_members_own_max_iter_moves_the_price(self) -> None:
+        lean = estimate_budget(
+            authored_crew(process="sequential", members=2, member_config={"max_iter": 1})
+        )
+        greedy = estimate_budget(
+            authored_crew(process="sequential", members=2, member_config={"max_iter": 3})
+        )
+        # BUILDER_MAX_AGENT_ITER is the ceiling on both: 1 -> 2 calls an
+        # attempt, 3 -> 4, so the members' own field doubles the crew's price.
+        self.assertEqual(greedy.per_node["team"].calls, lean.per_node["team"].calls * 2)
+
+    def test_the_crews_own_max_iter_moves_nothing(self) -> None:
+        """It configures nothing at run time, so it must price nothing."""
+
+        one = estimate_budget(authored_crew(process="sequential", members=2, max_iter=1))
+        eight = estimate_budget(authored_crew(process="sequential", members=2, max_iter=8))
+        self.assertEqual(one.modelled_calls, eight.modelled_calls)
+
+    def test_the_crew_warns_that_its_own_ceilings_reach_nothing(self) -> None:
+        problems = structural_problems(
+            authored_crew(
+                process="sequential", members=2, max_iter=1, member_config={"max_iter": 8}
+            )
+        )
+        warned = [
+            problem for problem in problems if problem.code == "crew-max-iter-ignored"
+        ]
+        self.assertEqual(len(warned), 1)
+        self.assertEqual(warned[0].severity, "warning")
+        self.assertEqual(warned[0].node_id, "team")
+        self.assertIn("m0", warned[0].message)
+
+    def test_a_crew_whose_members_agree_with_it_is_not_warned(self) -> None:
+        self.assertEqual(
+            [
+                problem.code
+                for problem in structural_problems(
+                    authored_crew(process="sequential", members=2)
+                )
+                if problem.code == "crew-max-iter-ignored"
+            ],
+            [],
+        )
+
+    def test_a_library_crew_is_still_priced_at_its_own_ceilings(self) -> None:
+        """Its `max_iter` really is passed on, so it really does price."""
+
+        def library(max_iter: int) -> BuilderDocument:
+            return document(
+                [
+                    input_node("idea"),
+                    raw_node(
+                        "sweep",
+                        "crew",
+                        {"crew_id": "sweep", "tier": "cheap", "max_iter": max_iter},
+                    ),
+                    output_node(),
+                ],
+                [edge("e1", "idea", "sweep"), edge("e2", "sweep", "report")],
+            )
+
+        self.assertEqual(node_call_count(library(1), "sweep"), 3 * 2)
+        self.assertEqual(node_call_count(library(4), "sweep"), 3 * 5)
 
 
 class NitroPricingTests(unittest.TestCase):

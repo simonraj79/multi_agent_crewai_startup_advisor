@@ -781,6 +781,7 @@
       "budget-unpriced-model",
       "credential-missing",
       "crew-hierarchical-needs-manager",
+      "crew-max-iter-ignored",
       "crew-members-out-of-range",
       "crew-task-order-mismatch",
       "crew-tier-not-honoured",
@@ -863,8 +864,8 @@
     "valid": true,
     "problems": [],
     "budget": {
-      "static_cost_usd": 0.5234624999999999,
-      "floor_cost_usd": 0.5234624999999999,
+      "static_cost_usd": 0.59824575,
+      "floor_cost_usd": 0.35562374999999996,
       "modelled_calls": 30,
       "billable_nodes": 1,
       "escalation_nodes": 1,

@@ -1,0 +1,81 @@
+# Dependency updates (audit L4).
+#
+# This file exists because of the OTHER half of pinning. `.github/workflows/ci.yml`
+# now pins every action to a commit SHA, which closes the moved-tag hole and
+# opens a slower one: a pinned SHA never moves, so a security fix published
+# upstream reaches this repository only when somebody notices. A pin without an
+# update channel is a decision to run last year's action forever.
+#
+# Dependabot understands the `uses: owner/repo@<sha> # vX.Y.Z` convention and
+# rewrites BOTH halves together, so the comment cannot drift from the SHA the
+# way a hand-maintained one would.
+#
+# Weekly, not daily: this repository has one maintainer, and a queue nobody
+# reads is the same as no queue. `open-pull-requests-limit` is deliberately
+# small for the same reason, and the grouping below turns "eleven npm patch
+# bumps" into one pull request.
+#
+# Every ecosystem here is free to check and free to test. CI holds no
+# credentials and runs `contents: read`, so a Dependabot pull request runs the
+# same no-cost suite every other push runs.
+version: 2
+
+updates:
+  # The actions this workflow pins. `directory: "/"` is correct and is NOT
+  # ".github/workflows" - for the github-actions ecosystem the directory is the
+  # repository root, and Dependabot finds the workflow files itself.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(ci)"
+
+  # The Python side. `pyproject.toml` declares the dependencies and `uv.lock`
+  # pins them; Dependabot's pip ecosystem reads both, and CI installs with
+  # `uv sync --frozen`, so a lockfile it did not update would fail the job
+  # rather than silently install something else.
+  #
+  # Majors are ignored for `crewai` alone, and that is not caution: this
+  # repository is pinned to one CrewAI version on purpose, every canvas node
+  # maps to a primitive of THAT version, and `docs/crewai-notes.md` records
+  # where the installed package and the documentation already disagree. A major
+  # bump is a project, not a dependency update.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: crewai
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # The frontend. `frontend/package.json` is the only manifest in the
+  # repository - the root has none - so the directory is not "/".
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-dev:
+        dependency-type: development
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-prod:
+        dependency-type: production
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"

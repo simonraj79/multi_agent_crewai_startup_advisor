@@ -1964,7 +1964,21 @@ def create_builder_router(
             except Exception as exc:  # the vault's own refusal, by id only
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
         tool = build_custom_tool(spec, credential=credential)
-        return {"envelope": json.loads(tool._run(**dict(arguments or {})))}
+        # SECURITY: `_run` is a synchronous httpx call of up to
+        # CUSTOM_TOOL_MAX_TIMEOUT_SECONDS per READ, made from an `async def`
+        # route - so it used to park the event loop, and every other request
+        # (health checks and live run streams included) waited on a host the
+        # caller chose. httpx's timeout is per READ and has no total deadline,
+        # so a server emitting one byte every 29 s holds the loop until
+        # `max_response_bytes` arrives. Same rule `discover_mcp_server` states
+        # for itself. Imported here, not at module scope: starlette ships with
+        # FastAPI, which is the optional `service` extra, and this module has
+        # to stay importable without it - the reason the fastapi import sits
+        # inside `create_builder_router` rather than at the top of the file.
+        from starlette.concurrency import run_in_threadpool
+
+        envelope = await run_in_threadpool(tool._run, **dict(arguments or {}))
+        return {"envelope": json.loads(envelope)}
 
     def _custom_tool_body(spec: Any) -> dict[str, Any]:
         """The wire shape of one custom tool. The credential travels as an ID."""

@@ -3,7 +3,13 @@ name = "brief_crew"
 version = "0.1.0"
 description = "Two CrewAI applications on one package: Brief Crew (Researcher/Analyst/Writer over a warm Pinecone cache) and Validator Studio (a six-agent startup-idea validator with durable human gates, a FastAPI/WebSocket service and a Vue 3 UI)."
 readme = "README.md"
-authors = [{ name = "Simon Raj", email = "inspiring.resilience@gmail.com" }]
+# NAME ONLY, deliberately (audit L4). PEP 621 allows an author entry with a
+# `name` and no `email`, and this repository is PUBLIC: an address here is
+# published to PyPI metadata, to every wheel built from this tree and to the
+# GitHub page, for no benefit the name does not already give. Attribution is
+# what the field is for; a contact address is what `README.md` and the GitHub
+# profile are for. Do not put one back without deciding to publish it.
+authors = [{ name = "Simon Raj" }]
 # MIT, chosen by the owner on 2026-09-04 (PLANS.md decision 11 depended on this).
 # The LICENSE file at the repo root is the authoritative text; docs/licensing.md
 # records the options that were weighed and why the vendored MIT skills under

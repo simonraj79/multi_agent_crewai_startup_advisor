@@ -219,11 +219,12 @@ class AdminCase(unittest.TestCase):
             opened_at=opened,
         )
         if decision is not None:
+            # `response=` alone: `answer_gate` refuses both spellings at
+            # once, and the reply is what the decisions drawer shows verbatim.
             self.store.answer_gate(
                 run_id,
                 gate_id,
-                outcome="answered",
-                response={"decision": decision, "fields": {"note": note}},
+                {"decision": decision, "fields": {"note": note}},
                 answered_at=opened + timedelta(seconds=seconds),
             )
 

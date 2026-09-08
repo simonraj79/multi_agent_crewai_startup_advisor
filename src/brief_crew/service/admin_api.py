@@ -908,11 +908,16 @@ def create_admin_router(
     from fastapi.concurrency import run_in_threadpool
 
     from brief_crew.service.auth import require_admin
-    from brief_crew.service.registry import (
-        ACCOUNT_CAP_ERROR_PREFIX,
-        COST_CEILING_ERROR_PREFIX,
-        _restored_stop_reason,
-    )
+
+    # The MODULE, and every prefix read off it at CALL time - never bound into
+    # a local at import. Two reasons, and the second is the load-bearing one:
+    # a name bound here is bound when the app is built, so a deployment that
+    # reworded a stop sentence would keep counting the old one until a
+    # restart; and criterion 8's proof is `patch.object(registry, PREFIX, ...)`
+    # changing the count, which is the ONLY construction that can tell an
+    # import from a re-typed literal. A copy of the string would pass a test
+    # that merely seeded the current sentence.
+    from brief_crew.service import registry as registry_module
 
     router = APIRouter(prefix=ADMIN_API_PREFIX, tags=["admin"])
     logger = logging.getLogger(__name__)
@@ -980,7 +985,7 @@ def create_admin_router(
         two would disagree the first time a sentence was reworded.
         """
 
-        return _restored_stop_reason(error)
+        return registry_module._restored_stop_reason(error)
 
     def run_rows(rows: Sequence[Mapping[str, Any]], *, verdicts: Mapping[str, str] | None = None) -> list[RunRow]:
         persistence = store()
@@ -1147,9 +1152,9 @@ def create_admin_router(
                 active.add(row["user_id"])
             error = row["error"]
             if isinstance(error, str):
-                if error.startswith(ACCOUNT_CAP_ERROR_PREFIX):
+                if error.startswith(registry_module.ACCOUNT_CAP_ERROR_PREFIX):
                     refusals["account_cap"] += 1
-                elif error.startswith(COST_CEILING_ERROR_PREFIX):
+                elif error.startswith(registry_module.COST_CEILING_ERROR_PREFIX):
                     refusals["run_ceiling"] += 1
         people_total, people_new = auth_people_counts(persistence, start=start, end=end)
         top_ids = sorted(by_account, key=lambda key: by_account[key], reverse=True)[:10]
@@ -1615,9 +1620,18 @@ def create_admin_router(
         answers cannot drift apart.
         """
 
+        # Validated through `ReadyResponse` and dumped, so this block is not
+        # merely built the same way as `/readyz`'s - it IS `/readyz`'s body,
+        # defaults and all. Without it the two differ by the optional fields
+        # the model fills in (`backend: null`, `workers: null`), and a test
+        # asserting they "match" would have to be weakened to pass, which is
+        # how criterion 13 would quietly stop meaning anything.
+        from brief_crew.service.app import ReadyResponse
+
         payload, _status = health_payload(readiness=True)
-        readyz = dict(payload)
-        readyz["observability"] = exporter_state_for()
+        payload = dict(payload)
+        payload["observability"] = exporter_state_for()
+        readyz = ReadyResponse.model_validate(payload).model_dump(mode="json")
         persistence = store()
         return AdminHealthModel(
             readyz=readyz,

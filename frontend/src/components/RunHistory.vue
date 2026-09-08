@@ -48,10 +48,13 @@ export function takeRevealHistory(): boolean {
  * the point: a bug in this file can make the list wrong, but it cannot make it
  * somebody else's.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Download, History, LoaderCircle, RefreshCw } from 'lucide-vue-next'
+import LangfuseLink from './admin/LangfuseLink.vue'
 import type { RunHistoryEntry } from '../types/studio'
 import { studioApi } from '../services/studioApi'
+import { adminApi, adminWhoami, probeAdmin, sessionUrlFor } from '../services/adminApi'
+import type { AdminLinks } from '../services/adminApi'
 import { runStatusDisplay } from '../data/runStatusDisplay'
 
 const props = defineProps<{
@@ -155,6 +158,47 @@ function money(value: number): string {
 }
 
 const isEmpty = computed(() => loaded.value && !loading.value && runs.value.length === 0)
+
+/* ── the Langfuse link on a row (plan 17, criterion 27) ────────────────────
+ *
+ * `GET /api/admin/links` is behind `require_admin` and answers 404 to everybody
+ * else, so this is asked only after `whoami` has said yes - which costs no
+ * extra request, because `probeAdmin` memoises the one answer the header and
+ * `App.vue` already needed. A non-admin's history is byte-identical to what it
+ * has always been.
+ *
+ * SESSION ONLY, ON THIS ROW, and it is a departure worth naming rather than
+ * hiding. A trace URL needs `trace_id_for(run_id)`, whose rule lives in
+ * `observability/backend.py`, and criterion 20 forbids a second spelling of it
+ * here; `GET /api/runs` - the endpoint this list reads - carries no Langfuse
+ * block to take one from. A session gathers every trace of the run, so the
+ * link still lands the reader on the run's own page. Both halves appear
+ * together on the admin drawer's run header, where the SERVER supplies each.
+ */
+const links = ref<AdminLinks | null>(null)
+
+async function loadLinks(): Promise<void> {
+  if (links.value) return
+  const who = await probeAdmin()
+  if (!who) return
+  try {
+    links.value = await adminApi.links()
+  } catch {
+    // Quiet, and it stays quiet: an admin extra that could not load must not
+    // put an error over an operator's own run list, and the suite tolerates
+    // zero console output on this path.
+  }
+}
+
+const langfuseOn = computed(() => adminWhoami.value !== null && links.value?.langfuse.configured === true)
+
+function sessionUrl(runId: string): string | null {
+  return sessionUrlFor(links.value, runId)
+}
+
+onMounted(() => {
+  void loadLinks()
+})
 </script>
 
 <template>
@@ -207,6 +251,14 @@ const isEmpty = computed(() => loaded.value && !loading.value && runs.value.leng
             >{{ status(run.status).label }}</span>
             <span>{{ when(run.created_at) }}</span>
             <span v-if="money(run.cost_usd)">{{ money(run.cost_usd) }}</span>
+            <!-- Hidden entirely when Langfuse is not configured, rather than
+                 rendered as a URL that goes nowhere (criterion 27). -->
+            <LangfuseLink
+              :href="sessionUrl(run.run_id)"
+              :configured="langfuseOn"
+              kind="session"
+              compact
+            />
           </span>
         </div>
         <button

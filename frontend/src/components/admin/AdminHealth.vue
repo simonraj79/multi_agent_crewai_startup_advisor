@@ -46,6 +46,35 @@ function readyzField(...path: string[]): string {
   return String(cursor)
 }
 
+/**
+ * The storage backend, found rather than addressed.
+ *
+ * `readyz.dependencies` is `registry.dependency_status()`, whose KEYS are the
+ * registry's own - `storage` and `executor` on this build - and `readyz` is
+ * typed `dict[str, Any]` all the way through, so criterion 21's key check does
+ * not reach inside it. Naming one key here would be a fourth spelling of a
+ * shape nobody owns; the honest read is "the dependency that reports a
+ * backend", which survives a rename and answers `—` if the concept goes away.
+ *
+ * MEASURED, not assumed: the committed fixture's illustrative `readyz` says
+ * `dependencies.persistence`, and the running service says
+ * `dependencies.storage`. The E2E found that, and this is the repair.
+ */
+const storageBackend = computed(() => {
+  const readyz = props.health?.readyz
+  const dependencies =
+    typeof readyz === 'object' && readyz !== null
+      ? (readyz as Record<string, unknown>).dependencies
+      : null
+  if (typeof dependencies !== 'object' || dependencies === null) return '—'
+  for (const value of Object.values(dependencies as Record<string, unknown>)) {
+    if (typeof value !== 'object' || value === null) continue
+    const backend = (value as Record<string, unknown>).backend
+    if (typeof backend === 'string' && backend) return backend
+  }
+  return '—'
+})
+
 const openrouter = computed(() => props.providers?.openrouter ?? null)
 const firecrawl = computed(() => props.providers?.firecrawl ?? null)
 const langfuse = computed(() => props.providers?.langfuse ?? null)
@@ -83,7 +112,7 @@ const integrityClean = computed(() => {
           </div>
           <div class="admin-fact">
             <dt>Storage</dt>
-            <dd>{{ readyzField('dependencies', 'persistence', 'backend') }}</dd>
+            <dd>{{ storageBackend }}</dd>
           </div>
           <div class="admin-fact">
             <dt>Gates open · expired</dt>

@@ -410,7 +410,7 @@ services:
 
       # Plan 17 (the admin console). A LITERAL, not a secret - unlike the two
       # keys immediately above, this is not half of an auth pair; it is the
-      # numeric id in a Langfuse project's own settings URL
+      # id in a Langfuse project's own settings URL
       # (https://us.cloud.langfuse.com/project/<projectId>/settings), used
       # only to build the two admin "Open in Langfuse" deep links
       # (.../traces/{traceId} and .../sessions/{sessionId}) and to report

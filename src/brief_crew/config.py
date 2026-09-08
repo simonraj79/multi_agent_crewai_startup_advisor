@@ -1675,6 +1675,15 @@ ADMIN_PROVIDER_TIMEOUT_SECONDS = 5.0
 #: The three upstream reads, and the three human pages `/links` hands out.
 #: Named here rather than inline for `OPENROUTER_GENERATION_URL`'s reason: the
 #: probe module names no URL of its own, so there is one place to look.
+#: The reserved group key a run, document or total with NO owner is filed
+#: under, everywhere in the admin console. A literal rather than `None`
+#: because it has to survive JSON, a dictionary key and a URL path segment
+#: (`GET /api/admin/users/__unowned__`), and because a client that saw `null`
+#: would have to decide for itself whether that meant "nobody" or "unknown".
+#: Never dropped and never merged with a real account: pre-auth rows and every
+#: run made on a deployment with no identity are real spend.
+ADMIN_UNOWNED_KEY = "__unowned__"
+
 OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits"
 #: The documented spelling (`.../api-reference/limits`). `credentials.py`'s
 #: vault probe uses `/api/v1/auth/key`, and whether the two are aliases is

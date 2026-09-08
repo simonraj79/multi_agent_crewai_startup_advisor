@@ -32,11 +32,14 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     and_,
+    case,
     create_engine,
     delete,
     func,
     insert,
+    or_,
     select,
+    tuple_,
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -45,6 +48,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from threading import RLock
 
+from brief_crew.config import ADMIN_UNOWNED_KEY
 from brief_crew.events import FrameData
 from brief_crew.events.redaction import (
     REDACTED,
@@ -132,6 +136,29 @@ _SECRET_KEYS = SECRET_KEYS
 _URL_CREDENTIALS = re.compile(
     r"(?P<scheme>[a-z][a-z0-9+.-]{0,31}://)[^/@\s:]{1,256}:[^/@\s]{1,256}@", re.I
 )
+
+
+#: The four columns `/spend?group_by=` may group on, and the ONE place the
+#: mapping from a query-string word to a column lives. A caller passes the
+#: word; nothing here ever interpolates it into SQL. Module scope rather than
+#: a class attribute because `PostgresFlowPersistence` is a pydantic model and
+#: an unannotated class attribute there is a field.
+ADMIN_SPEND_GROUPS = ("user", "workflow", "model", "node")
+
+
+def _published_status() -> str:
+    """`builder/store.py`'s own `STATUS_PUBLISHED`, imported at CALL time.
+
+    Not at module scope: `builder/store.py` imports the tables declared here,
+    so a module-level import would be a cycle. Not re-typed either - the admin
+    console's "how many of this person's graphs are live" figure has to mean
+    exactly what the store means by published, and a second `"published"`
+    literal is how those two stop agreeing.
+    """
+
+    from brief_crew.builder.store import STATUS_PUBLISHED
+
+    return STATUS_PUBLISHED
 
 
 def _utcnow() -> datetime:
@@ -1741,6 +1768,733 @@ class PostgresFlowPersistence(FlowPersistence):
         with self._connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return [self._gate_dict(row) for row in rows]
+
+    # ----------------------------------------------------------------------
+    # The admin console's read surface - plan 17, section 3.
+    #
+    # Every method below is READ-ONLY: no INSERT, no UPDATE, no DELETE, no
+    # compare-and-set. That is what makes plan 17 add no PostgreSQL job and no
+    # concurrency question - it is the one thing the two levers do not touch
+    # either, because both of those go through the registry and the document
+    # store the owner-scoped routes already use.
+    #
+    # THREE RULES DECIDE THE SQL, and each one is a defect this repository has
+    # already met once:
+    #
+    # * **No JSON path is ever written here.** `user_spend_usd` above sums a
+    #   `Numeric` column rather than the `usage` JSON precisely because the
+    #   path is spelled differently on the two dialects. Nothing below extracts
+    #   from `runs.usage`, `run_gates.response` or `run_frames.details` in SQL;
+    #   each is SELECTed whole and read in Python by the caller.
+    # * **No day bucket in SQL.** `strftime` and `date_trunc` are the two
+    #   spellings of the same idea and this repository ships on both dialects,
+    #   so `admin_run_window` returns one row per run and the caller buckets.
+    # * **Per-user counts are grouped queries merged in Python, never one
+    #   join.** A LEFT JOIN of `runs` to six one-to-many tables multiplies rows
+    #   and every COUNT comes out wrong - silently, and in the direction that
+    #   flatters the dashboard.
+    #
+    # Every scan takes an explicit `limit` and reports whether it hit it, so a
+    # tile can say `truncated` rather than quietly describing a prefix of the
+    # data as the whole of it.
+    # ----------------------------------------------------------------------
+
+    def list_gates(self, run_id: str) -> list[dict[str, Any]]:
+        """Every gate row for one run, oldest first - answered ones included.
+
+        The read-only peer of `list_open_gates`, which the F03 sweeper needs
+        and which filters `answered_at IS NULL`. The admin console's decisions
+        drawer wants the opposite: the whole trail, because the interesting
+        part is what a person REPLIED, and a gate that has been answered is
+        the only kind that carries a reply.
+        """
+
+        run_id = _identifier(run_id, label="run_id")
+        with self._connect() as connection:
+            rows = connection.execute(
+                select(run_gates)
+                .where(run_gates.c.run_id == run_id)
+                .order_by(run_gates.c.opened_at, run_gates.c.gate_id)
+            ).mappings().all()
+        return [self._gate_dict(row) for row in rows]
+
+    @staticmethod
+    def _window(statement: Any, column: Any, start: datetime | None, end: datetime | None) -> Any:
+        if start is not None:
+            statement = statement.where(column >= _as_utc(start))
+        if end is not None:
+            statement = statement.where(column < _as_utc(end))
+        return statement
+
+    def admin_status_counts(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict[str, int]:
+        """`GROUP BY runs.status` inside the window. One row per status."""
+
+        statement = self._window(
+            select(runs.c.status, func.count()).group_by(runs.c.status),
+            runs.c.created_at,
+            start,
+            end,
+        )
+        with self._connect() as connection:
+            rows = connection.execute(statement).all()
+        return {str(status): int(count) for status, count in rows}
+
+    def admin_run_window(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """One row per run in the window, with its estimated cost joined on.
+
+        The single query behind four of `/summary`'s figures - the day
+        buckets, the per-account totals, the refusal counts and the active
+        head count - because all four are the same rows read four ways, and
+        four scans of `runs` to answer one tile is how a dashboard becomes the
+        reason the database is slow.
+
+        The cost comes from a GROUPED SUBQUERY over `run_node_metrics`, not
+        from a join to the raw table: joining the raw rows would multiply one
+        run by its (node, model) pairs and every other column would then be
+        counted once per model.
+
+        Returns `(rows, truncated)`. `truncated` is `len(rows) == limit`,
+        which over-reports by one exact-fit case and never under-reports -
+        the right direction for a flag that says "there is more than this".
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        costs = (
+            select(
+                run_node_metrics.c.run_id.label("run_id"),
+                func.coalesce(func.sum(run_node_metrics.c.cost_usd), 0).label("cost_usd"),
+            )
+            .group_by(run_node_metrics.c.run_id)
+            .subquery()
+        )
+        statement = self._window(
+            select(
+                runs.c.id,
+                runs.c.user_id,
+                runs.c.workflow_id,
+                runs.c.status,
+                runs.c.error,
+                runs.c.created_at,
+                runs.c.completed_at,
+                func.coalesce(costs.c.cost_usd, 0).label("cost_usd"),
+            ).select_from(runs.outerjoin(costs, costs.c.run_id == runs.c.id)),
+            runs.c.created_at,
+            start,
+            end,
+        ).order_by(runs.c.created_at.desc(), runs.c.id.desc()).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return (
+            [
+                {
+                    "run_id": row["id"],
+                    "user_id": row["user_id"],
+                    "workflow_id": row["workflow_id"],
+                    "status": row["status"],
+                    "error": row["error"],
+                    "created_at": _as_utc(row["created_at"]),
+                    "completed_at": _as_utc(row["completed_at"]),
+                    "cost_usd": Decimal(str(row["cost_usd"] or 0)),
+                }
+                for row in rows
+            ],
+            len(rows) == limit,
+        )
+
+    def admin_spend_by(
+        self,
+        group_by: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """One `GROUP BY` over `run_node_metrics JOIN runs`, dearest first.
+
+        `day` is deliberately NOT one of the axes: it is the Python bucket
+        over `admin_run_window`, for the `strftime`/`date_trunc` reason above.
+
+        `runs.user_id IS NULL` collapses to the reserved `__unowned__` key in
+        SQL with a `coalesce`, so an unowned run's spend is grouped rather
+        than swallowed by the `GROUP BY` - a NULL group key is a real group in
+        both dialects, but it reaches the client as `null` and the client
+        would then have to decide what that means.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        keys = {
+            "user": func.coalesce(runs.c.user_id, ADMIN_UNOWNED_KEY),
+            "workflow": runs.c.workflow_id,
+            "model": run_node_metrics.c.model,
+            "node": run_node_metrics.c.node_id,
+        }
+        if group_by not in keys:
+            raise ValueError(f"group_by must be one of {ADMIN_SPEND_GROUPS}")
+        key = keys[group_by].label("key")
+        statement = self._window(
+            select(
+                key,
+                func.coalesce(func.sum(run_node_metrics.c.cost_usd), 0).label("cost_usd"),
+                func.coalesce(func.sum(run_node_metrics.c.total_tokens), 0).label("total_tokens"),
+                func.coalesce(func.sum(run_node_metrics.c.prompt_tokens), 0).label("prompt_tokens"),
+                func.coalesce(
+                    func.sum(run_node_metrics.c.completion_tokens), 0
+                ).label("completion_tokens"),
+                func.coalesce(func.sum(run_node_metrics.c.call_count), 0).label("call_count"),
+                func.count(func.distinct(runs.c.id)).label("runs"),
+            ).select_from(
+                run_node_metrics.join(runs, runs.c.id == run_node_metrics.c.run_id)
+            ),
+            runs.c.created_at,
+            start,
+            end,
+        )
+        statement = (
+            statement.group_by(key)
+            .order_by(func.coalesce(func.sum(run_node_metrics.c.cost_usd), 0).desc())
+            .limit(limit)
+        )
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return (
+            [
+                {
+                    "key": str(row["key"] or ""),
+                    "cost_usd": Decimal(str(row["cost_usd"] or 0)),
+                    "total_tokens": int(row["total_tokens"] or 0),
+                    "prompt_tokens": int(row["prompt_tokens"] or 0),
+                    "completion_tokens": int(row["completion_tokens"] or 0),
+                    "call_count": int(row["call_count"] or 0),
+                    "runs": int(row["runs"] or 0),
+                }
+                for row in rows
+            ],
+            len(rows) == limit,
+        )
+
+    def admin_run_costs(self, run_ids: Sequence[str]) -> dict[str, Decimal]:
+        """The estimated cost of each of these runs, in one grouped query.
+
+        The second query of the runs list, and the reason the first one is a
+        plain keyset read of `runs`: a join would have to be to a grouped
+        subquery to stay correct, and a page of fifty ids is a cheaper
+        predicate than a subquery over the whole metrics table.
+        """
+
+        wanted = [_identifier(run_id, label="run_id") for run_id in run_ids]
+        if not wanted:
+            return {}
+        statement = (
+            select(
+                run_node_metrics.c.run_id,
+                func.coalesce(func.sum(run_node_metrics.c.cost_usd), 0),
+            )
+            .where(run_node_metrics.c.run_id.in_(wanted))
+            .group_by(run_node_metrics.c.run_id)
+        )
+        with self._connect() as connection:
+            rows = connection.execute(statement).all()
+        return {str(run_id): Decimal(str(total or 0)) for run_id, total in rows}
+
+    def admin_list_runs(
+        self,
+        *,
+        status: str | None = None,
+        mode: str | None = None,
+        user_id: str | None = None,
+        workflow_id: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 50,
+        cursor: tuple[datetime, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """One keyset page of runs, newest first, across every account.
+
+        The cursor is a ROW-VALUE comparison,
+        `(created_at, id) < (ts, id)` under `ORDER BY created_at DESC, id
+        DESC`, which SQLite has had since 3.15 and PostgreSQL has always had -
+        so one spelling covers both dialects and there is no OFFSET to make
+        the page drift while somebody is reading it. Two runs created in the
+        same millisecond are separated by the id, which is why the id is in
+        the key at all.
+
+        `user_id=ADMIN_UNOWNED_KEY` means `user_id IS NULL`, the one place
+        that mapping is applied to a filter rather than to a group.
+
+        Fetches `limit` rows exactly; the caller asks for one more than it
+        means to show if it wants to know whether there is a next page.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        statement = select(
+            runs.c.id,
+            runs.c.user_id,
+            runs.c.workflow_id,
+            runs.c.mode,
+            runs.c.status,
+            runs.c.error,
+            runs.c.max_cost_usd,
+            runs.c.ceiling_kind,
+            runs.c.account_cap_usd,
+            runs.c.captured_frames,
+            runs.c.dropped_frames,
+            runs.c.frame_gaps,
+            runs.c.created_at,
+            runs.c.started_at,
+            runs.c.completed_at,
+        )
+        statement = self._window(statement, runs.c.created_at, start, end)
+        if status:
+            statement = statement.where(
+                runs.c.status == _identifier(status, label="status", limit=32)
+            )
+        if mode:
+            wanted_mode = _identifier(mode, label="mode", limit=16)
+            statement = statement.where(
+                runs.c.mode == wanted_mode
+                if wanted_mode != DEFAULT_RUN_MODE
+                # `run` is stored as NULL - see `create_run` - so filtering
+                # for it has to accept both spellings or the default mode
+                # would be unfilterable.
+                else or_(runs.c.mode.is_(None), runs.c.mode == wanted_mode)
+            )
+        if user_id == ADMIN_UNOWNED_KEY:
+            statement = statement.where(runs.c.user_id.is_(None))
+        elif user_id:
+            statement = statement.where(
+                runs.c.user_id == _identifier(user_id, label="user_id")
+            )
+        if workflow_id:
+            statement = statement.where(
+                runs.c.workflow_id == _identifier(workflow_id, label="workflow_id")
+            )
+        if cursor is not None:
+            moment, last_id = cursor
+            statement = statement.where(
+                tuple_(runs.c.created_at, runs.c.id)
+                < tuple_(_as_utc(moment), _identifier(last_id, label="cursor id"))
+            )
+        statement = statement.order_by(
+            runs.c.created_at.desc(), runs.c.id.desc()
+        ).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [
+            {
+                "run_id": row["id"],
+                "user_id": row["user_id"],
+                "workflow_id": row["workflow_id"],
+                "mode": run_mode(row["mode"]),
+                "status": row["status"],
+                "error": row["error"],
+                "max_cost_usd": row["max_cost_usd"],
+                "ceiling_kind": run_ceiling_kind(row["ceiling_kind"]),
+                "account_cap_usd": row["account_cap_usd"],
+                "captured_frames": int(row["captured_frames"] or 0),
+                "dropped_frames": int(row["dropped_frames"] or 0),
+                "frame_gaps": int(row["frame_gaps"] or 0),
+                "created_at": _as_utc(row["created_at"]),
+                "started_at": _as_utc(row["started_at"]),
+                "completed_at": _as_utc(row["completed_at"]),
+            }
+            for row in rows
+        ]
+
+    def admin_user_totals(
+        self,
+        *,
+        user_ids: Sequence[str] | None = None,
+        utc_day: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Every per-account figure, as EIGHT grouped queries merged in Python.
+
+        Not one join, and the reason is arithmetic rather than taste: `runs`
+        LEFT JOINed to `builder_documents`, `user_credentials`, `user_skills`,
+        `user_tools`, `mcp_servers` and `platform_tool_usage` multiplies one
+        account's run rows by its document rows by its credential rows, and
+        every COUNT then reports a product. The wrong answer is silent, it is
+        always too big, and it flatters the dashboard - which is the worst
+        combination there is.
+
+        The ninth query of plan 17's `/users` is the `"user"` join, and it is
+        NOT here: Better Auth's table is declared on a separate `MetaData()`
+        in `service/admin_api.py`, because declaring it on this module's
+        metadata would make `create_all()` create a table another service owns
+        in another language.
+
+        `user_ids=None` means every account that appears anywhere; a sequence
+        scopes all eight queries to those ids and is what `/users/{id}` uses.
+        The reserved `__unowned__` key stands for `user_id IS NULL` in the
+        `runs` and `builder_documents` halves and cannot appear in the other
+        five, whose `user_id` is NOT NULL by declaration.
+        """
+
+        wanted: list[str] | None = None
+        if user_ids is not None:
+            wanted = [
+                ADMIN_UNOWNED_KEY
+                if user_id == ADMIN_UNOWNED_KEY
+                else _identifier(user_id, label="user_id")
+                for user_id in user_ids
+            ]
+            if not wanted:
+                return {}
+        totals: dict[str, dict[str, Any]] = {}
+
+        def bucket(key: Any) -> dict[str, Any]:
+            name = ADMIN_UNOWNED_KEY if key is None else str(key)
+            return totals.setdefault(
+                name,
+                {
+                    "user_id": name,
+                    "runs": 0,
+                    "last_run_at": None,
+                    "spent_usd": Decimal("0"),
+                    "documents": 0,
+                    "published": 0,
+                    "credentials": 0,
+                    "skills": 0,
+                    "tools": 0,
+                    "mcp_servers": 0,
+                    "firecrawl_today": 0,
+                },
+            )
+
+        def scope(statement: Any, column: Any, *, nullable: bool) -> Any:
+            if wanted is None:
+                return statement
+            named = [name for name in wanted if name != ADMIN_UNOWNED_KEY]
+            if nullable and ADMIN_UNOWNED_KEY in wanted:
+                if not named:
+                    return statement.where(column.is_(None))
+                return statement.where(or_(column.is_(None), column.in_(named)))
+            if not named:
+                # No real id was asked for, so this table can contribute
+                # nothing. `1 = 0` rather than skipping the query, so the
+                # merge below stays one shape.
+                return statement.where(column.in_([]))
+            return statement.where(column.in_(named))
+
+        owner = func.coalesce(runs.c.user_id, ADMIN_UNOWNED_KEY)
+        with self._connect() as connection:
+            # 1. runs: how many, and when was the last one
+            for key, count, last in connection.execute(
+                scope(
+                    select(owner, func.count(), func.max(runs.c.created_at)).group_by(owner),
+                    runs.c.user_id,
+                    nullable=True,
+                )
+            ).all():
+                row = bucket(key)
+                row["runs"] = int(count or 0)
+                row["last_run_at"] = _as_utc(last)
+            # 2. spend, over the Numeric column and never the usage JSON
+            for key, total in connection.execute(
+                scope(
+                    select(
+                        owner, func.coalesce(func.sum(run_node_metrics.c.cost_usd), 0)
+                    )
+                    .select_from(
+                        run_node_metrics.join(runs, runs.c.id == run_node_metrics.c.run_id)
+                    )
+                    .group_by(owner),
+                    runs.c.user_id,
+                    nullable=True,
+                )
+            ).all():
+                bucket(key)["spent_usd"] = Decimal(str(total or 0))
+            # 3. builder documents, total and published, in one pass
+            document_owner = func.coalesce(builder_documents.c.user_id, ADMIN_UNOWNED_KEY)
+            for key, total, published in connection.execute(
+                scope(
+                    select(
+                        document_owner,
+                        func.count(),
+                        func.sum(
+                            case(
+                                (
+                                    builder_documents.c.status
+                                    == _published_status(),
+                                    1,
+                                ),
+                                else_=0,
+                            )
+                        ),
+                    ).group_by(document_owner),
+                    builder_documents.c.user_id,
+                    nullable=True,
+                )
+            ).all():
+                row = bucket(key)
+                row["documents"] = int(total or 0)
+                row["published"] = int(published or 0)
+            # 4-7. the four per-user asset tables, all NOT NULL owners
+            for field, table in (
+                ("credentials", user_credentials),
+                ("skills", user_skills),
+                ("tools", user_tools),
+                ("mcp_servers", mcp_servers),
+            ):
+                for key, count in connection.execute(
+                    scope(
+                        select(table.c.user_id, func.count()).group_by(table.c.user_id),
+                        table.c.user_id,
+                        nullable=False,
+                    )
+                ).all():
+                    bucket(key)[field] = int(count or 0)
+            # 8. today's platform Firecrawl calls (audit H4's meter)
+            if utc_day:
+                for key, used in connection.execute(
+                    scope(
+                        select(
+                            platform_tool_usage.c.user_id,
+                            func.coalesce(func.sum(platform_tool_usage.c.used), 0),
+                        )
+                        .where(
+                            platform_tool_usage.c.provider == "firecrawl",
+                            platform_tool_usage.c.utc_day == utc_day,
+                        )
+                        .group_by(platform_tool_usage.c.user_id),
+                        platform_tool_usage.c.user_id,
+                        nullable=False,
+                    )
+                ).all():
+                    bucket(key)["firecrawl_today"] = int(used or 0)
+        return totals
+
+    def admin_gate_window(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Every gate whose RUN started in the window, with its reply intact.
+
+        `run_gates JOIN runs`, windowed on `runs.created_at` rather than on
+        `run_gates.opened_at`, so a gate and the run it belongs to are always
+        counted in the same window - a gate opened at 23:59 on a run created
+        at 23:58 must not fall on the far side of a day boundary from it.
+
+        The `response` column comes back whole. Every outcome and every median
+        is computed in Python from it, for the no-JSON-path-in-SQL rule.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        statement = self._window(
+            select(
+                run_gates.c.run_id,
+                run_gates.c.gate_id,
+                run_gates.c.node_id,
+                run_gates.c.status,
+                run_gates.c.response,
+                run_gates.c.opened_at,
+                run_gates.c.expires_at,
+                run_gates.c.answered_at,
+            ).select_from(run_gates.join(runs, runs.c.id == run_gates.c.run_id)),
+            runs.c.created_at,
+            start,
+            end,
+        ).order_by(run_gates.c.opened_at.desc()).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return (
+            [
+                {
+                    "run_id": row["run_id"],
+                    "gate_id": row["gate_id"],
+                    "node_id": row["node_id"],
+                    "status": row["status"],
+                    "response": dict(row["response"]) if row["response"] is not None else None,
+                    "opened_at": _as_utc(row["opened_at"]),
+                    "expires_at": _as_utc(row["expires_at"]),
+                    "answered_at": _as_utc(row["answered_at"]),
+                }
+                for row in rows
+            ],
+            len(rows) == limit,
+        )
+
+    def admin_frames_by_kind(
+        self,
+        kinds: Sequence[str],
+        *,
+        run_ids: Sequence[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Frames of these kinds, `details` selected whole and parsed in Python.
+
+        `run_id` leads `ix_run_frames_run_kind_seq`, so scoping by run ids is
+        the cheap predicate and is what `/runs/{id}/decisions` uses. The
+        windowed form (`/verdicts`) joins `runs` for the window rather than
+        filtering on `run_frames.ts`, because a long run's terminal frame can
+        land on the next day from the run that produced it.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        wanted_kinds = [
+            _identifier(_enum_value(kind), label="kind", limit=32) for kind in kinds
+        ]
+        if not wanted_kinds:
+            return [], False
+        statement = select(
+            run_frames.c.run_id,
+            run_frames.c.seq,
+            run_frames.c.kind,
+            run_frames.c.event_type,
+            run_frames.c.level,
+            run_frames.c.node_id,
+            run_frames.c.message,
+            run_frames.c.details,
+            run_frames.c.ts,
+        ).where(run_frames.c.kind.in_(wanted_kinds))
+        if run_ids is not None:
+            wanted = [_identifier(run_id, label="run_id") for run_id in run_ids]
+            if not wanted:
+                return [], False
+            statement = statement.where(run_frames.c.run_id.in_(wanted))
+        if start is not None or end is not None:
+            statement = self._window(
+                statement.join(runs, runs.c.id == run_frames.c.run_id),
+                runs.c.created_at,
+                start,
+                end,
+            )
+        statement = statement.order_by(
+            run_frames.c.run_id, run_frames.c.seq
+        ).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return (
+            [
+                {
+                    "run_id": row["run_id"],
+                    "seq": int(row["seq"]),
+                    "kind": row["kind"],
+                    "event_type": row["event_type"],
+                    "level": row["level"],
+                    "node_id": row["node_id"],
+                    "message": row["message"],
+                    "details": dict(row["details"] or {}),
+                    "ts": _as_utc(row["ts"]),
+                }
+                for row in rows
+            ],
+            len(rows) == limit,
+        )
+
+    def admin_gates_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        """Every gate on one account's runs - the gate stats of `/users/{id}`.
+
+        `run_gates JOIN runs` on the owner, and `ADMIN_UNOWNED_KEY` means
+        `runs.user_id IS NULL`, which is the same mapping every other method
+        here applies. Reply JSON comes back whole and is read in Python.
+        """
+
+        statement = select(
+            run_gates.c.run_id,
+            run_gates.c.gate_id,
+            run_gates.c.status,
+            run_gates.c.response,
+            run_gates.c.opened_at,
+            run_gates.c.answered_at,
+        ).select_from(run_gates.join(runs, runs.c.id == run_gates.c.run_id))
+        if user_id == ADMIN_UNOWNED_KEY:
+            statement = statement.where(runs.c.user_id.is_(None))
+        else:
+            statement = statement.where(
+                runs.c.user_id == _identifier(user_id, label="user_id")
+            )
+        with self._connect() as connection:
+            rows = connection.execute(
+                statement.order_by(run_gates.c.opened_at.desc()).limit(MAX_OPEN_GATE_SCAN)
+            ).mappings().all()
+        return [
+            {
+                "run_id": row["run_id"],
+                "gate_id": row["gate_id"],
+                "status": row["status"],
+                "response": dict(row["response"]) if row["response"] is not None else None,
+                "opened_at": _as_utc(row["opened_at"]),
+                "answered_at": _as_utc(row["answered_at"]),
+            }
+            for row in rows
+        ]
+
+    def admin_document_owner(self, document_id: str) -> tuple[bool, str | None]:
+        """`(exists, owner)` for one builder document - a read, not a load.
+
+        The unpublish lever needs the row's OWN owner to pass to
+        `store.mark_unpublished`, because plan 17 has an admin ask the store
+        the question it was written to answer rather than bypass it. Asking
+        the store itself would be circular: `load` refuses a document the
+        caller does not own, and the caller is the admin.
+
+        `(False, None)` and `(True, None)` are different answers - an absent
+        document and an unowned one - which is why this is a tuple rather than
+        an optional string.
+        """
+
+        document_id = _identifier(document_id, label="document_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                select(builder_documents.c.user_id).where(
+                    builder_documents.c.id == document_id
+                )
+            ).mappings().one_or_none()
+        if row is None:
+            return False, None
+        return True, row["user_id"]
+
+    def admin_integrity_totals(self) -> dict[str, int]:
+        """The five frame-integrity columns summed over every run, plus a count.
+
+        `runs_with_drop` is the figure that matters and the one a SUM cannot
+        give: a single run that dropped four hundred frames and four hundred
+        runs that dropped one each are the same total and completely different
+        problems.
+        """
+
+        statement = select(
+            func.coalesce(func.sum(runs.c.captured_frames), 0),
+            func.coalesce(func.sum(runs.c.dropped_frames), 0),
+            func.coalesce(func.sum(runs.c.frame_gaps), 0),
+            func.coalesce(func.sum(runs.c.emit_errors), 0),
+            func.coalesce(func.sum(runs.c.subscriber_dropped), 0),
+            # `SUM(CASE ...)` rather than SQLAlchemy's `.filter()`, which
+            # compiles to the SQL FILTER clause: PostgreSQL has always had it
+            # and SQLite only since 3.30, and this repository ships on both.
+            func.coalesce(func.sum(case((runs.c.dropped_frames > 0, 1), else_=0)), 0),
+        )
+        with self._connect() as connection:
+            row = connection.execute(statement).one()
+        return {
+            "captured": int(row[0] or 0),
+            "dropped": int(row[1] or 0),
+            "gaps": int(row[2] or 0),
+            "emit_errors": int(row[3] or 0),
+            "subscriber_dropped": int(row[4] or 0),
+            "runs_with_drop": int(row[5] or 0),
+        }
 
     def list_runs_for_user(
         self,

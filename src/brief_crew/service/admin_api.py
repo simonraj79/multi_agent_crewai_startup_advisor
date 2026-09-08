@@ -532,6 +532,11 @@ class AdminBilledModel(AdminModel):
     estimate_usd: float = 0.0
     delta_pct: float | None = None
     cost_source_counts: dict[str, int] = Field(default_factory=dict)
+    #: Generations per model, off whichever key the v2 row carries the name
+    #: in - `model` is Langfuse's RESOLVED model and is null for an
+    #: `openrouter/...` string, so `providers._MODEL_KEYS` reads four
+    #: candidates in order. Additive: the panel may ignore it.
+    model_counts: dict[str, int] = Field(default_factory=dict)
     session_url: str | None = None
     trace_url: str | None = None
     fetched_at: str | None = None
@@ -1750,6 +1755,7 @@ def create_admin_router(
             estimate_usd=_money(estimate),
             delta_pct=delta,
             cost_source_counts=dict(answer.get("cost_source_counts") or {}),
+            model_counts=dict(answer.get("model_counts") or {}),
             session_url=links.session_url,
             trace_url=links.trace_url,
             fetched_at=answer.get("fetched_at"),

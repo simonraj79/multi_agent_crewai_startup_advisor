@@ -43,7 +43,6 @@ import logging
 import os
 import threading
 from typing import Any
-from urllib.parse import quote
 
 from brief_crew import config
 
@@ -82,6 +81,27 @@ def _first(data: Any, *names: str) -> Any:
         if name in data and data[name] is not None:
             return data[name]
     return None
+
+
+def _model_name(row: Any, metadata: Any) -> str:
+    """The model this generation used, off whichever key carries it.
+
+    `_MODEL_KEYS` in order, then the exporter's own `metadata.model`, then
+    `unknown`. `unknown` rather than dropping the row: a generation whose
+    model nobody can name still cost money, and a breakdown that silently
+    omits it stops summing to the total printed beside it.
+    """
+
+    if isinstance(row, dict):
+        for key in _MODEL_KEYS:
+            value = row.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:120]
+    if isinstance(metadata, dict):
+        value = metadata.get("model")
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:120]
+    return "unknown"
 
 
 def _number(value: Any) -> float | None:
@@ -329,18 +349,44 @@ def _text(value: Any) -> str | None:
 # C. Langfuse - what one run was actually billed
 # ---------------------------------------------------------------------------
 
-#: The v2 filter that selects one run's generations. **`sessionId` is not a
-#: query parameter on this endpoint** - the named params do not include it and
-#: `filter` takes precedence over them anyway - so the session is selected by
-#: a filter clause, URL-encoded.
-_SESSION_FILTER = '[{{"type":"string","column":"sessionId","operator":"=","value":"{run_id}"}}]'
+#: Where the model NAME lives on a v2 GENERATION, in the order to try.
+#:
+#: **`model` is the RESOLVED model and it is null here**, measured on the paid
+#: proof: it is Langfuse's match against its own model-definition table, and
+#: nothing in that table matches an `openrouter/...` string. What the exporter
+#: actually sent survives as `providedModelName`.
+#:
+#: Read as an ordered list rather than as one key, for the reason `_first`
+#: exists on the Firecrawl arm: a reader that knows one spelling reports a
+#: perfectly recorded run as having no model, and does it silently.
+_MODEL_KEYS = ("model", "providedModelName", "modelId", "internalModelId")
 
 
 def langfuse_billed(run_id: str, *, client: Any = None) -> dict[str, Any]:
     """Sum `costDetails.total` over one run's GENERATION observations.
 
-    Four facts about the v2 API decide this function, and three of them are
-    the kind that fail silently rather than loudly:
+    **Selected by `traceId`, NOT by a `sessionId` filter, and that correction
+    cost a paid run to find.** `sessionId` is an attribute of the TRACE; on a
+    v2 GENERATION row it is null. So the filter clause this function used to
+    send matched nothing, always - a 200 carrying `{"data": [], "meta": {}}` -
+    and the drawer said "Langfuse has no generations for this run yet" for
+    ever. That is the sentence written for the ingestion lag, which makes it
+    the one nobody would question: the bug wore the shape of the thing it was
+    supposed to report.
+
+    Measured on run `4681d938-427d-4e0c-be85-cc9d84153052`, nine minutes after
+    it finished: the sessionId filter answered 0 rows;
+    `?traceId=4681d938427d4e0cbe85cc9d84153052` answered 3, each carrying a
+    `costDetails.total` - and every one of those rows had `sessionId: None`.
+
+    The trace id comes from **`observability.backend.trace_id_for`**,
+    imported, never re-derived - the same rule criterion 20 already binds the
+    deep link to. It has to be that function or the console would link to one
+    trace and price another, and the two would agree for exactly the UUID run
+    ids everybody tests with.
+
+    Four more facts about the v2 API decide the rest, and three of them fail
+    silently rather than loudly:
 
     * **Auth is HTTP Basic**, public key as the username, secret as the
       password.
@@ -348,11 +394,13 @@ def langfuse_billed(run_id: str, *, client: Any = None) -> dict[str, Any]:
       `core,basic` omits **every** cost field, so a reader that does not send
       this gets a 200 carrying observations with no costs and concludes the
       run was free.
-    * **`sessionId` is a FILTER**, not a query parameter (above).
     * **There is no `page`.** The envelope is `{"data": [...], "meta":
       {"cursor": "..."}}` and paging follows `meta.cursor`, bounded here at
       `LANGFUSE_BILLED_PAGE_LIMIT` pages so a paging bug cannot walk a whole
       project.
+    * **`model` is null on these rows too** - see `_MODEL_KEYS`. It is
+      Langfuse's resolved model and an `openrouter/...` string matches nothing
+      in its model table; `providedModelName` carries what was sent.
 
     `calculatedTotalCost` was v1 and is gone; `costDetails.total` is the
     figure, with the flat `totalCost` as the fallback for an observation that
@@ -368,19 +416,27 @@ def langfuse_billed(run_id: str, *, client: Any = None) -> dict[str, Any]:
     base = (config.LANGFUSE_BASE_URL or "").rstrip("/")
     if not base:
         return unavailable("LANGFUSE_BASE_URL is unset")
+    # IMPORTED, never re-derived - criterion 20's rule, applied to the read as
+    # well as to the link.
+    from brief_crew.observability.backend import trace_id_for
+
+    trace_id = trace_id_for(str(run_id))
     owns_client = client is None
     http = client if client is not None else _client()
     try:
         total = 0.0
         generations = 0
         sources: dict[str, int] = {}
+        models: dict[str, int] = {}
         cursor: str | None = None
         for _page in range(max(1, int(config.LANGFUSE_BILLED_PAGE_LIMIT))):
             params: dict[str, Any] = {
+                # The named parameter, not a `filter` clause: `sessionId` is a
+                # TRACE attribute and is null on every row this asks for.
+                "traceId": trace_id,
                 "type": "GENERATION",
                 "fields": "core,basic,usage",
                 "limit": 100,
-                "filter": _SESSION_FILTER.format(run_id=quote(str(run_id), safe="")),
             }
             if cursor:
                 params["cursor"] = cursor
@@ -410,12 +466,16 @@ def langfuse_billed(run_id: str, *, client: Any = None) -> dict[str, Any]:
                     cost = _number(row.get("totalCost"))
                 if cost is not None:
                     total += cost
-                metadata = row.get("metadata")
-                source = (
-                    metadata.get("cost_source") if isinstance(metadata, dict) else None
-                )
+                raw_metadata = row.get("metadata")
+                metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+                # `metadata.cost_source` is the exporter's OWN key - contract
+                # section 4 - and it is what says whether this figure is
+                # OpenRouter's or the app's estimate standing in for it.
+                source = metadata.get("cost_source")
                 name = str(source) if isinstance(source, str) and source else "unknown"
                 sources[name] = sources.get(name, 0) + 1
+                model = _model_name(row, metadata)
+                models[model] = models.get(model, 0) + 1
             meta = payload.get("meta") if isinstance(payload, dict) else None
             cursor = meta.get("cursor") if isinstance(meta, dict) else None
             if not cursor:
@@ -434,6 +494,7 @@ def langfuse_billed(run_id: str, *, client: Any = None) -> dict[str, Any]:
                 "generations": 0,
                 "billed_usd": None,
                 "cost_source_counts": {},
+                "model_counts": {},
                 "fetched_at": _iso_now(),
             }
         return {
@@ -442,6 +503,7 @@ def langfuse_billed(run_id: str, *, client: Any = None) -> dict[str, Any]:
             "generations": generations,
             "billed_usd": round(total, 8),
             "cost_source_counts": sources,
+            "model_counts": models,
             "fetched_at": _iso_now(),
         }
     except Exception as exc:  # noqa: BLE001

@@ -96,6 +96,7 @@ from brief_crew.builder.export import (
 )
 from brief_crew.builder.runtime import BUILDABLE_BUILDER_CREW_IDS, BUILDER_AGENT_LIBRARY
 from brief_crew.service.credentials import CredentialStore
+from brief_crew.platform_quota import platform_daily_cap
 from brief_crew.service.attachments import (
     AttachmentNotYours,
     CustomToolStore,
@@ -1822,6 +1823,41 @@ def create_builder_router(
         persistence = _persistence()
         return None if persistence is None else CustomToolStore(persistence)
 
+    def _platform_firecrawl(owner: str | None) -> dict[str, Any]:
+        """What is left of this caller's platform Firecrawl allowance - audit H4.
+
+        Served beside the catalogue rather than as a route of its own, because
+        it is a fact ABOUT one of the entries in it: with the flag on,
+        `research_market_landscape` is publishable with no credential and this
+        is what bounds it. A palette that offers the tool and cannot say how
+        much of the day is left would be offering an allowance nobody can see -
+        which is the shape of the finding this whole change answers.
+
+        `used_today` is 0 for a caller with no identity. On a deployment with
+        authentication ON that branch is unreachable - `current_user` answers
+        401 before this handler runs, MEASURED in
+        `tests/service/test_platform_firecrawl_visibility.py`, which is worth
+        saying because the route's own docstring above claims it has no auth
+        for the builtins and that is not what the app does. The branch exists
+        for the auth-off checkout, which has one author and nothing to leak.
+
+        No refusal and no absent key when there is no store: a catalogue that
+        400d because the meter was unreachable would take the palette down over
+        a figure, so the block degrades to `used_today: 0` and the cap it
+        reports stays true.
+        """
+
+        provider = project_config.PLATFORM_FIRECRAWL_PROVIDER
+        persistence = _persistence()
+        used = 0
+        if owner is not None and hasattr(persistence, "platform_quota_used"):
+            used = int(persistence.platform_quota_used(owner, provider))
+        return {
+            "enabled": bool(project_config.BUILDER_PLATFORM_FIRECRAWL_DEFAULT),
+            "cap": platform_daily_cap(provider),
+            "used_today": used,
+        }
+
     def mcp_server_store() -> Any:
         persistence = _persistence()
         return None if persistence is None else McpServerStore(persistence)
@@ -1892,7 +1928,10 @@ def create_builder_router(
         if owner is not None and store is not None:
             for spec in store.list(owner):
                 entries.append(spec.as_entry().serialisable())
-        return {"tools": entries}
+        return {
+            "tools": entries,
+            "platform_firecrawl": _platform_firecrawl(owner),
+        }
 
     @router.post("/tools/custom", status_code=201)
     async def create_custom_tool(

@@ -48,6 +48,9 @@ class PersistenceTests(unittest.TestCase):
                 "flow_states",
                 "mcp_servers",
                 "pending_feedback",
+                # Audit H4: the per-user, per-UTC-day meter on a PLATFORM key.
+                # A new table, so `create_all` makes it whole.
+                "platform_tool_usage",
                 "run_frames",
                 "run_gates",
                 "run_node_metrics",

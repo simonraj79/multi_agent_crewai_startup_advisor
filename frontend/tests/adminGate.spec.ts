@@ -10,13 +10,20 @@ import fixture from './fixtures/adminApi.json'
  * The Admin entry exists only when the SERVER says it does (plan 17,
  * criterion 24).
  *
- * `GET /api/admin/whoami` is the whole gate: it answers 404 - FastAPI's own
- * `"Not Found"` body, byte for byte - for an anonymous caller, for a signed-in
- * non-admin and for a deployment with `ADMIN_EMAILS` unset, so a refused reader
- * cannot tell the route from one that was never built (§9 row 9). Anything on
- * this side that could tell those apart would be advertising the surface the
- * 404 exists to hide, which is why the three refusal shapes below are asserted
- * to produce **the same header** rather than three different ones.
+ * `GET /api/admin/whoami` is the whole gate, and it is the ONE route on that
+ * router that answers a non-admin (amended 2026-09-08): **200 with
+ * `admin: false`**, while every other `/api/admin/*` route still answers
+ * FastAPI's own 404. The amendment is not a relaxation of §9 row 9 - the
+ * SURFACE is still invisible - it is the removal of a failed request from
+ * every ordinary page load, which had cost 113 of 145 non-`@launch` E2E tests
+ * in the default `ADMIN_EMAILS`-unset configuration.
+ *
+ * FIVE REFUSAL SHAPES, ONE HEADER. `admin: false`, an anonymous caller, a 404
+ * from `require_admin` on an older build, a 401, and a dead network all have
+ * to draw the same markup: anything on this side that could tell them apart
+ * would be advertising the surface, and the 404 arms have to keep working
+ * because `autoDeploy: yes` on two services means this bundle can ship a
+ * minute before the API it was built against.
  *
  * WHY IT MOUNTS `HomeView` AND NOT `App`. The entry is drawn by the home's
  * header, and the criterion is about that markup. `App.vue`'s half - a refused
@@ -26,12 +33,36 @@ import fixture from './fixtures/adminApi.json'
 
 const WHOAMI = fixture['GET /api/admin/whoami']
 
-/** What `/api/admin/whoami` will answer, per test. */
-let whoamiStatus = 200
+/**
+ * What `admin: false` looks like on the wire - the FIXTURE's own examples.
+ *
+ * `_whoami_non_admin` and `_whoami_anonymous` are W-API's, added with the
+ * amendment, and they are read rather than reconstructed here for the reason
+ * R7 gives about every mirror in this repository: a shape this file typed out
+ * for itself would agree with itself at whatever the server stopped sending.
+ * The anonymous one carries `user_id: null`, and that has to be legal.
+ */
+const NOT_AN_ADMIN = fixture._whoami_non_admin
+const ANONYMOUS = fixture._whoami_anonymous
+
+/** How `/api/admin/whoami` will answer, per test. */
+type WhoamiArm = 'admin' | 'not-admin' | 'anonymous' | 'notFound' | 'unauthorised' | 'dead'
+let arm: WhoamiArm = 'admin'
 /** Every URL the page asked for, so a test can assert what it did NOT ask. */
 let asked: string[] = []
-/** Set when the whoami leg should reject outright, as a dead network does. */
-let whoamiThrows = false
+
+function whoamiResponse(): Response {
+  const json = (body: unknown, status: number) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  if (arm === 'admin') return json(WHOAMI, 200)
+  // THE AMENDED SHAPE: 200, so the browser logs nothing at all.
+  if (arm === 'not-admin') return json(NOT_AN_ADMIN, 200)
+  if (arm === 'anonymous') return json(ANONYMOUS, 200)
+  return json({ detail: 'Not Found' }, arm === 'unauthorised' ? 401 : 404)
+}
 
 function stubFetch(): void {
   vi.stubGlobal(
@@ -40,11 +71,8 @@ function stubFetch(): void {
       const url = String(input)
       asked.push(url)
       if (url.includes('/api/admin/whoami')) {
-        if (whoamiThrows) throw new TypeError('Failed to fetch')
-        return new Response(
-          whoamiStatus === 200 ? JSON.stringify(WHOAMI) : JSON.stringify({ detail: 'Not Found' }),
-          { status: whoamiStatus, headers: { 'Content-Type': 'application/json' } },
-        )
+        if (arm === 'dead') throw new TypeError('Failed to fetch')
+        return whoamiResponse()
       }
       let body: unknown = []
       if (url.includes('/api/builder/workflows')) body = []
@@ -84,8 +112,7 @@ function visible(html: string): string {
 
 beforeEach(() => {
   asked = []
-  whoamiStatus = 200
-  whoamiThrows = false
+  arm = 'admin'
   // The gate memoises one answer per page load, which is the point of it - so
   // each test starts from "never asked" rather than inheriting the last one's.
   resetAdminGate()
@@ -111,35 +138,44 @@ describe('the Admin entry is drawn only when whoami answers 200', () => {
     expect(entry.text()).toContain('Admin')
   })
 
-  it('draws nothing at all on a 404', async () => {
-    whoamiStatus = 404
+  it('draws nothing for a 200 that says admin: false', async () => {
+    // The ordinary case for everybody who is not the owner, and the one the
+    // amendment introduced. A 200 body is not a claim that you are an admin.
+    arm = 'not-admin'
+    const wrapper = mountHome()
+    await settle()
+    expect(wrapper.find('[data-testid="home-admin"]').exists()).toBe(false)
+  })
+
+  it('draws nothing for an anonymous caller, whose user_id is null', async () => {
+    arm = 'anonymous'
+    const wrapper = mountHome()
+    await settle()
+    expect(wrapper.find('[data-testid="home-admin"]').exists()).toBe(false)
+  })
+
+  it('still draws nothing on the 404 an older backend answers', async () => {
+    // KEPT, not replaced. `autoDeploy: yes` on two services means this bundle
+    // can reach production a minute before the API it was built against, and a
+    // console that threw on the old shape would be a blank screen for that
+    // minute.
+    arm = 'notFound'
     const wrapper = mountHome()
     await settle()
     expect(wrapper.find('[data-testid="home-admin"]').exists()).toBe(false)
   })
 
   it('leaves the header byte-identical across every way of being refused', async () => {
-    // The criterion says "byte-identical to today's header". The three shapes
-    // below are every way this app can fail to be an admin - a 404 from
-    // `require_admin`, a 401 from an unauthenticated caller, and a dead
-    // network - and the assertion is that they produce ONE header. A build
-    // that could tell them apart would be leaking the existence of the route.
+    // The criterion says "byte-identical to today's header". The five shapes
+    // below are every way this app can fail to be an admin - the amended
+    // `admin: false`, an anonymous caller, a 404 from an older
+    // `require_admin`, a 401, and a dead network - and the assertion is that
+    // they produce ONE header. A build that could tell them apart would be
+    // leaking the existence of the route.
     const headers: string[] = []
-    for (const arm of [
-      () => {
-        whoamiStatus = 404
-      },
-      () => {
-        whoamiStatus = 401
-      },
-      () => {
-        whoamiThrows = true
-      },
-    ]) {
+    for (const shape of ['not-admin', 'anonymous', 'notFound', 'unauthorised', 'dead'] as const) {
       resetAdminGate()
-      whoamiStatus = 200
-      whoamiThrows = false
-      arm()
+      arm = shape
       const wrapper = mountHome()
       await settle()
       headers.push(visible(wrapper.get('.app-header').html()))
@@ -150,7 +186,7 @@ describe('the Admin entry is drawn only when whoami answers 200', () => {
   })
 
   it('says nothing about admin anywhere on the page when refused', async () => {
-    whoamiStatus = 404
+    arm = 'not-admin'
     const wrapper = mountHome()
     await settle()
     // Not only the entry: no tooltip, no disabled control, no aria label. A
@@ -181,7 +217,7 @@ describe('the Admin entry is drawn only when whoami answers 200', () => {
 
 describe('a refused #/admin lands on the home with one sentence', () => {
   it('renders the notice the router hands it, and never a fabricated screen', async () => {
-    whoamiStatus = 404
+    arm = 'not-admin'
     const wrapper = mountHome('That address is not available on this account.')
     await settle()
     const notice = wrapper.get('[data-testid="home-notice"]')
@@ -202,7 +238,7 @@ describe('a refused #/admin lands on the home with one sentence', () => {
   })
 
   it('never says whether the route exists', async () => {
-    whoamiStatus = 404
+    arm = 'not-admin'
     const wrapper = mountHome('That address is not available on this account.')
     await settle()
     const said = wrapper.get('[data-testid="home-notice"]').text().toLowerCase()

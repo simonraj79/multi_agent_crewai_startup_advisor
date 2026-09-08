@@ -38,9 +38,25 @@ export const UNOWNED_USER_KEY = '__unowned__'
 
 /* ── the shapes ───────────────────────────────────────────────────────────── */
 
+/**
+ * The one admin route that answers a non-admin.
+ *
+ * AMENDED 2026-09-08 by the orchestrator's ruling, and the amendment is the
+ * whole reason this shape has an `admin` field at all. `whoami` used to be
+ * 404 for everybody but an admin, like every other route on the router - and
+ * that made every ordinary page load fetch a resource that 404s, which Chrome
+ * logs as a console error and which failed **113 of 145 non-`@launch` E2E
+ * tests** in the default `ADMIN_EMAILS`-unset configuration. The invisibility
+ * §9 row 9 asks for is about the SURFACE, not about the question "am I one";
+ * so `whoami` is now the single documented exception and answers 200 with
+ * `admin: false` for a non-admin or an anonymous caller, while every other
+ * `/api/admin/*` route still answers FastAPI's own 404.
+ *
+ * `user_id` is nullable because an anonymous caller has none.
+ */
 export interface AdminWhoami {
   admin: boolean
-  user_id: string
+  user_id: string | null
   email: string | null
 }
 
@@ -403,15 +419,21 @@ function windowQuery(window: AdminWindow | undefined, extra: Record<string, stri
 /* ── the gate ─────────────────────────────────────────────────────────────── */
 
 /**
- * Who the server says you are here, or null for "not an admin, or no such
- * route". Read once per page load.
+ * Who the server says you are here, or null for "not an admin". Read once per
+ * page load.
  *
- * `null` DELIBERATELY CONFLATES THREE THINGS - a 404 from `require_admin`, a
- * 404 from a build with no admin router at all, and a network failure - and
- * that conflation is the feature rather than a shortcut. §9 row 9: the surface
- * has to be invisible, so a client that could tell "refused" from "absent"
- * would be advertising the route it is hiding. Every one of the three means the
- * same thing to this app: draw no Admin entry, and send `#/admin` home.
+ * `null` DELIBERATELY CONFLATES FOUR THINGS - a 200 saying `admin: false`, a
+ * 404 from `require_admin` on an older build, a 404 from a build with no admin
+ * router at all, and a network failure - and that conflation is the feature
+ * rather than a shortcut. §9 row 9: the surface has to be invisible, so a
+ * client that could tell "refused" from "absent" would be advertising the
+ * route it is hiding. All four mean one thing here: draw no Admin entry, and
+ * send `#/admin` home.
+ *
+ * The 404 arms are KEPT rather than replaced. A deployed API is not always the
+ * one this bundle was built against - `autoDeploy: yes` on two services means
+ * the web service can ship a minute before the API does - and a console that
+ * threw on the old shape would be a blank screen for that minute.
  */
 export const adminWhoami = ref<AdminWhoami | null>(null)
 
@@ -424,12 +446,15 @@ let inflight: Promise<AdminWhoami | null> | null = null
 /**
  * Ask once. Never throws, never retries, and never logs.
  *
- * NO CONSOLE OUTPUT ON THE REFUSAL PATH, and that is a criterion rather than
- * tidiness: `e2e/admin.spec.ts` tolerates zero console errors on the arm where
- * `ADMIN_EMAILS` is unset, and a `console.error` for an expected 404 would fail
- * a suite over the control working correctly. `authedFetch` is used directly
- * instead of `fetchJson` for the same reason - `fetchJson` throws on a 404, and
- * an exception is not what "you are not an admin" means.
+ * NO OUTPUT OF ANY KIND ON THE REFUSAL PATH, and that is a criterion rather
+ * than tidiness. Under the amended contract a non-admin gets a 200, so the
+ * browser logs nothing at all - which is what took the E2E suite from 113
+ * failures back to zero. `authedFetch` is still used instead of `fetchJson`,
+ * because `fetchJson` throws on the 404 an OLDER backend still answers, and an
+ * exception is not what "you are not an admin" means.
+ *
+ * `admin: false` and a 404 land on the same `null`, so the caller has one
+ * state to handle and no way to tell a refusal from an absence.
  */
 export async function probeAdmin(force = false): Promise<AdminWhoami | null> {
   if (!force && adminProbed.value) return adminWhoami.value
@@ -437,8 +462,13 @@ export async function probeAdmin(force = false): Promise<AdminWhoami | null> {
   inflight = (async () => {
     try {
       const response = await authedFetch(`${ADMIN_API_PREFIX}/whoami`)
+      // An older backend 404s here rather than answering `admin: false`. Both
+      // are "no entry"; neither is an error worth showing anybody.
       if (!response.ok) return null
-      const body = (await response.json()) as AdminWhoami
+      const body = (await response.json()) as AdminWhoami | null
+      // `=== true` rather than truthiness: a body with no `admin` key at all -
+      // a proxy's HTML error page parsed as JSON, a shape that has moved - is
+      // not a claim that you are an admin.
       return body?.admin === true ? body : null
     } catch {
       return null

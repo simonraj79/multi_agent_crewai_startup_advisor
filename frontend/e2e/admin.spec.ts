@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { SYNTHETIC_USER_COOKIE } from './syntheticUser'
 
 /**
@@ -30,13 +30,22 @@ import { SYNTHETIC_USER_COOKIE } from './syntheticUser'
  *
  * The refused arm is a SECOND synthetic identity, not a client-side stub and
  * not a mocked response: `isolation.spec.ts`'s cookie makes the page and the
- * API agree on somebody else, that somebody is not in `ADMIN_EMAILS`, and
- * `require_admin` answers its real 404. The plan's §7 describes the refused arm
- * as the same backend restarted with the knob unset; this is the same refusal
- * from the same code path without a restart, and the file is written so that
- * running it against a backend with the knob unset ALSO passes - the present
- * arm then skips with a message naming the knob, rather than failing over a
- * configuration.
+ * API agree on somebody else, and that somebody is not in `ADMIN_EMAILS`. The
+ * plan's §7 describes the refused arm as the same backend restarted with the
+ * knob unset; this is the same answer from the same code path without a
+ * restart, and the file is written so that running it against a backend with
+ * the knob unset ALSO passes - the present arm then skips with a message
+ * naming the knob, rather than failing over a configuration.
+ *
+ * ## The amendment this file now carries (A24, A28 amended)
+ *
+ * `whoami` answers **200 with `admin: false`** for a non-admin or an anonymous
+ * caller; every other `/api/admin/*` route still answers FastAPI's own 404.
+ * The invisibility §9 row 9 asks for is about the SURFACE, and the surface is
+ * still invisible - what changed is that asking "am I one" is no longer a
+ * failed request on every page load in the product. Measured cost of the old
+ * shape: 113 of 145 non-`@launch` tests red with the knob unset, in files that
+ * have nothing to do with the admin console.
  */
 
 /**
@@ -51,18 +60,24 @@ import { SYNTHETIC_USER_COOKIE } from './syntheticUser'
 const STRANGER = 'stranger'
 
 /**
- * `builder.spec.ts`'s watch, restated with `isolation.spec.ts`'s escape hatch.
+ * `builder.spec.ts`'s watch, restated - and with NO forgiveness list at all.
  *
  * A spec file cannot be imported without registering its tests here a second
- * time, which is why every file in this directory restates these rather than
- * sharing them. The hatch exists for one reason and one test uses it: a suite
- * that PROVOKES a 404 on purpose must be able to say so, and the alternative is
- * either tolerating every 404 or being unable to test a refusal at all.
+ * time, which is why every file in this directory restates this rather than
+ * sharing it.
+ *
+ * IT HAD A HATCH AND THE HATCH WAS THE DEFECT. The first version of this file
+ * forgave `Failed to load resource: 404` on the refused arm, because `whoami`
+ * 404'd for a non-admin and Chrome logs that. What the forgiveness hid is that
+ * EVERY ordinary page load made the same request: 113 of 145 non-`@launch`
+ * tests failed in the default `ADMIN_EMAILS`-unset configuration, in files
+ * that have nothing to do with this one. `whoami` now answers 200 with
+ * `admin: false`, so there is nothing left to forgive - and the parameter is
+ * removed rather than left unused, so nobody can quietly re-arm it.
  */
-function watchConsole(page: Page, ...allowed: RegExp[]): { unexpected: string[] } {
+function watchConsole(page: Page): { unexpected: string[] } {
   const watch = { unexpected: [] as string[] }
   const record = (text: string) => {
-    if (allowed.some((pattern) => pattern.test(text))) return
     watch.unexpected.push(text)
   }
   page.on('console', (message) => {
@@ -70,6 +85,20 @@ function watchConsole(page: Page, ...allowed: RegExp[]): { unexpected: string[] 
   })
   page.on('pageerror', (error) => record(`uncaught: ${error.message}`))
   return watch
+}
+
+/**
+ * Whether the API calls this harness identity an admin.
+ *
+ * `admin` off the BODY, because the amended `whoami` answers 200 to everybody
+ * - a non-admin, an anonymous caller and a deployment with `ADMIN_EMAILS`
+ * unset alike. A status check here would read every backend as an admin one.
+ */
+async function isAdmin(request: APIRequestContext): Promise<boolean> {
+  const answer = await request.get('/api/admin/whoami')
+  if (!answer.ok()) return false
+  const body = (await answer.json()) as { admin?: boolean }
+  return body?.admin === true
 }
 
 /** Home, with nothing a previous test left behind to redirect it away. */
@@ -90,10 +119,10 @@ test.describe('the admin console', () => {
     const context = await browser.newContext({ baseURL, viewport: viewport ?? undefined })
     await context.addCookies([{ name: SYNTHETIC_USER_COOKIE, value: STRANGER, url: baseURL }])
     const page = await context.newPage()
-    // The one forgiveness, and it is the refusal this test exists to provoke:
-    // `require_admin` answers 404 and Chrome logs a failed resource load for
-    // it. Everything else is still an error.
-    const watch = watchConsole(page, /admin\/whoami/, /Failed to load resource.*404/)
+    // ZERO console errors here too, under the same rule as every other spec.
+    // That is the amendment's whole point: being a non-admin is an ordinary
+    // state of an ordinary page load, not a provoked refusal.
+    const watch = watchConsole(page)
 
     try {
       await openHome(page)
@@ -132,11 +161,16 @@ test.describe('the admin console', () => {
     // Measured rather than assumed: ask the API, as the harness identity, and
     // skip with a reason when this backend was started without the knob. That
     // makes this file honest on BOTH configurations instead of red on one.
-    const who = await request.get('/api/admin/whoami')
+    //
+    // THE BODY, NOT THE STATUS. Under the amendment `whoami` answers 200 to
+    // everybody, so a status check would say "yes, an admin" on a backend that
+    // names none - which is exactly what it did, and both tests below then
+    // waited fifteen seconds for a tab rail that was never going to appear.
+    const admin = await isAdmin(request)
     test.skip(
-      who.status() !== 200,
+      !admin,
       'this backend names no admin: start it with ADMIN_EMAILS=e2e-user@synthetic '
-        + `(GET /api/admin/whoami answered ${who.status()})`,
+        + '(GET /api/admin/whoami answered admin: false)',
     )
 
     const watch = watchConsole(page)
@@ -211,8 +245,7 @@ test.describe('the admin console', () => {
   })
 
   test('never fetches a billed cost on a page load', async ({ page, request }) => {
-    const who = await request.get('/api/admin/whoami')
-    test.skip(who.status() !== 200, 'this backend names no admin')
+    test.skip(!(await isAdmin(request)), 'this backend names no admin')
 
     // Criterion 26's other half, and only a browser can see it: `/billed` is an
     // outbound call to Langfuse on the server's own thread, so a console that

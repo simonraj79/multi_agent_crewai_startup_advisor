@@ -12,6 +12,22 @@
  * import it, so a trace id is derived in exactly one place. Deriving the hex
  * here as well would be a second spelling of one rule, and the two would
  * disagree the first time a run id is not a UUID.
+ *
+ * WHERE THIS LINK IS **NOT** DRAWN, AND WHY (criterion 27, recorded 2026-09-08).
+ * The run console's own run header at `#/run` carries no Langfuse link in
+ * Phase 1, and it is not an oversight: the only response that carries
+ * `LANGFUSE_BASE_URL` and `LANGFUSE_PROJECT_ID` is `GET /api/admin/links`,
+ * which is behind `require_admin` and 404s for everybody else. The other
+ * candidate is `/readyz`'s `observability` block, and `exporter_state`'s own
+ * docstring rules it out in so many words - *"Deliberately NOT here: the base
+ * URL and either key. A URL can carry credentials in its userinfo, `/readyz`
+ * is unauthenticated"*. So an ordinary operator has no source for the host and
+ * the project id, and the only way to give the console header a link would be
+ * a second endpoint in `src/`, which is not this task's file and not this
+ * plan's scope. The link therefore lives where a reader who CAN read those
+ * constants already is: the run-history rows (session) and the admin drawer's
+ * run header (session and trace). A non-admin's console is byte-identical to
+ * what it has always been.
  */
 import { ExternalLink } from 'lucide-vue-next'
 

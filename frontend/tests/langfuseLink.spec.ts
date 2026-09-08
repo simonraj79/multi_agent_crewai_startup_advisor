@@ -161,7 +161,15 @@ const RUNS = [
   },
 ]
 
-let whoamiStatus = 200
+/**
+ * Whether this browser's identity is an admin, in the AMENDED shape.
+ *
+ * `whoami` answers 200 with `admin: false` for a non-admin rather than 404
+ * (orchestrator's ruling, 2026-09-08) - so a run console belonging to somebody
+ * ordinary makes no failed request at all, which is what the E2E's
+ * zero-console-error rule now depends on.
+ */
+let isAdmin = true
 let linksConfigured = true
 
 function stubFetch(): void {
@@ -170,8 +178,10 @@ function stubFetch(): void {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/admin/whoami')) {
-        return new Response(JSON.stringify(fixture['GET /api/admin/whoami']), {
-          status: whoamiStatus,
+        // Both bodies are the fixture's own, never reconstructed here.
+        const who = isAdmin ? fixture['GET /api/admin/whoami'] : fixture._whoami_non_admin
+        return new Response(JSON.stringify(who), {
+          status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
       }
@@ -199,7 +209,7 @@ async function settle(rounds = 8): Promise<void> {
 }
 
 beforeEach(() => {
-  whoamiStatus = 200
+  isAdmin = true
   linksConfigured = true
   resetAdminGate()
   // `listRuns` answers `[]` unless the transport has already been PROVED live
@@ -237,7 +247,7 @@ describe('each run-history row offers the run’s Langfuse session', () => {
   })
 
   it('leaves a non-admin’s history exactly as it was', async () => {
-    whoamiStatus = 404
+    isAdmin = false
     const wrapper = mount(RunHistory, { props: { reloadKey: 'k', enabled: true } })
     await settle()
     expect(wrapper.find('[data-testid="langfuse-session"]').exists()).toBe(false)
@@ -245,7 +255,7 @@ describe('each run-history row offers the run’s Langfuse session', () => {
   })
 
   it('never asks for the admin links when whoami said no', async () => {
-    whoamiStatus = 404
+    isAdmin = false
     const asked: string[] = []
     vi.stubGlobal(
       'fetch',
@@ -253,7 +263,11 @@ describe('each run-history row offers the run’s Langfuse session', () => {
         const url = String(input)
         asked.push(url)
         if (url.includes('/api/admin/whoami')) {
-          return new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404 })
+          // The amended 200, so this path makes no failed request either.
+          return new Response(JSON.stringify(fixture._whoami_non_admin), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
         }
         return new Response(JSON.stringify({ runs: RUNS }), {
           status: 200,
@@ -263,9 +277,11 @@ describe('each run-history row offers the run’s Langfuse session', () => {
     )
     const wrapper = mount(RunHistory, { props: { reloadKey: 'k', enabled: true } })
     await settle()
-    // `/api/admin/links` is behind `require_admin` and would answer 404 - a
-    // request whose only possible outcome is a console error the suite does
-    // not tolerate.
+    // `/api/admin/links` is STILL behind `require_admin` and still answers a
+    // real 404: `whoami` is the one documented exception, and every other
+    // route on that router is unchanged. So a non-admin's console must not ask
+    // for it - a request whose only possible outcome is a console error the
+    // suite does not tolerate.
     expect(asked.filter((url) => url.includes('/api/admin/links'))).toHaveLength(0)
     expect(wrapper.find('[data-testid="langfuse-session"]').exists()).toBe(false)
   })

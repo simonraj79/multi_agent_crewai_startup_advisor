@@ -55,6 +55,25 @@ describe('the hash names the workspace', () => {
     expect(workspaceRoute('#/run/anything')).toEqual({ name: 'studio' })
   })
 
+  /**
+   * `#/admin` (plan 17, criterion 22).
+   *
+   * IT IS NOT A PERMISSION AND THIS FILE MUST NOT LOOK LIKE ONE. The parser
+   * resolves the hash for anybody who types it; whether the console is drawn is
+   * `GET /api/admin/whoami`'s answer, and `adminGate.spec.ts` owns that half. A
+   * router that hid the route would put the rule in the one place a reader can
+   * edit with the devtools open, and would leave the server's 404 - the actual
+   * control - unexercised on this side.
+   */
+  it('reads the admin console from #/admin', () => {
+    expect(workspaceRoute('#/admin')).toEqual({ name: 'admin' })
+    expect(workspaceRoute('#/admin/')).toEqual({ name: 'admin' })
+    // A trailing segment names nothing: the console's own tab is component
+    // state, deliberately not an address (the template-prop reasoning in
+    // `App.vue`, applied to a tab).
+    expect(workspaceRoute('#/admin/money')).toEqual({ name: 'admin' })
+  })
+
   it('reads the empty builder from #/build', () => {
     expect(workspaceRoute('#/build')).toEqual({ name: 'builder', documentId: null })
     expect(workspaceRoute('#/build/')).toEqual({ name: 'builder', documentId: null })
@@ -74,6 +93,10 @@ describe('the hash names the workspace', () => {
     // The old root of the console, one letter out. It must not resolve to the
     // console by accident, or the fallback would be doing it rather than a rule.
     expect(workspaceRoute('#/runs')).toEqual({ name: 'home' })
+    // One letter out from the admin route, and it must fall to the home by the
+    // rule rather than by luck.
+    expect(workspaceRoute('#/admins')).toEqual({ name: 'home' })
+    expect(workspaceRoute('#/administration')).toEqual({ name: 'home' })
   })
 
   it('lands a malformed document id on the EMPTY builder, not on a builder claiming to hold it', () => {
@@ -90,6 +113,7 @@ describe('every route round-trips through the address bar', () => {
   const routes: WorkspaceRoute[] = [
     { name: 'home' },
     { name: 'studio' },
+    { name: 'admin' },
     { name: 'builder', documentId: null },
     { name: 'builder', documentId: ID },
   ]
@@ -100,8 +124,12 @@ describe('every route round-trips through the address bar', () => {
     }
   })
 
-  it('writes the four hashes an author would recognise', () => {
-    expect(routes.map(routeHash)).toEqual(['#/', '#/run', '#/build', `#/build/${ID}`])
+  it('writes the five hashes an author would recognise', () => {
+    // Five since plan 17. `#/admin` is in the round trip like any other route:
+    // a hand-rolled parser and a hand-rolled serialiser that disagree is the
+    // whole risk R13 accepted, and a route exempted from this check is the one
+    // that would drift.
+    expect(routes.map(routeHash)).toEqual(['#/', '#/run', '#/admin', '#/build', `#/build/${ID}`])
   })
 })
 
@@ -168,6 +196,14 @@ describe('useWorkspaceRoute follows the window and leads it', () => {
     navigate({ name: 'builder', documentId: ID })
     expect(route.value).toEqual({ name: 'builder', documentId: ID })
     expect(window.location.hash).toBe(`#/build/${ID}`)
+    app.unmount()
+  })
+
+  it('writes #/admin when it is sent to the admin console', () => {
+    const [{ route, navigate }, app] = atHash('#/', () => withSetup(() => useWorkspaceRoute()))
+    navigate({ name: 'admin' })
+    expect(route.value).toEqual({ name: 'admin' })
+    expect(window.location.hash).toBe('#/admin')
     app.unmount()
   })
 

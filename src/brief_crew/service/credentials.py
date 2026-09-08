@@ -73,7 +73,11 @@ from sqlalchemy.exc import IntegrityError
 
 from brief_crew import config
 from brief_crew.events.redaction import REDACTED
-from brief_crew.platform_quota import PlatformQuotaClaim, platform_quota_scope
+from brief_crew.platform_quota import (
+    PlatformQuotaClaim,
+    platform_daily_cap,
+    platform_quota_scope,
+)
 from brief_crew.service.persistence import (
     PostgresFlowPersistence,
     identifier,
@@ -738,8 +742,12 @@ def platform_quota_claim(
     owner = str(user_id)
 
     def claim(provider: str) -> tuple[bool, int]:
-        cap = int(config.PLATFORM_TOOL_DAILY_CAPS.get(provider, 0))
-        return persistence.claim_platform_quota(owner, provider, cap)
+        # `platform_daily_cap` and not a second lookup into
+        # `PLATFORM_TOOL_DAILY_CAPS`: one reader of that mapping, so a provider
+        # the meter refuses and a provider the tool refuses cannot disagree.
+        return persistence.claim_platform_quota(
+            owner, provider, platform_daily_cap(provider)
+        )
 
     return claim
 

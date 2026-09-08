@@ -307,6 +307,15 @@ NOT_FOUND_DETAIL = "Not Found"
 def require_admin(user: AuthenticatedUser | None) -> AuthenticatedUser:
     """The admin console's one gate. **404, never 403** (plan 17, risk 9).
 
+    It guards FOURTEEN of the fifteen `/api/admin` routes. `GET /whoami` is
+    the documented exception and does not call this at all: it answers 200
+    with `admin: false`, because the home page probes it on every page load
+    and a 404 there is a console error for every non-admin on every
+    deployment where `ADMIN_EMAILS` is unset - which is the default.
+    `service/admin_api.py::AdminWhoamiModel` carries that reasoning; what
+    matters here is that the exception is one route and it carries no data
+    about anybody but the caller.
+
     A 403 says "this exists and you may not have it", which is an advertisement:
     it tells anybody who can sign in that there is an admin surface on this
     deployment and hands them a list of its routes to probe. 404 with FastAPI's

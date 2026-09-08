@@ -17,13 +17,18 @@ Two things close that here and neither is a convention:
   the KEYS.** The values in the fixture are illustrative; the keys are the
   contract.
 
-Three kinds of value are compared as OPAQUE rather than by key, and each is a
-free `dict[str, Any]` on its own model: `/health`'s `readyz` (it is
-`/readyz`'s body, which `test_admin_api.py` pins against `/readyz` itself),
-a gate's `response` (the operator's own reply, whose keys are whatever they
-typed), and a verdict's `details` (the schema's, pinned in
+Two kinds of value are compared as OPAQUE rather than by key, and each is a
+free `dict[str, Any]` whose keys belong to somebody else: a gate's `response`
+(the operator's own reply, whose keys are whatever they typed) and a
+verdict's `details` (the schema's, pinned in
 `tests/events/test_verdict_frame.py`). Comparing those by key here would be
 this module asserting over somebody else's contract.
+
+`/health`'s `readyz` **was** a third and is not any more. Being opaque is
+precisely what let the committed fixture describe a
+`dependencies.persistence` block that `/readyz` has never emitted - it is
+`executor` + `storage` - for as long as nobody curled the live route. The
+example is corrected and the exemption is gone.
 """
 
 from __future__ import annotations
@@ -47,8 +52,16 @@ FIXTURE = (
 
 #: Paths whose VALUE is a free-form mapping owned by something else. Compared
 #: as "a dict is a dict", never key by key.
+#:
+#: **`/health`'s `readyz` is NOT in here, and that is a deliberate change.**
+#: It was, on the first pass, and being opaque is what let the fixture carry a
+#: `dependencies.persistence` block that `/readyz` has never emitted - the real
+#: shape is `executor` + `storage`. An example nobody checks is the second,
+#: quieter contract this whole module exists to prevent, so the example was
+#: corrected and the exemption removed. It is now checked twice, from
+#: different directions: the KEYS against the fixture here, and the whole
+#: block against `/readyz`'s own body in `test_admin_api.py`.
 OPAQUE = {
-    ("GET /api/admin/health", "readyz"),
     ("GET /api/admin/runs/{run_id}/decisions", "gates", "response"),
     ("GET /api/admin/runs/{run_id}/decisions", "verdict"),
     ("GET /api/admin/runs/{run_id}/billed", "cost_source_counts"),

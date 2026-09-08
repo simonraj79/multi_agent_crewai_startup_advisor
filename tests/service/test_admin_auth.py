@@ -1,4 +1,4 @@
-"""`require_admin` - 404, never 403, on every route (plan 17 criteria 1 and 4).
+"""`require_admin` - 404, never 403, on fourteen routes (criteria 1 and 4).
 
 The console reads every account's spend and can cancel a stranger's run, so
 the interesting question is not "does an admin get in" but "what does anybody
@@ -13,6 +13,18 @@ empty so nobody is listed at all. The third is the default on every deployment
 that has not been configured, which is why it is the one that must not be an
 accident.
 
+**`GET /whoami` is the ONE documented exception, by orchestrator ruling.** It
+answers 200 with `admin: false` to all three of those, and the reason is a
+measurement rather than a preference: the home page probes it on every load
+for every signed-in person, so a 404 there is a `Failed to load resource: 404`
+in the console of every non-admin - and **113 of 145 non-`@launch` E2E tests
+tolerate zero console errors**, in the DEFAULT configuration where
+`ADMIN_EMAILS` is unset. Nothing is hidden by refusing it either: the admin
+surface's existence is already public in the JavaScript bundle that draws the
+link. What must be invisible is the DATA - who is here, what they spent, what
+they typed into a gate - and all fourteen routes carrying any of it keep the
+byte-identical 404. `DATA_ROUTES` below is those fourteen.
+
 **Every knob is `patch.object(config, ...)`, never inherited** - CLAUDE.md
 item 63. An `ADMIN_EMAILS` read from a developer's `.env` would make the
 "nobody is listed" arm of this file pass for the wrong reason on their machine
@@ -26,12 +38,16 @@ import unittest
 from unittest.mock import patch
 
 from brief_crew import config
-from tests.service.admin_fixtures import ADMIN, AdminCase
+from tests.service.admin_fixtures import ADMIN, ALICE, AdminCase
 
 #: Every route of plan 17 section 3, by method and path. FIFTEEN, not the
 #: fourteen the criterion says: section 3's table has fifteen rows and the
 #: count in criterion 4 is one short of its own table. Asserting the extra one
 #: is the safe direction to resolve that.
+#:
+#: Fourteen of them refuse; `whoami` answers everybody. `DATA_ROUTES` below is
+#: the fourteen, and it is derived rather than typed a second time so a route
+#: added to one list cannot go missing from the other.
 ROUTES = (
     ("GET", "/whoami"),
     ("GET", "/summary"),
@@ -49,6 +65,11 @@ ROUTES = (
     ("POST", "/runs/r1/cancel"),
     ("POST", "/workflows/ug_0123abcd/unpublish"),
 )
+
+WHOAMI = ("GET", "/whoami")
+
+#: The fourteen that must be indistinguishable from a route that is not there.
+DATA_ROUTES = tuple(route for route in ROUTES if route != WHOAMI)
 
 
 class RouteInventoryTests(unittest.TestCase):
@@ -99,13 +120,28 @@ class NobodyIsAnAdminByDefaultTests(AdminCase):
     admin_emails = ()
 
     def test_the_listed_admin_is_refused_when_the_list_is_empty(self) -> None:
-        for method, path in ROUTES:
+        for method, path in DATA_ROUTES:
             with self.subTest(route=f"{method} {path}"):
                 response = self.client.request(
                     method, f"/api/admin{path}", headers=self.as_admin()
                 )
                 self.assertEqual(response.status_code, 404, response.text)
                 self.assertEqual(response.json(), {"detail": "Not Found"})
+
+    def test_whoami_still_answers_200_with_admin_false(self) -> None:
+        """The exception, in the state every unconfigured deployment is in.
+
+        `ADMIN_EMAILS` unset is the DEFAULT, so this is the arm the whole E2E
+        suite runs in: a 404 here would be a console error on every page load
+        of every signed-in person on every deployment nobody has configured.
+        """
+
+        response = self.client.get("/api/admin/whoami", headers=self.as_admin())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {"admin": False, "user_id": ADMIN.id, "email": ADMIN.email},
+        )
 
     def test_an_unknown_path_and_an_admin_path_are_indistinguishable(self) -> None:
         """The whole point, in one assertion.
@@ -121,8 +157,8 @@ class NobodyIsAnAdminByDefaultTests(AdminCase):
 
 
 class OnlyTheListedAdminGetsInTests(AdminCase):
-    def test_an_anonymous_caller_is_refused_on_every_route(self) -> None:
-        for method, path in ROUTES:
+    def test_an_anonymous_caller_is_refused_on_every_data_route(self) -> None:
+        for method, path in DATA_ROUTES:
             with self.subTest(route=f"{method} {path}"):
                 response = self.client.request(method, f"/api/admin{path}")
                 # 401 would also be defensible for an anonymous caller, and it
@@ -131,8 +167,8 @@ class OnlyTheListedAdminGetsInTests(AdminCase):
                 self.assertEqual(response.status_code, 404, response.text)
                 self.assertEqual(response.json(), {"detail": "Not Found"})
 
-    def test_a_signed_in_non_admin_is_refused_on_every_route(self) -> None:
-        for method, path in ROUTES:
+    def test_a_signed_in_non_admin_is_refused_on_every_data_route(self) -> None:
+        for method, path in DATA_ROUTES:
             with self.subTest(route=f"{method} {path}"):
                 response = self.client.request(
                     method, f"/api/admin{path}", headers=self.as_alice()
@@ -162,6 +198,58 @@ class OnlyTheListedAdminGetsInTests(AdminCase):
         self.assertEqual(
             body, {"admin": True, "user_id": ADMIN.id, "email": ADMIN.email}
         )
+
+    def test_whoami_answers_a_signed_in_non_admin_with_admin_false(self) -> None:
+        response = self.client.get("/api/admin/whoami", headers=self.as_alice())
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            {"admin": False, "user_id": ALICE.id, "email": ALICE.email},
+        )
+
+    def test_whoami_answers_an_anonymous_caller_with_admin_false(self) -> None:
+        """200, and both identity fields null.
+
+        `optional_user` is what resolves the caller here, so nobody-at-all is
+        `None` rather than a 401 - and the client can draw the signed-out
+        header without a second request or a console error.
+        """
+
+        response = self.client.get("/api/admin/whoami")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"admin": False, "user_id": None, "email": None})
+
+    def test_whoami_carries_the_same_three_keys_on_both_arms(self) -> None:
+        """One shape, so `adminApi.ts` reads one thing and branches on a bool."""
+
+        admin_arm = self.ok("/whoami")
+        other_arm = self.client.get("/api/admin/whoami", headers=self.as_alice()).json()
+        self.assertEqual(set(admin_arm), set(other_arm))
+        self.assertEqual(set(admin_arm), {"admin", "user_id", "email"})
+
+    def test_a_bad_token_is_still_refused_on_whoami(self) -> None:
+        """The exception is about NO credential, not about a bad one.
+
+        A token that is OFFERED is still verified, and a forged or expired one
+        still gets `optional_user`'s 401 - silently treating a credential the
+        client believed in as absence is not an answer.
+        """
+
+        response = self.client.get(
+            "/api/admin/whoami", headers=self.auth("not-a-real-token")
+        )
+        self.assertEqual(response.status_code, 401, response.text)
+
+    def test_there_are_exactly_fourteen_data_routes(self) -> None:
+        """The count the ruling turns on, asserted rather than assumed.
+
+        A route added to `ROUTES` without a decision about which side of the
+        line it falls on shows up here as fifteen.
+        """
+
+        self.assertEqual(len(DATA_ROUTES), 14)
+        self.assertNotIn(WHOAMI, DATA_ROUTES)
+        self.assertIn(WHOAMI, ROUTES)
 
 
 class IsAdminTests(unittest.TestCase):

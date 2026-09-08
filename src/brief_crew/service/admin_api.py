@@ -10,10 +10,14 @@ has been a complete FinOps store since the day it shipped and exactly one
 
 FIVE RULES DECIDE ALMOST EVERY LINE BELOW
 -----------------------------------------
-* **404, never 403.** `require_admin` raises FastAPI's own unknown-route body
-  byte for byte, so an admin route and a route that does not exist are
-  indistinguishable to anybody who is not an admin. A 403 would advertise the
-  surface; see plan 17 section 9, risk 9.
+* **404, never 403 - on every route but one.** `require_admin` raises
+  FastAPI's own unknown-route body byte for byte, so an admin route and a
+  route that does not exist are indistinguishable to anybody who is not an
+  admin. A 403 would advertise the surface; see plan 17 section 9, risk 9.
+  The one exception is `GET /whoami`, which answers 200 `admin: false`
+  because the home page probes it on every load and a 404 there is a console
+  error on every non-admin's every page - for a fact the JavaScript bundle
+  already publishes. `AdminWhoamiModel` carries the full reasoning.
 * **No JSON path is ever written in SQL.** `persistence.user_spend_usd` sums a
   `Numeric` column rather than the `usage` JSON precisely because the path is
   spelled differently on SQLite and PostgreSQL. Every JSON here -
@@ -139,10 +143,24 @@ class AdminModel(BaseModel):
 
 
 class AdminWhoamiModel(AdminModel):
-    """The ONLY route the client may call to decide whether to draw the link.
+    """The ONE route that answers everybody, and the one documented exception.
 
-    It is also the only one with no SQL: an anonymous caller and a signed-in
-    non-admin both get the 404, so a 200 here is the whole answer.
+    Every other admin route answers FastAPI's own 404 to anybody who is not an
+    admin. This one answers **200 with `admin: false`**, and the reason is
+    measured rather than stylistic: the home page probes it on every load for
+    every signed-in person, so a 404 is a `Failed to load resource: 404` in
+    the browser console of every non-admin - and 113 of 145 non-`@launch` E2E
+    tests tolerate zero console errors, in the DEFAULT configuration where
+    `ADMIN_EMAILS` is unset.
+
+    Nothing is hidden by refusing it. The admin surface's existence is already
+    public in the JavaScript bundle that draws the link; what has to be
+    invisible is the DATA - who is here, what they spent, what they typed into
+    a gate - and every route carrying any of that keeps the byte-identical
+    404. So the probe is public and says no, and the thirteen reads and the
+    two levers behave as if they do not exist.
+
+    It is also the only route with no SQL.
     """
 
     admin: bool
@@ -1103,16 +1121,27 @@ def create_admin_router(
     # -- the routes ---------------------------------------------------------
 
     @router.get("/whoami", response_model=AdminWhoamiModel)
-    async def whoami(user: Any = Depends(admin)) -> AdminWhoamiModel:
-        """The one route the client calls to decide whether to draw the link.
+    async def whoami(user: Any = Depends(resolve_user)) -> AdminWhoamiModel:
+        """The ONE documented exception to the 404 rule - see the model above.
 
-        No SQL, and no information for anybody who is not an admin: a 404 here
-        is the same 404 an unknown path answers, so the client draws today's
-        header byte for byte and the surface stays invisible.
+        `Depends(resolve_user)` and NOT `Depends(admin)`: this route answers
+        everybody, with `admin: false` for an anonymous caller, for a signed-in
+        non-admin and for an empty `ADMIN_EMAILS` alike. The home page probes
+        it on every load, and a 404 there is a console error on every
+        non-admin's every page for a fact the JavaScript bundle already
+        publishes. The thirteen reads and the two levers are what must be
+        invisible, and they still are.
+
+        Still no SQL, and still nothing about anybody else: the identity in
+        the answer is the CALLER's own, which they already had.
         """
 
         return AdminWhoamiModel(
-            admin=True, user_id=getattr(user, "id", None), email=getattr(user, "email", None)
+            admin=config.is_admin(
+                getattr(user, "id", None), getattr(user, "email", None)
+            ),
+            user_id=getattr(user, "id", None),
+            email=getattr(user, "email", None),
         )
 
     @router.get("/summary", response_model=AdminSummaryModel)

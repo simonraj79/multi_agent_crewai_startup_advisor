@@ -11,6 +11,16 @@
     "user_id": "user_owner",
     "email": "owner@example.test"
   },
+  "_whoami_non_admin": {
+    "admin": false,
+    "user_id": "user_someone",
+    "email": "someone@example.test"
+  },
+  "_whoami_anonymous": {
+    "admin": false,
+    "user_id": null,
+    "email": null
+  },
   "GET /api/admin/summary": {
     "spend_usd_estimate": 1.8412,
     "estimate": true,
@@ -301,14 +311,24 @@
     "readyz": {
       "status": "ok",
       "dependencies": {
-        "persistence": {
+        "executor": {
           "status": "ok",
-          "backend": "postgresql"
+          "backend": null,
+          "workers": 1
+        },
+        "storage": {
+          "status": "ok",
+          "backend": "postgresql",
+          "workers": null
         }
       },
       "gates": {
         "open": 1,
-        "expired": 0
+        "expired": 0,
+        "alerting": 0,
+        "expiries": 0,
+        "alerts": 0,
+        "sweeps": 0
       },
       "observability": {
         "exporter": "enabled",

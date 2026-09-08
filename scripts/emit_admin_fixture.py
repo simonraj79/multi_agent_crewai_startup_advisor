@@ -130,6 +130,8 @@ def examples() -> dict[str, Any]:
 
     Keyed by the endpoint's path template, so `adminApi.ts` and the criterion
     21 test both address them the same way and neither has to invent a name.
+    A key beginning with `_` is not an endpoint - it is a second arm of one,
+    or a note - and the criterion 21 test's `GET `-prefixed scan skips it.
 
     `POST /workflows/{document_id}/unpublish` is deliberately ABSENT: it
     answers the existing `BuilderDocumentModel`, which is already pinned by
@@ -142,6 +144,16 @@ def examples() -> dict[str, Any]:
         "GET /api/admin/whoami": AdminWhoamiModel(
             admin=True, user_id="user_owner", email="owner@example.test"
         ),
+        # The SAME route's other arm, under a `_` key so the shape test's
+        # `GET `-prefixed scan does not count it as a fourteenth endpoint.
+        # `whoami` is the one route that answers everybody - a 404 there is a
+        # console error on every non-admin's every page load, for a fact the
+        # bundle already publishes. The key set is identical to the arm above,
+        # which is what lets `adminApi.ts` read one shape.
+        "_whoami_non_admin": AdminWhoamiModel(
+            admin=False, user_id="user_someone", email="someone@example.test"
+        ),
+        "_whoami_anonymous": AdminWhoamiModel(admin=False, user_id=None, email=None),
         "GET /api/admin/summary": AdminSummaryModel(
             spend_usd_estimate=1.8412,
             runs={
@@ -289,12 +301,27 @@ def examples() -> dict[str, Any]:
             truncated=False,
         ),
         "GET /api/admin/health": AdminHealthModel(
+            # `/readyz`'s OWN body, key for key - the route validates the
+            # same payload through the same `ReadyResponse`, so this example
+            # is `executor` + `storage` and not the `persistence` this file
+            # invented on its first pass. A fixture that describes a shape the
+            # server does not produce is exactly the second, quieter contract
+            # criterion 21 exists to prevent, and the two would have differed
+            # in the one block a reader is most likely to trust.
             readyz={
                 "status": "ok",
                 "dependencies": {
-                    "persistence": {"status": "ok", "backend": "postgresql"}
+                    "executor": {"status": "ok", "backend": None, "workers": 1},
+                    "storage": {"status": "ok", "backend": "postgresql", "workers": None},
                 },
-                "gates": {"open": 1, "expired": 0},
+                "gates": {
+                    "open": 1,
+                    "expired": 0,
+                    "alerting": 0,
+                    "expiries": 0,
+                    "alerts": 0,
+                    "sweeps": 0,
+                },
                 "observability": {
                     "exporter": "enabled",
                     "reason": None,

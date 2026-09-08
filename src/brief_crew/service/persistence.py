@@ -482,6 +482,41 @@ Index(
     builder_test_inputs.c.updated_at,
 )
 
+# The per-user, per-day meter on a PLATFORM key - audit H4.
+#
+# `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` hands the deployment's OWN Firecrawl key
+# to every signed-in user's research tools, and until this table the cap its
+# manifest comment cited (`BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP`) had exactly
+# one reader: its own definition in `config.py`. So the grant was unbounded and
+# invisible to both spend caps - `MAX_RUN_COST_USD` and `USER_SPEND_CAP_USD`
+# are computed from LLM token events and a Firecrawl call raises none.
+#
+# `provider` rather than a Firecrawl-only table: the same shape is what any
+# other platform-supplied key would need, and a second table per provider is
+# how a counter ends up existing for one of them.
+#
+# The primary key is the whole row's identity - one row per user per provider
+# per UTC day - which is what makes `claim_platform_quota` a single-statement
+# compare-and-set. `utc_day` is a `YYYY-MM-DD` STRING rather than a Date: the
+# day boundary is a decision this code makes (UTC, always), and storing the
+# decision rather than a timestamp means no reader can re-derive it in a
+# different zone. Old rows are a fixed cost per active user per day and are
+# never read again; nothing prunes them yet, which is a follow-up rather than a
+# defect - `VALIDATOR_RUN_RETENTION_DAYS` is the shape a sweep would take.
+#
+# This table has never shipped, so `create_all()` creates it whole and the
+# `_ADDITIVE_COLUMNS` rule below does not apply to it.
+platform_tool_usage = Table(
+    "platform_tool_usage",
+    metadata,
+    Column("user_id", String(128), primary_key=True),
+    Column("provider", String(32), primary_key=True),
+    Column("utc_day", String(10), primary_key=True),
+    Column("used", Integer, nullable=False, default=0),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+
 # The tables above, by name, for the boot-time inspector assertion and the
 # isolation matrix. Order is the order they were declared.
 GAUNTLET_TABLES: tuple[str, ...] = (
@@ -1197,6 +1232,141 @@ class PostgresFlowPersistence(FlowPersistence):
             )
             claimed = result.rowcount == 1
         return claimed
+
+    # ------------------------------------------------------------------
+    # The platform-key meter - audit H4
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _utc_day(now: datetime | None) -> str:
+        """The UTC calendar day a claim lands on, as `YYYY-MM-DD`.
+
+        `now` is injectable so a test can cross midnight without waiting for
+        it, and it is normalised to UTC first: a caller handing in a naive or
+        local datetime must not silently get a different day than the default
+        path does.
+        """
+
+        moment = _as_utc(now) or _utcnow()
+        return moment.strftime("%Y-%m-%d")
+
+    def claim_platform_quota(
+        self,
+        user_id: str,
+        provider: str,
+        cap: int,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[bool, int]:
+        """Take one unit of `user_id`'s daily allowance for `provider`.
+
+        Returns `(granted, used_after)`. `used_after` is what the row holds
+        when this call returns - the incremented figure on a grant, and the
+        already-spent figure on a refusal - so a caller can report "N of M"
+        without a second read that another writer could have moved.
+
+        **Atomic on both dialects, and by the same shape the four older
+        compare-and-set paths use** (`answer_gate`, `reopen_gate`,
+        `claim_run_status`, `builder/store.py::save`): `UPDATE ... WHERE used <
+        cap` and `rowcount`. On PostgreSQL a second transaction blocks on the
+        first's row lock and, under READ COMMITTED, re-evaluates the WHERE
+        against the committed row - so the 51st claim of a 50-cap day reads
+        `rowcount == 0` rather than overshooting. On SQLite the engine is a
+        single writer and `_access_lock` serialises a shared connection.
+
+        A dialect-specific upsert (`ON CONFLICT DO UPDATE ... WHERE`) would do
+        it in one statement, and is deliberately NOT used: it needs two code
+        paths, one of which would run only in production, and this repository
+        already has a portable shape that a PostgreSQL test drives -
+        `tests/pg/test_platform_quota.py` races two processes through exactly
+        the UPDATE below.
+
+        The INSERT is the only race this cannot decide with a WHERE, because
+        the row does not exist yet. Two first-claimers of a day both insert,
+        one loses on the primary key, and the loser retries the UPDATE - which
+        is now the ordinary path, so the retry is bounded at one.
+
+        `cap <= 0` refuses without writing anything: a deployment that has set
+        the allowance to nothing should not be growing a table of zeroes.
+        """
+
+        user_id = _identifier(user_id, label="user_id")
+        provider = _identifier(provider, label="provider", limit=32)
+        day = self._utc_day(now)
+        cap = int(cap)
+        if cap <= 0:
+            return False, self.platform_quota_used(user_id, provider, now=now)
+
+        where = and_(
+            platform_tool_usage.c.user_id == user_id,
+            platform_tool_usage.c.provider == provider,
+            platform_tool_usage.c.utc_day == day,
+        )
+        moment = _as_utc(now) or _utcnow()
+
+        for attempt in (1, 2):
+            with self._begin() as connection:
+                claimed = connection.execute(
+                    update(platform_tool_usage)
+                    .where(where, platform_tool_usage.c.used < cap)
+                    .values(
+                        used=platform_tool_usage.c.used + 1,
+                        updated_at=moment,
+                    )
+                ).rowcount == 1
+                current = connection.execute(
+                    select(platform_tool_usage.c.used).where(where)
+                ).scalar_one_or_none()
+                if claimed:
+                    # Read inside the same transaction as the UPDATE, so the
+                    # number returned is the one this claim produced and not a
+                    # later writer's.
+                    return True, int(current or 1)
+                if current is not None:
+                    return False, int(current)
+            # No row at all: this is the day's first claim. A concurrent first
+            # claimer may beat us to the primary key, in which case the loop
+            # runs the UPDATE above once more and that is the ordinary path.
+            if attempt == 2:  # pragma: no cover - two lost inserts in a row
+                break
+            try:
+                with self._begin() as connection:
+                    connection.execute(
+                        insert(platform_tool_usage).values(
+                            user_id=user_id,
+                            provider=provider,
+                            utc_day=day,
+                            used=1,
+                            updated_at=moment,
+                        )
+                    )
+                return True, 1
+            except IntegrityError:
+                continue
+        return False, self.platform_quota_used(user_id, provider, now=now)
+
+    def platform_quota_used(
+        self, user_id: str, provider: str, now: datetime | None = None
+    ) -> int:
+        """How much of today's allowance `user_id` has already spent.
+
+        Zero for a user who has not claimed today, which is the same answer as
+        for a user who does not exist - deliberately, because this is read by
+        an unauthenticated-shaped catalogue route and must not become an oracle
+        for whether an account has ever run anything.
+        """
+
+        user_id = _identifier(user_id, label="user_id")
+        provider = _identifier(provider, label="provider", limit=32)
+        day = self._utc_day(now)
+        with self._connect() as connection:
+            used = connection.execute(
+                select(platform_tool_usage.c.used).where(
+                    platform_tool_usage.c.user_id == user_id,
+                    platform_tool_usage.c.provider == provider,
+                    platform_tool_usage.c.utc_day == day,
+                )
+            ).scalar_one_or_none()
+        return int(used or 0)
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         run_id = _identifier(run_id, label="run_id")

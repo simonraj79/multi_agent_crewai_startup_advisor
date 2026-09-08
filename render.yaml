@@ -246,41 +246,49 @@ services:
         sync: false
 
       # PLANS.md decision 9, ruled ON 2026-09-05: the platform Firecrawl key
-      # backs every user's research tools, bounded by
-      # BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP (default 50 per user per UTC day)
-      # and overridden by a user's own credential. It was set to "1" here so a
-      # fresh apply matched the dashboard, where it was set through the API
-      # that day.
+      # backs every signed-in user's research tools, bounded per user per UTC
+      # day and overridden by a user's own credential.
       #
-      # SECURITY (audit 2026-09-07, H4): OFF until that cap exists. The second
-      # half of the sentence above is not true and never has been -
-      # BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP has exactly one reader, its own
-      # definition in config.py. No counter, no store, no UTC reset:
+      # ON, and the second half of that sentence is TRUE as of audit H4's fix.
+      # It was not true when it was written: the cap this comment cited had
+      # exactly one reader in the package - its own definition in config.py -
+      # so "1" was an unbounded grant of the owner's Firecrawl account to
+      # anyone who could sign in, invisible to both spend caps (MAX_RUN_COST_USD
+      # and USER_SPEND_CAP_USD are computed from LLM token events and a
+      # Firecrawl call raises none) and bounded in rate but not in total by the
+      # run rate limit. It was set to "0" on 2026-09-07 for that reason and is
+      # set back here now the counter exists.
       #
-      #   grep -rn BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP --include=*.py       #     --include=*.ts src frontend/src tests
-      #   -> src/brief_crew/config.py, and nothing else
+      # What the bound now IS, so the next reader can check it rather than
+      # believe it:
       #
-      # So "1" is an UNBOUNDED grant of the owner's Firecrawl account to every
-      # signed-in user: an agent node carrying research_market_landscape with
-      # no credential of its own scrapes on the platform key. Neither spend cap
-      # can see it - MAX_RUN_COST_USD and USER_SPEND_CAP_USD are computed from
-      # LLM token events, and a Firecrawl call raises none - and the run rate
-      # limit bounds the rate, not the total.
+      #   figure   BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP, unset here, default 50
+      #            calls per user per UTC day (src/brief_crew/config.py)
+      #   counter  PostgresFlowPersistence.claim_platform_quota - an atomic
+      #            UPDATE ... WHERE used < cap on the platform_tool_usage table
+      #            (user_id, provider, utc_day), raced by two PostgreSQL
+      #            processes in tests/pg/test_platform_quota.py
+      #   seam     service/credentials.py::credential_scope binds the claim to
+      #            the run's OWNER; brief_crew/platform_quota.py scopes it
+      #   spender  builder/tools.py::_market_research and
+      #            builder/runtime.py::_tool_instance, each wrapped by
+      #            platform_metered, which claims one unit before every call
+      #            and returns a failed envelope naming the reset when the day
+      #            is spent
+      #
+      # A run with no signed-in owner claims NOTHING and gets no platform key -
+      # "no key at all", never "unlimited" - because a call nobody can be
+      # charged for is a call nobody can be capped for.
       #
       # This file is the manifest and the manifest alone. Render snapshots a
       # deploy's environment when the deploy is CREATED (deployment trap 3),
-      # and the live value was set through the API rather than from here, so
-      # the DASHBOARD VALUE MUST BE CHANGED BY HAND for this to reach the
-      # running service. CLAUDE.md item 47 already records the missing
-      # consumer; what it also says - that the flag is off and unset here - is
-      # what stopped being true on 2026-09-05.
-      #
-      # To turn it back on, build the counter first. The shape is an atomic
-      # INSERT ... ON CONFLICT DO UPDATE ... WHERE used < cap on a
-      # (user_id, utc_day) row, claimed in _market_research before the bare
-      # tool is built, raising ToolBuildError naming the cap when it is spent.
+      # and the live value was set through the DASHBOARD API on 2026-09-05, so
+      # the dashboard already carries "1" and this entry is what makes a fresh
+      # apply match it. Lowering the allowance is a dashboard change to
+      # BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP and takes effect on the next
+      # claim, including for runs already in flight.
       - key: BUILDER_PLATFORM_FIRECRAWL_DEFAULT
-        value: "0"
+        value: "1"
 
       # Every credential is `sync: false`: the value is never committed. Render
       # prompts once at Blueprint creation and stores it as a dashboard secret.

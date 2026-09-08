@@ -61,6 +61,7 @@ from brief_crew import config as project_config
 from brief_crew.builder.bounds import Problem
 from brief_crew.builder.document import ATTACH_TARGET_KINDS, BuilderDocument, ToolConfig
 from brief_crew.events.redaction import REDACTED
+from brief_crew.platform_quota import platform_metered
 
 # --------------------------------------------------------------------------
 # Problem codes
@@ -373,12 +374,35 @@ def _require_packages(tool_id: str, names: Sequence[str]) -> None:
 def _market_research(
     params: Mapping[str, Any], credential: Mapping[str, str] | None, policy: str
 ) -> Any:
+    """The one catalogue entry that may run on the PLATFORM Firecrawl key.
+
+    `MarketResearchTool._run` reads `FIRECRAWL_API_KEY` off the process
+    environment, so with no credential attached it spends whatever key the
+    DEPLOYMENT was started with. That is the point of
+    `BUILDER_PLATFORM_FIRECRAWL_DEFAULT` - it is what lets a signed-in person
+    use the research tools without pasting a key of their own - and until audit
+    H4 it was also unbounded: the cap the manifest cited had no reader, and
+    neither spend cap can see a Firecrawl call because both are computed from
+    LLM token events.
+
+    So the two branches are not symmetrical and must not be written as if they
+    were. With a credential the author is spending their OWN account and this
+    deployment has no business rationing it. Without one they are spending the
+    owner's, and `platform_metered` takes one unit of their daily allowance
+    before each call - refusing with a sentence, never an exception, once the
+    day is spent.
+    """
+
     from brief_crew.tools.market_research import MarketResearchTool
 
     cls = MarketResearchTool
     if credential is not None:
-        cls = _env_scoped(cls, {"FIRECRAWL_API_KEY": credential["api_key"]})
-    return cls(tool_failure_policy=_policy(policy))
+        return _env_scoped(cls, {"FIRECRAWL_API_KEY": credential["api_key"]})(
+            tool_failure_policy=_policy(policy)
+        )
+    return platform_metered(
+        cls, provider=project_config.PLATFORM_FIRECRAWL_PROVIDER
+    )(tool_failure_policy=_policy(policy))
 
 
 def _hn_sentiment(

@@ -1347,6 +1347,39 @@ def create_app(
         )
     )
 
+    # `/api/admin` (plan 17). Invisible to everybody but a listed admin - every
+    # route answers FastAPI's own 404 otherwise - and read-only apart from two
+    # levers that reach the SAME `registry.cancel` and `store.mark_unpublished`
+    # the owner-scoped routes reach.
+    #
+    # `health_payload` and the exporter lambda are INJECTED rather than
+    # reimplemented, which is what makes `/api/admin/health`'s `observability`
+    # block identical to `/readyz`'s: both call these two, with these
+    # arguments. A copy would agree on the day it was written.
+    from brief_crew.service.admin_api import create_admin_router
+
+    app.include_router(
+        create_admin_router(
+            # `optional_user`, deliberately, and NOT `current_user`: plan 17
+            # criterion 4 requires an anonymous caller to get the same 404 as
+            # a signed-in non-admin, and `current_user` raises 401 first when
+            # authentication is required - which would make an admin route
+            # answer differently from an unknown path, the one thing the gate
+            # exists to prevent. A token that IS offered is still verified.
+            resolve_user=optional_user,
+            registry=registry,
+            persistence_factory=lambda: getattr(registry, "persistence", None),
+            store_factory=builder_store_factory,
+            health_payload=health_payload,
+            exporter_state_for=lambda: __import__(
+                "brief_crew.observability", fromlist=["exporter_state"]
+            ).exporter_state(
+                getattr(registry, "frame_observer", None) or frame_exporter,
+                synthetic=synthetic,
+            ),
+        )
+    )
+
     def dry_run_payload(
         workflow_id: str, user: AuthenticatedUser | None
     ) -> DryRunResponse:

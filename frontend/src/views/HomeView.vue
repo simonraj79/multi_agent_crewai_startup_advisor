@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ArrowRight, Clock3, FilePlus2, GitBranch, History, Loader, Play, TriangleAlert } from 'lucide-vue-next'
+import { ArrowRight, Clock3, FilePlus2, Gauge, GitBranch, History, Loader, Play, TriangleAlert } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
 import BrandLockup from '../components/BrandLockup.vue'
 import GraphThumbnail from '../components/builder/GraphThumbnail.vue'
@@ -17,6 +17,7 @@ import { ACTIVE_RUN_STORAGE_KEY } from '../composables/useValidatorRun'
 import { homeResumesConsole } from '../composables/useWorkspaceRoute'
 import { builderApi } from '../services/builderApi'
 import { studioApi } from '../services/studioApi'
+import { adminWhoami, probeAdmin } from '../services/adminApi'
 import { agoFrom, parseStamp } from '../utils/storedTime'
 import type { SignedInUser } from '../composables/useAuthGate'
 import type { RunPointerState } from '../composables/useWorkspaceRoute'
@@ -70,6 +71,17 @@ const props = defineProps<{
    * navigation of the session.
    */
   resumeOnLoad: boolean
+  /**
+   * One sentence for a reader who was sent here from somewhere they may not
+   * go - today, only `#/admin` (plan 17 criterion 24).
+   *
+   * A prop rather than something this page decides, because the decision is
+   * the ROUTE's: `App.vue` is what asked the server and what redirected, and a
+   * home that invented its own refusal message would be a second copy of a
+   * rule whose whole point is that the server owns it. Empty is the ordinary
+   * case and renders nothing.
+   */
+  notice?: string
 }>()
 
 const emit = defineEmits<{
@@ -90,8 +102,26 @@ const emit = defineEmits<{
   openDocument: [documentId: DocumentId]
   /** Seed one template into the builder as an unsaved draft. */
   openTemplate: [templateId: string]
+  /** Open `#/admin`. Emitted only from an entry that only an admin can see. */
+  admin: []
   signOut: []
 }>()
+
+/**
+ * Whether the server calls this account an admin (plan 17, criterion 24).
+ *
+ * The probe is asked HERE as well as in `App.vue`, and it costs one request
+ * between them: `probeAdmin` memoises the answer for the page load and shares
+ * one in-flight promise. Asking from the component that draws the entry is
+ * what makes the criterion testable on its own - a spec mounts this view, lets
+ * the stubbed `fetch` answer 404, and reads the header.
+ *
+ * A 404, a 401 and a dead network are ONE state here, deliberately. The entry
+ * is absent and the header is byte-identical to the one every non-admin has
+ * always seen; a console that could tell "refused" from "absent" would be
+ * advertising the route the 404 exists to hide.
+ */
+const canAdmin = computed(() => adminWhoami.value !== null)
 
 const identity = computed(() => props.user?.id ?? null)
 
@@ -387,6 +417,7 @@ onMounted(() => {
   void askWhetherToResume()
   void loadLibrary()
   void loadValidator()
+  void probeAdmin()
 })
 
 onBeforeUnmount(() => window.clearInterval(ticker))
@@ -406,6 +437,22 @@ onBeforeUnmount(() => window.clearInterval(ticker))
       <BrandLockup as="static" />
 
       <div class="header-context">
+        <!--
+          THE ADMIN ENTRY, AND IT IS DRAWN ONLY WHEN THE SERVER SAYS SO
+          (criterion 24). `v-if` rather than `disabled` or `hidden`: a disabled
+          control is a control, and a reader who can see one has been told the
+          route exists. With `canAdmin` false this element does not render, and
+          the header is exactly the markup every non-admin has always had.
+        -->
+        <button
+          v-if="canAdmin"
+          class="button button-quiet home-admin"
+          type="button"
+          data-testid="home-admin"
+          @click="emit('admin')"
+        >
+          <Gauge :size="14" aria-hidden="true" /> Admin
+        </button>
         <AccountChip v-if="user" :user="user" @sign-out="emit('signOut')" />
       </div>
     </header>
@@ -428,6 +475,16 @@ onBeforeUnmount(() => window.clearInterval(ticker))
           second lockup.
         -->
         <p class="home-lede" data-testid="product-sentence">{{ PRODUCT_SENTENCE }}</p>
+
+        <!--
+          ONE SENTENCE for a reader who asked for an address they may not have
+          (criterion 24). `role="status"` rather than `alert`: nothing has gone
+          wrong, they simply landed here instead. It never says whether the
+          route exists, which is the same discretion the server's 404 keeps.
+        -->
+        <p v-if="notice" class="home-notice" role="status" data-testid="home-notice">
+          <TriangleAlert :size="14" aria-hidden="true" />{{ notice }}
+        </p>
 
         <p v-if="checkingPointer" class="home-resuming" role="status">
           <Loader :size="14" aria-hidden="true" />
@@ -669,3 +726,33 @@ onBeforeUnmount(() => window.clearInterval(ticker))
     </main>
   </div>
 </template>
+
+<style scoped>
+/*
+ * TWO RULES, AND THIS FILE HAD NO STYLE BLOCK BEFORE.
+ *
+ * Everything else the home paints lives in `studio.css`, which this task does
+ * not own - so the two elements plan 17 adds carry their own scoped rules
+ * rather than reaching into a shared sheet another worker may have open. Both
+ * values are tokens; `designTokens.spec.ts` scans this file like any other.
+ */
+
+/* The Admin entry. Quiet, because it is a door and not an action: it sits in
+   the header's own row and must not outrank the account chip beside it. */
+.home-admin { min-height: 34px; }
+
+/* The refusal a redirected reader lands on. Warn rather than error: nothing
+   failed, they asked for an address this account does not have. */
+.home-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: calc(var(--space-6) * -1) 0 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+  font: var(--type-meta);
+}
+</style>

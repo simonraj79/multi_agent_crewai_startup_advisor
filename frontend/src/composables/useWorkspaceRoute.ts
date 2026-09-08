@@ -31,10 +31,27 @@ import type { DocumentId } from '../types/builder'
 export type WorkspaceRoute =
   | { name: 'home' }
   | { name: 'studio' }
+  | { name: 'admin' }
   | { name: 'builder'; documentId: DocumentId | null }
 
 const HOME: WorkspaceRoute = { name: 'home' }
 const STUDIO: WorkspaceRoute = { name: 'studio' }
+
+/**
+ * FOUR ROUTES SINCE 2026-09-08 (`.agent/plans/17-admin-console.md` criterion
+ * 22). `#/admin` is the owner's console, and it is a route rather than a panel
+ * on the home for the same reason `#/build` is: it is a screen, not a section.
+ *
+ * IT IS NOT A PERMISSION. This parser resolves the hash and nothing else -
+ * anybody can type `#/admin` and reach this value, exactly as anybody can type
+ * `#/build/ug_00000000` and reach a builder holding a document the server will
+ * refuse them. The authorisation is `GET /api/admin/whoami`, which answers 404
+ * for everybody but a named admin, and `App.vue` sends a refused visitor to the
+ * home with one sentence. Making the ROUTER the gate would put the rule in the
+ * one place a reader can edit with the devtools open, and would leave the
+ * server's 404 - the actual control - untested by anything on this side.
+ */
+const ADMIN: WorkspaceRoute = { name: 'admin' }
 
 /**
  * The route a hash names, with anything unrecognised falling to the home.
@@ -61,6 +78,7 @@ export function workspaceRoute(hash: string): WorkspaceRoute {
   const segments = path.split('/').filter((segment) => segment.length > 0)
   if (segments.length === 0) return HOME
   if (segments[0] === 'run') return STUDIO
+  if (segments[0] === 'admin') return ADMIN
   if (segments[0] !== 'build') return HOME
   const id = segments[1]
   if (id === undefined || !DOCUMENT_ID_PATTERN.test(id)) return { name: 'builder', documentId: null }
@@ -71,6 +89,7 @@ export function workspaceRoute(hash: string): WorkspaceRoute {
 export function routeHash(route: WorkspaceRoute): string {
   if (route.name === 'home') return '#/'
   if (route.name === 'studio') return '#/run'
+  if (route.name === 'admin') return '#/admin'
   return route.documentId === null ? '#/build' : `#/build/${route.documentId}`
 }
 

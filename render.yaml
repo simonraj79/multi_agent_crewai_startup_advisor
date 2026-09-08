@@ -190,6 +190,27 @@ services:
       - key: USER_SPEND_CAP_EXEMPT
         sync: false
 
+      # Plan 17 (the admin console). Comma-separated Better Auth user ids or
+      # e-mail addresses allowed to see `#/admin` and call `/api/admin/*`; the
+      # email is matched case-insensitively, the id exactly - the identical
+      # shape to USER_SPEND_CAP_EXEMPT immediately above, and for the same
+      # reason: the value is read by `config.is_admin(user_id, email)` and
+      # nothing about it has to be legible in a manifest.
+      #
+      # `sync: false`, NOT a literal, and this is deliberate rather than an
+      # oversight: unset means NOBODY is an admin, which is the fail-closed
+      # answer, and `require_admin` refuses with FastAPI's own unknown-route
+      # body (404 Not Found, never 403) so an unconfigured deployment cannot
+      # even reveal that the surface exists. A 403 here would be the leak.
+      #
+      # NOTE for the ALREADY-APPLIED Blueprint: Render prompts for
+      # `sync: false` values at Blueprint CREATION only, so adding this key to
+      # an already-applied Blueprint means entering it in the dashboard before
+      # the next deploy - until then the admin console stays invisible to
+      # everyone, including the owner, which fails closed rather than open.
+      - key: ADMIN_EMAILS
+        sync: false
+
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
 
@@ -294,6 +315,24 @@ services:
       # prompts once at Blueprint creation and stores it as a dashboard secret.
       - key: OPENROUTER_API_KEY
         sync: false
+      # Plan 17 (the admin console), §4A. A DIFFERENT key class from
+      # OPENROUTER_API_KEY immediately above - a management key, not the
+      # inference key. `GET /api/v1/credits` (the account balance the Money
+      # panel reads) refuses an ordinary `sk-or-v1-...` inference key with
+      # "Only management keys can perform this operation"
+      # (openrouter.ai/docs/api-reference/auth/management-api-keys); minted
+      # separately at openrouter.ai/settings/management-keys.
+      #
+      # Its ABSENCE is a supported state, not a boot refusal, and it degrades
+      # in a specific order rather than going straight to unavailable:
+      # `service/providers.py` falls back to `GET /api/v1/key` with the
+      # ORDINARY OPENROUTER_API_KEY above (source: "key" - usage and limits,
+      # but no total-credits figure), and only with NEITHER key does the
+      # panel answer `{"available": false, ...}`. So this key sharpens the
+      # Money panel's balance figure; it does not gate the console.
+      # `sync: false` like every other credential.
+      - key: OPENROUTER_MANAGEMENT_KEY
+        sync: false
       - key: FIRECRAWL_API_KEY
         sync: false
       - key: PINECONE_API_KEY
@@ -368,6 +407,22 @@ services:
         sync: false
       - key: LANGFUSE_BASE_URL
         value: "https://us.cloud.langfuse.com"
+
+      # Plan 17 (the admin console). A LITERAL, not a secret - unlike the two
+      # keys immediately above, this is not half of an auth pair; it is the
+      # id in a Langfuse project's own settings URL
+      # (https://us.cloud.langfuse.com/project/<projectId>/settings), used
+      # only to build the two admin "Open in Langfuse" deep links
+      # (.../traces/{traceId} and .../sessions/{sessionId}) and to report
+      # `project_configured` on GET /providers. Left EMPTY here on purpose:
+      # this file cannot know the id before the Langfuse project exists, and
+      # its absence degrades the two links to hidden rather than a broken
+      # URL - the same "empty is a supported state" shape as the keys above,
+      # not a boot refusal. Read the id from the project's own Settings page
+      # once the project exists and enter it as a literal (never sync: false;
+      # it authenticates nothing) either here or in the dashboard.
+      - key: LANGFUSE_PROJECT_ID
+        value: ""
 
   # --------------------------------------------------------------------------
   # Frontend + auth - Vue 3 SPA served by a Node server (frontend/)

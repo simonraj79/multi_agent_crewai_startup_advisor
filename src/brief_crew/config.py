@@ -1575,6 +1575,127 @@ def user_spend_cap_usd(user_id: str | None, email: str | None = None) -> float |
         return None
     return float(USER_SPEND_CAP_USD)
 
+
+# --------------------------------------------------------------------------
+# The admin console - plan 17, section 3
+# --------------------------------------------------------------------------
+# Authorisation is option (a) in the owner's ruling: a named list, and a
+# dependency that answers 404 rather than 403 so the surface is INVISIBLE.
+# Everything below is either that list or a plain bound on a read; nothing
+# here decides anything a run does.
+
+#: Who may see `/api/admin`: comma-separated Better Auth user ids or e-mail
+#: addresses, matched exactly on the id and case-insensitively on the e-mail.
+#:
+#: **Empty by default, and empty means NOBODY.** The console reads runs, gate
+#: replies and spend for every account on the deployment and can cancel a
+#: stranger's run, so the half-configured state must be "closed", not "open to
+#: the first person who signs in". `render.yaml` declares it `sync: false`,
+#: which is the same fail-closed spelling `USER_SPEND_CAP_EXEMPT` uses, and a
+#: deployment that never sets it simply has no admin console - every route
+#: answers the 404 an unknown route answers.
+#:
+#: Both handles are accepted for `USER_SPEND_CAP_EXEMPT`'s reason: the Better
+#: Auth id is a random string nobody has memorised, the e-mail is the handle a
+#: person knows, and the JWT carries both.
+ADMIN_EMAILS: tuple[str, ...] = tuple(
+    part.strip() for part in os.getenv("ADMIN_EMAILS", "").split(",") if part.strip()
+)
+_ADMIN_EMAILS_LOWER = frozenset(part.lower() for part in ADMIN_EMAILS)
+
+
+def is_admin(user_id: str | None, email: str | None = None) -> bool:
+    """Whether this identity may see the admin console.
+
+    Read through a function rather than the constant so a test patches one
+    place and every caller asks the same question the same way -
+    `user_spend_cap_usd` and `auth_is_required` are the precedents. It reads
+    `ADMIN_EMAILS` through the module globals at CALL time, so
+    `patch.object(config, "ADMIN_EMAILS", ...)` is enough on its own; the
+    lower-cased set is only consulted when it agrees with the tuple, so a
+    patched tuple can never be judged against a stale index.
+    """
+
+    if not user_id and not email:
+        return False
+    listed = tuple(ADMIN_EMAILS)
+    if not listed:
+        return False
+    if user_id and user_id in listed:
+        return True
+    if email:
+        candidate = email.strip().lower()
+        if candidate and candidate in {entry.lower() for entry in listed}:
+            return True
+    return False
+
+
+#: The Langfuse project the deep links point at - `{host}/project/{id}/…`.
+#:
+#: NOT a secret and deliberately not derived: the ingestion keys identify the
+#: project to the API but the console URL wants the project's own id, and
+#: nothing in the SDK hands it over. Empty means "no project id", which makes
+#: `/links` answer `configured: false` and the client render no link at all
+#: rather than a URL that 404s in somebody's browser.
+LANGFUSE_PROJECT_ID = os.getenv("LANGFUSE_PROJECT_ID", "").strip()
+
+#: How many pages of `/api/public/v2/observations` one billed-cost lookup may
+#: follow. At the endpoint's maximum `limit` of 1000 this is 5,000
+#: generations, which is far more than any graph this repository can express;
+#: the bound exists so a paging bug cannot walk a whole project.
+LANGFUSE_BILLED_PAGE_LIMIT = 5
+
+#: The default `?from=` window when a caller names none: thirty days back.
+ADMIN_DEFAULT_WINDOW_DAYS = 30
+
+#: The widest window the aggregates will answer. A year of runs is already
+#: past what `ADMIN_MAX_SCAN_ROWS` will read in full, so anything wider is a
+#: request for a truncated answer dressed up as a complete one.
+ADMIN_MAX_WINDOW_DAYS = 365
+
+#: Every aggregate is `.limit()`ed to this and says `truncated: true` when it
+#: hits it. A dashboard that reads the whole table is the dashboard that takes
+#: the database down at exactly the moment somebody is looking at it because
+#: something is wrong.
+ADMIN_MAX_SCAN_ROWS = 5000
+
+#: The ceiling on `?limit=` for the two paginated lists (default 50).
+ADMIN_PAGE_LIMIT_MAX = 200
+
+#: How long a provider probe's answer - success OR failure - is reused.
+#: A failure is cached too, so a dead upstream is not hammered once per page
+#: load by every open dashboard.
+ADMIN_PROVIDER_CACHE_SECONDS = 60.0
+
+#: The wall clock on one outbound provider probe. Small on purpose: the
+#: dashboard renders without it, and a slow vendor must not hold a worker
+#: thread while somebody is trying to find out why money is disappearing.
+ADMIN_PROVIDER_TIMEOUT_SECONDS = 5.0
+
+#: The three upstream reads, and the three human pages `/links` hands out.
+#: Named here rather than inline for `OPENROUTER_GENERATION_URL`'s reason: the
+#: probe module names no URL of its own, so there is one place to look.
+#: The reserved group key a run, document or total with NO owner is filed
+#: under, everywhere in the admin console. A literal rather than `None`
+#: because it has to survive JSON, a dictionary key and a URL path segment
+#: (`GET /api/admin/users/__unowned__`), and because a client that saw `null`
+#: would have to decide for itself whether that meant "nobody" or "unknown".
+#: Never dropped and never merged with a real account: pre-auth rows and every
+#: run made on a deployment with no identity are real spend.
+ADMIN_UNOWNED_KEY = "__unowned__"
+
+OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits"
+#: The documented spelling (`.../api-reference/limits`). `credentials.py`'s
+#: vault probe uses `/api/v1/auth/key`, and whether the two are aliases is
+#: undocumented - so this module names both and `providers.py` retries the
+#: second when the first answers 404. The vault probe is NOT changed here.
+OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
+OPENROUTER_KEY_URL_FALLBACK = "https://openrouter.ai/api/v1/auth/key"
+FIRECRAWL_CREDIT_USAGE_URL = "https://api.firecrawl.dev/v2/team/credit-usage"
+OPENROUTER_ACTIVITY_PAGE_URL = "https://openrouter.ai/activity"
+OPENROUTER_CREDITS_PAGE_URL = "https://openrouter.ai/settings/credits"
+FIRECRAWL_DASHBOARD_URL = "https://www.firecrawl.dev/app/settings?tab=billing"
+
 # --------------------------------------------------------------------------
 # The terminal result - what a COMPLETED run hands back over HTTP
 # --------------------------------------------------------------------------

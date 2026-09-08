@@ -36,8 +36,10 @@ __all__ = [
     "AuthenticatedUser",
     "AuthError",
     "JwksCache",
+    "NOT_FOUND_DETAIL",
     "auth_is_required",
     "bearer_token_from_header",
+    "require_admin",
     "reset_jwks_cache",
     "verify_token",
 ]
@@ -293,3 +295,50 @@ def verify_token(token: str, *, cache: JwksCache | None = None) -> Authenticated
         name=_text("name"),
         image=_text("image"),
     )
+
+
+#: FastAPI's own body for a route that does not exist, byte for byte. Restated
+#: here as a constant rather than typed at each raise site so the two can never
+#: drift: the whole value of the refusal below is that it is INDISTINGUISHABLE
+#: from a 404 the router itself would have produced.
+NOT_FOUND_DETAIL = "Not Found"
+
+
+def require_admin(user: AuthenticatedUser | None) -> AuthenticatedUser:
+    """The admin console's one gate. **404, never 403** (plan 17, risk 9).
+
+    It guards FOURTEEN of the fifteen `/api/admin` routes. `GET /whoami` is
+    the documented exception and does not call this at all: it answers 200
+    with `admin: false`, because the home page probes it on every page load
+    and a 404 there is a console error for every non-admin on every
+    deployment where `ADMIN_EMAILS` is unset - which is the default.
+    `service/admin_api.py::AdminWhoamiModel` carries that reasoning; what
+    matters here is that the exception is one route and it carries no data
+    about anybody but the caller.
+
+    A 403 says "this exists and you may not have it", which is an advertisement:
+    it tells anybody who can sign in that there is an admin surface on this
+    deployment and hands them a list of its routes to probe. 404 with FastAPI's
+    own unknown-route body tells them exactly what a stranger should hear -
+    nothing - and it is the same decision `require_own_run` and the builder
+    store already made about somebody else's row.
+
+    Three states collapse into that one answer, deliberately: nobody is signed
+    in, somebody is signed in and is not listed, and `ADMIN_EMAILS` is empty so
+    nobody is listed at all. An operator who cannot see the console and cannot
+    tell which of the three it is looks at the environment variable, which is
+    where the answer is; an attacker learns nothing from any of them.
+
+    Called with what `current_user` resolved, rather than being a dependency of
+    its own, so the identity is resolved once per request by the resolver every
+    other route already uses - the shape `require_user` established.
+
+    `config.is_admin` is imported through the module, never destructured, so
+    `patch.object(config, "ADMIN_EMAILS", ...)` in a test reaches it.
+    """
+
+    from fastapi import HTTPException
+
+    if user is None or not config.is_admin(getattr(user, "id", None), getattr(user, "email", None)):
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+    return user

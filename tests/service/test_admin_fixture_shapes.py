@@ -65,6 +65,9 @@ OPAQUE = {
     ("GET /api/admin/runs/{run_id}/decisions", "gates", "response"),
     ("GET /api/admin/runs/{run_id}/decisions", "verdict"),
     ("GET /api/admin/runs/{run_id}/billed", "cost_source_counts"),
+    # Same reason as the line above it: the KEYS are model names off the
+    # provider, not a contract this repository writes.
+    ("GET /api/admin/runs/{run_id}/billed", "model_counts"),
 }
 
 
@@ -189,6 +192,7 @@ class HandlerShapesTests(AdminCase):
                     "generations": 12,
                     "billed_usd": 0.06441798,
                     "cost_source_counts": {"openrouter-billed": 12},
+                    "model_counts": {"openrouter/google/gemini-3.8-flash": 12},
                     "fetched_at": "2026-09-08T12:03:11Z",
                 }
 

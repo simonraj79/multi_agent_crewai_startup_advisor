@@ -417,6 +417,9 @@
     "cost_source_counts": {
       "openrouter-billed": 12
     },
+    "model_counts": {
+      "openrouter/google/gemini-3.8-flash": 12
+    },
     "session_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/sessions/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
     "trace_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/traces/073c021f4ff743e184d5d9e8dd7fa0ba",
     "fetched_at": "2026-09-08T12:03:11Z"

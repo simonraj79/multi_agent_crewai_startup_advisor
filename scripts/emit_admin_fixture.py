@@ -401,6 +401,9 @@ def examples() -> dict[str, Any]:
             estimate_usd=0.0562551,
             delta_pct=14.5,
             cost_source_counts={"openrouter-billed": 12},
+            # `providedModelName`, not `model`: the latter is Langfuse's
+            # resolved model and is null for an `openrouter/...` string.
+            model_counts={"openrouter/google/gemini-3.8-flash": 12},
             session_url=SESSION_URL,
             trace_url=TRACE_URL,
             fetched_at="2026-09-08T12:03:11Z",

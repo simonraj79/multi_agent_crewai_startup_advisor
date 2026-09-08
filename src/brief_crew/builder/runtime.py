@@ -65,9 +65,11 @@ from brief_crew.config import (
     MAX_NODE_ERROR_CHARS,
     MAX_RUN_RESULT_BODY_CHARS,
     OPENROUTER_MODEL_PREFIX,
+    PLATFORM_FIRECRAWL_PROVIDER,
     VALIDATOR_BRANCH_MAX_ITER,
     openrouter_authored_params,
 )
+from brief_crew.platform_quota import platform_metered
 
 __all__ = [
     "BUILDABLE_BUILDER_CREW_IDS",
@@ -591,6 +593,19 @@ def _tool_instance(name: str) -> Any:
         raise BuilderRuntimeError(
             f"unknown tool {name!r}; a document may bind "
             f"{', '.join(sorted(registry))}"
+        )
+    # This path NEVER carries a credential - a library agent's `tools` is a
+    # list of names and there is nowhere on it to name a key - so a market
+    # research tool bound here always spends the DEPLOYMENT's Firecrawl
+    # account. Audit H4 found `BUILDER_PLATFORM_FIRECRAWL_DEFAULT`'s grant
+    # unbounded; this binding was unbounded WITHOUT that flag, because the flag
+    # governs `builder/tools.py`'s catalogue entry and not this one, and the
+    # shipped idea-validator template reaches it (`tools:
+    # ['research_market_landscape']` on a library agent node). Metered here for
+    # the same account and out of the same allowance.
+    if name == MARKET_TOOL:
+        tool_cls = platform_metered(
+            tool_cls, provider=PLATFORM_FIRECRAWL_PROVIDER
         )
     return tool_cls()
 

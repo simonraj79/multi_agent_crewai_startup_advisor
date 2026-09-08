@@ -3530,6 +3530,42 @@ BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP = _env_positive_int(
     "BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP", 50
 )
 
+#: The provider name the meter counts under, and the one `provider` value the
+#: `platform_tool_usage` rows carry today. A string rather than the tool id
+#: because the allowance is over a KEY, not over a tool: three catalogue entries
+#: and one library-agent binding all spend the same Firecrawl account.
+PLATFORM_FIRECRAWL_PROVIDER = "firecrawl"
+
+#: Every platform-supplied key this deployment meters, and its daily allowance
+#: per user. A CLOSED set on purpose: a provider absent from this mapping has
+#: no allowance at all, so adding a platform key without deciding its cap
+#: refuses rather than grants - which is the failure H4 was, with the sign
+#: flipped. Read by `brief_crew.platform_quota` and by the claim callable
+#: `service/credentials.py` binds around a run.
+PLATFORM_TOOL_DAILY_CAPS: dict[str, int] = {
+    PLATFORM_FIRECRAWL_PROVIDER: BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP,
+}
+
+#: What a metered tool says when the account has spent the day's allowance. It
+#: names the figure, the reset and the way out, because a refusal an author
+#: cannot act on is a refusal they will read as an outage. Written as an
+#: envelope `notes` string - the tool returns a `failed` envelope and never
+#: raises, so the agent reads a sentence and the run carries on.
+PLATFORM_QUOTA_SPENT_NOTE = (
+    "The daily platform allowance of {cap} {provider} calls is used up for this "
+    "account. It resets at 00:00 UTC. Attach your own {provider} credential to "
+    "this tool to lift it. No {provider} call was made."
+)
+
+#: What it says when there is no run scope to charge - a CLI run, a test, or a
+#: run nobody signed in for. "No platform key at all" rather than "unlimited":
+#: an unowned call cannot be metered, so it must not be able to spend.
+PLATFORM_QUOTA_UNSCOPED_NOTE = (
+    "The platform {provider} key is offered only inside a signed-in run on this "
+    "deployment, and there is no account here to charge. Attach your own "
+    "{provider} credential to this tool. No {provider} call was made."
+)
+
 
 # --------------------------------------------------------------------------
 # Plan 07 - the MCP client

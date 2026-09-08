@@ -73,6 +73,7 @@ from sqlalchemy.exc import IntegrityError
 
 from brief_crew import config
 from brief_crew.events.redaction import REDACTED
+from brief_crew.platform_quota import PlatformQuotaClaim, platform_quota_scope
 from brief_crew.service.persistence import (
     PostgresFlowPersistence,
     identifier,
@@ -83,6 +84,7 @@ from brief_crew.service.persistence import (
 __all__ = [
     "associated_data",
     "credential_scope",
+    "platform_quota_claim",
     "CredentialInvalid",
     "CredentialLabelTaken",
     "CredentialNotYours",
@@ -701,10 +703,45 @@ def credential_scope(*, user_id: str | None, persistence: Any) -> Iterator[None]
     user_token = current_run_user.set(user_id)
     store_token = _current_store.set(store)
     try:
-        yield
+        # The PLATFORM allowance rides the same scope - audit H4. One context
+        # manager rather than two the runner enters separately: a run scoped
+        # for credentials and not for quota is a run whose platform spend is
+        # unmetered, which is the state the audit found. The claim is `None`
+        # for an unowned run or a bare persistence, and `None` means "no
+        # platform key", never "unlimited".
+        with platform_quota_scope(platform_quota_claim(user_id, persistence)):
+            yield
     finally:
         _current_store.reset(store_token)
         current_run_user.reset(user_token)
+
+
+def platform_quota_claim(
+    user_id: str | None, persistence: Any
+) -> PlatformQuotaClaim | None:
+    """One account's claim on this deployment's platform keys, or nothing.
+
+    Returns `None` - which a metered tool reads as "no platform key at all" -
+    unless there is BOTH an owner to charge and the service's own store to
+    charge them in. A bare CrewAI `SQLiteFlowPersistence`, which the runner
+    tests hand in, has no `platform_tool_usage` table and is not a place to
+    keep somebody's spending; an unowned run has nobody to keep it for. Both
+    refuse rather than granting, for the reason `resolve_credential` refuses an
+    unowned run: whatever cannot be attributed cannot be spent.
+
+    The cap is read at CLAIM time rather than bound here, so lowering
+    `BUILDER_PLATFORM_FIRECRAWL_DAILY_CAP` bites the runs already in flight.
+    """
+
+    if not user_id or not isinstance(persistence, PostgresFlowPersistence):
+        return None
+    owner = str(user_id)
+
+    def claim(provider: str) -> tuple[bool, int]:
+        cap = int(config.PLATFORM_TOOL_DAILY_CAPS.get(provider, 0))
+        return persistence.claim_platform_quota(owner, provider, cap)
+
+    return claim
 
 
 def resolve_credential(credential_id: str) -> ResolvedCredential:

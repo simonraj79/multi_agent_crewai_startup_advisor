@@ -1,0 +1,451 @@
+/*
+ * The admin console's chrome.
+ *
+ * ONE SHEET RATHER THAN TEN SCOPED BLOCKS, and the reason is the one
+ * `studio.css`'s panel contract already gives: eight components share a table,
+ * a bar, a fact list and a tile, and eight scoped copies of those four things
+ * is how a screen ends up with four spellings of a row. It is imported by
+ * `AdminView.vue` alone, so nothing outside `#/admin` pays for it.
+ *
+ * NOT UNDER `assets/styles/`, and deliberately: `designTokens.spec.ts` exempts
+ * that directory because token sheets are where literals are allowed to live.
+ * This is not a token sheet - it declares no colour - so it belongs where the
+ * scan can see it, and every value below is `var(--…)` or a house spacing step.
+ *
+ * ONE HUE PER CHART (criterion 25). `--accent-cyan` is money, `--accent-mint`
+ * is people, `--warn-*` and `--err-*` are refusals and errors. The tone class
+ * carries it; no component names a colour.
+ */
+
+.studio-shell.is-admin {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.admin-main {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.admin-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.admin-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  color: var(--text-muted);
+  font: var(--type-label);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  cursor: pointer;
+}
+
+.admin-tab:hover { color: var(--text-body); background: var(--surface-raised); }
+.admin-tab.is-active {
+  color: var(--on-accent-cyan);
+  background: var(--surface-well);
+  border-color: var(--border-control);
+}
+
+.admin-window { display: flex; gap: var(--space-2); }
+
+.admin-axis { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.admin-axis-button {
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-muted);
+  font: var(--type-meta);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.admin-axis-button:hover { color: var(--text-body); border-color: var(--border-hover-strong); }
+.admin-axis-button.is-active { color: var(--on-accent-cyan); border-color: var(--border-control); background: var(--surface-well); }
+
+/* THE BODY IS A GRID AND THE DRAWER IS A COLUMN. Docked, never modal (R15):
+   the panel narrows, the table stays readable, and nothing on this screen is
+   ever hidden behind the thing it is about. */
+.admin-body {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-body.has-drawer { grid-template-columns: minmax(0, 1fr) 380px; }
+
+.admin-panels { min-height: 0; overflow: auto; padding: var(--space-6); }
+.admin-panels:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: -2px; }
+
+.admin-panel { display: grid; gap: var(--space-6); align-content: start; }
+
+/* ── tiles ──────────────────────────────────────────────────────────────── */
+
+.admin-tiles {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-tile {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-5);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+}
+
+.admin-tile.is-warn { border-color: var(--warn-border); }
+.admin-tile .panel-kicker { display: inline-flex; align-items: center; gap: var(--space-2); }
+.admin-tile-figure { color: var(--text-title); font: var(--type-metric); }
+.admin-tile-of { color: var(--text-40); font: var(--type-meta); }
+.admin-tile-note { color: var(--text-meta); font: var(--type-meta); }
+
+/* ── blocks ─────────────────────────────────────────────────────────────── */
+
+.admin-blocks {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.admin-block {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  padding: var(--space-5);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2xl);
+}
+
+.admin-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.admin-block-head h3 { margin: 0; font: var(--type-title); }
+.admin-block-head .panel-meta { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* ── money ──────────────────────────────────────────────────────────────── */
+
+.admin-money { display: inline-flex; align-items: baseline; gap: var(--space-2); }
+.admin-money-amount { color: var(--text-title); font: var(--type-label); font-family: var(--font-mono); }
+.admin-money.is-lead .admin-money-amount { font: var(--type-metric); }
+/* The word that travels with every figure (criterion 26). Quiet, because it is
+   a qualifier and not a value - and never absent, because a bare dollar on
+   this screen would be read as a bill. */
+.admin-money-tag { color: var(--text-40); font: var(--type-meta); text-transform: uppercase; letter-spacing: var(--track-kicker); }
+
+.admin-band {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-well);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+}
+
+.admin-band-lead { color: var(--text-body); font: var(--type-label); }
+.admin-band-note,
+.admin-band-scope { color: var(--text-meta); font: var(--type-meta); }
+.admin-band-note.is-absent { color: var(--warn-text); }
+
+/* ── bars ───────────────────────────────────────────────────────────────── */
+
+.admin-bars { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+
+.admin-bar {
+  display: grid;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  grid-template-columns: minmax(90px, 1.2fr) minmax(0, 2fr) auto;
+}
+
+.admin-bar-label {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-body);
+  font: var(--type-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-bar-hint { color: var(--text-40); font: var(--type-meta); }
+
+.admin-bar-track {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+}
+
+.admin-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width var(--motion-medium) var(--ease-out);
+}
+
+.admin-bar.is-money .admin-bar-fill { background: var(--accent-cyan); }
+.admin-bar.is-people .admin-bar-fill { background: var(--accent-mint); }
+.admin-bar.is-warn .admin-bar-fill { background: var(--warn-text); }
+.admin-bar.is-err .admin-bar-fill { background: var(--err-text); }
+.admin-bar-value { color: var(--text-body); font: var(--type-meta); text-align: right; }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-bar-fill { transition: none; }
+}
+
+/* ── columns ────────────────────────────────────────────────────────────── */
+
+.admin-columns { display: grid; gap: var(--space-2); margin: 0; }
+.admin-columns.is-money { color: var(--accent-cyan); }
+.admin-columns.is-people { color: var(--accent-mint); }
+.admin-columns.is-warn { color: var(--warn-text); }
+.admin-columns.is-err { color: var(--err-text); }
+.admin-columns-unit { color: var(--text-40); font: var(--type-meta); }
+.admin-columns-plot {
+  width: 100%;
+  height: 92px;
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+}
+.admin-columns-axis { display: flex; justify-content: space-between; color: var(--text-40); font: var(--type-meta); }
+.admin-columns-tick { flex: 1 1 0; overflow: hidden; text-align: center; white-space: nowrap; }
+.admin-columns-empty { margin: 0; color: var(--text-meta); font: var(--type-meta); }
+
+/* ── tables ─────────────────────────────────────────────────────────────── */
+
+/* WIDE CONTENT SCROLLS INSIDE ITS OWN BOX, never the page. Nine columns will
+   not fit a 390px phone and the honest answer is a horizontal scroller around
+   the table, not a body that scrolls sideways under the reader's thumb. */
+.admin-table-wrap { overflow-x: auto; border: 1px solid var(--border-default); border-radius: var(--r-lg); }
+
+.admin-table { width: 100%; border-collapse: collapse; font: var(--type-meta); }
+.admin-table th,
+.admin-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-default); text-align: left; vertical-align: top; }
+.admin-table thead th { color: var(--text-meta); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; white-space: nowrap; }
+.admin-table tbody th { color: var(--text-body); font-weight: 600; }
+.admin-table .is-number { text-align: right; }
+.admin-table tbody tr:hover { background: var(--surface-raised); }
+.admin-table tbody tr.is-selected { background: var(--surface-well); }
+.admin-table tbody tr:last-child th,
+.admin-table tbody tr:last-child td { border-bottom: 0; }
+
+.admin-sub { display: block; color: var(--text-40); font: var(--type-meta); }
+
+.admin-pill {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  color: var(--text-meta);
+  font: var(--type-meta);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-pill);
+}
+
+.admin-pill.is-failed,
+.admin-pill.is-error { color: var(--err-text); border-color: var(--err-border); }
+.admin-pill.is-waiting { color: var(--warn-text); border-color: var(--warn-border); }
+.admin-pill.is-completed { color: var(--on-accent-mint); }
+
+/* A cell that opens the drawer. A button, because it changes what is on screen
+   rather than where the browser is - an anchor would promise a URL that this
+   console does not have. */
+.admin-linkish {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  color: var(--on-accent-cyan);
+  font: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-linkish:hover { text-decoration: underline; }
+
+/* ── facts, notes, refusals ─────────────────────────────────────────────── */
+
+.admin-facts { display: grid; gap: var(--space-3); margin: 0; }
+.admin-fact { display: grid; gap: var(--space-1); }
+.admin-fact dt { color: var(--text-meta); font: var(--type-kicker); letter-spacing: var(--track-kicker); text-transform: uppercase; }
+.admin-fact dd { margin: 0; color: var(--text-body); font: var(--type-label); }
+.admin-fact.is-warn dd { color: var(--warn-text); }
+.admin-fact.is-err dd { color: var(--err-text); }
+.admin-fact dd.is-absent { color: var(--warn-text); }
+.admin-facts-line { margin: 0; color: var(--text-body); font: var(--type-label); }
+
+.admin-loading,
+.admin-empty { margin: 0; color: var(--text-meta); font: var(--type-meta); }
+
+.admin-problem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--err-text);
+  background: var(--err-bg);
+  border: 1px solid var(--err-border);
+  border-radius: var(--r-md);
+  font: var(--type-meta);
+}
+
+.admin-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+  font: var(--type-meta);
+}
+
+/* WHAT THIS CONSOLE CANNOT SEE, in words (§9 row 14). Quiet, and never a tile:
+   a blank tile reads as a zero, and every one of these is unknown. */
+.admin-absent {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--text-meta);
+  background: var(--surface-well);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--r-md);
+  font: var(--type-meta);
+  line-height: 1.6;
+}
+
+.admin-absent strong { color: var(--text-body); }
+
+.admin-attention { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+
+.admin-attention-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-well);
+  border: 1px solid var(--border-default);
+  border-left-width: 3px;
+  border-radius: var(--r-md);
+}
+
+.admin-attention-row.is-warn { border-left-color: var(--warn-text); }
+.admin-attention-row.is-err { border-left-color: var(--err-text); }
+.admin-attention-kind { color: var(--text-body); font: var(--type-label); }
+.admin-attention-said { flex: 1 1 220px; color: var(--text-meta); font: var(--type-meta); }
+.admin-attention-action { min-height: 30px; }
+
+.admin-links { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; }
+.admin-links a { color: var(--link-strong); font: var(--type-meta); }
+
+/* `.admin-langfuse-link` is NOT declared here. It belongs to
+   `LangfuseLink.vue`, which is mounted on the run console's history rows as
+   well as on this screen - a rule in this sheet would style it only where this
+   sheet is loaded, so the link would be a bare anchor everywhere else. */
+
+/* ── the drawer ─────────────────────────────────────────────────────────── */
+
+.admin-drawer {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--surface-panel);
+  border-left: 1px solid var(--border-default);
+}
+
+.admin-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.admin-drawer-head h2 { margin: var(--space-1) 0 0; font: var(--type-title); overflow-wrap: anywhere; }
+.admin-drawer-head .panel-meta { overflow-wrap: anywhere; }
+
+.admin-drawer-close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  color: var(--text-40);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.admin-drawer-close:hover { color: var(--text-body); background: var(--surface-raised); }
+
+.admin-drawer-body { display: grid; gap: var(--space-5); align-content: start; min-height: 0; overflow: auto; padding: var(--space-5); }
+.admin-drawer-block { display: grid; gap: var(--space-3); }
+.admin-drawer-links { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; }
+
+.admin-trail { display: grid; gap: var(--space-3); margin: 0; padding: 0 0 0 var(--space-5); }
+.admin-trail-head { color: var(--text-body); font: var(--type-label); }
+.admin-trail-said { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; padding: var(--space-3); color: var(--text-meta); font: var(--type-meta); font-family: var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); list-style: none; overflow-wrap: anywhere; }
+
+.admin-plain { display: grid; gap: var(--space-2); margin: 0; padding: 0; color: var(--text-body); font: var(--type-meta); list-style: none; }
+
+.admin-spin { animation: admin-spin 900ms linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-spin { animation: none; }
+}
+
+@keyframes admin-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Below 1180 the drawer stops being a column and becomes a row underneath the
+   panel: 380px off a 1180px viewport leaves a nine-column table 800px, and the
+   table is the thing the drawer is about. Stacking keeps both readable and
+   keeps the drawer DOCKED - it is still in the flow, still not a modal. */
+@media (max-width: 1180px) {
+  .admin-body.has-drawer { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .admin-drawer { border-left: 0; border-top: 1px solid var(--border-default); max-height: 55vh; }
+}
+
+@media (max-width: 640px) {
+  .admin-panels { padding: var(--space-4); }
+  .admin-rail { padding: var(--space-3) var(--space-4); }
+}

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import BrandLockup from './components/BrandLockup.vue'
 import SignInPanel from './components/SignInPanel.vue'
+import AdminView from './views/AdminView.vue'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
 import BuilderView from './components/builder/BuilderView.vue'
 import { useAuthGate } from './composables/useAuthGate'
 import { useStudioTheme } from './composables/useStudioTheme'
 import { useWorkspaceRoute } from './composables/useWorkspaceRoute'
+import { adminProbed, adminWhoami, probeAdmin, resetAdminGate } from './services/adminApi'
 import type { WorkspaceRoute } from './composables/useWorkspaceRoute'
 
 /**
@@ -105,6 +107,76 @@ function openTemplate(templateId: string): void {
   pendingTemplate.value = templateId
   navigate({ name: 'builder', documentId: null })
 }
+
+/* ── the admin gate (plan 17, criterion 24) ────────────────────────────────
+ *
+ * `GET /api/admin/whoami` is the ONLY thing that decides whether `#/admin`
+ * exists. It answers 404 - FastAPI's own body, byte for byte - for an
+ * anonymous caller, for a signed-in non-admin and for a deployment with
+ * `ADMIN_EMAILS` unset, so a refused reader cannot tell the route from one
+ * that was never built (§9 row 9).
+ *
+ * THE ROUTER IS NOT THE GATE. Anybody can type `#/admin`; what they get is a
+ * bounce to the home with one sentence, and no fabricated screen at any point
+ * in between. Deciding it here rather than in `workspaceRoute` keeps the rule
+ * where the answer is - the server's - instead of in a parser a reader can
+ * edit with the devtools open.
+ */
+const adminNotice = ref('')
+
+/**
+ * The sentence a refused visitor lands on. One, and it says what happened
+ * without saying whether the route exists - the same discretion the 404 keeps.
+ */
+const ADMIN_REFUSED =
+  'That address is not available on this account.'
+
+/**
+ * Ask once the session is settled, and once only.
+ *
+ * `checking` is skipped because the probe carries a bearer token and minting
+ * one before the gate has answered would race `useAuthGate`'s own request; a
+ * sign-out resets the gate outright, because the next person on this browser
+ * is not this one and an Admin entry left in the header would be a claim about
+ * somebody who has gone.
+ */
+watch(
+  () => authPhase.value,
+  (phase) => {
+    if (phase === 'authenticated' || phase === 'unconfigured') {
+      void probeAdmin()
+      return
+    }
+    if (phase === 'anonymous') resetAdminGate()
+  },
+  { immediate: true },
+)
+
+/**
+ * A refused `#/admin` lands on the home. Watched rather than computed because
+ * the answer arrives after the route does: a reader who pastes the address
+ * gets the route first and the verdict a round trip later, and the screen must
+ * show neither an admin console nor a wrong error in between.
+ */
+watch(
+  [() => route.value.name, adminProbed, adminWhoami],
+  ([name, probed, who]) => {
+    if (name !== 'admin') return
+    if (!probed || who !== null) return
+    adminNotice.value = ADMIN_REFUSED
+    navigate({ name: 'home' }, { replace: true })
+  },
+  { immediate: true },
+)
+
+/** The notice is for the landing, not for the session: any later navigation
+ *  clears it, so it cannot follow a reader around. */
+watch(
+  () => route.value.name,
+  (name) => {
+    if (name !== 'home') adminNotice.value = ''
+  },
+)
 </script>
 
 <template>
@@ -144,13 +216,40 @@ function openTemplate(templateId: string): void {
     v-else-if="route.name === 'home'"
     :user="signedInUser"
     :resume-on-load="resumeOnLoad"
+    :notice="adminNotice"
     @resume="resumeConsole"
     @run="navigate({ name: 'studio' })"
     @build="navigate({ name: 'builder', documentId: null })"
     @open-document="navigate({ name: 'builder', documentId: $event })"
     @open-template="openTemplate"
+    @admin="navigate({ name: 'admin' })"
     @sign-out="endSession"
   />
+
+  <!--
+    The admin console, drawn only for somebody the SERVER has already called an
+    admin. The `v-if` is the whoami answer rather than the route: while the
+    probe is in flight a reader who pasted `#/admin` sees the splash they would
+    see for any other unsettled state, and never a console that a tick later
+    turns out not to be theirs. A refused reader never reaches this element -
+    the watcher above has already sent them home with a sentence.
+  -->
+  <AdminView
+    v-else-if="route.name === 'admin' && adminWhoami !== null"
+    :user="signedInUser"
+    @home="navigate({ name: 'home' })"
+    @sign-out="endSession"
+  />
+
+  <div
+    v-else-if="route.name === 'admin'"
+    class="auth-splash"
+    role="status"
+    aria-live="polite"
+  >
+    <BrandLockup as="static" :mark-size="22" />
+    <p>Checking…</p>
+  </div>
 
   <!--
     Identity reaches the builder the same way it reaches the console (plan 01

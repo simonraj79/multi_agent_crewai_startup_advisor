@@ -115,10 +115,12 @@ function percent(rate: number): string {
           Of the runs scanned, people rated at least {{ count(insights.labels.good) }} good,
           {{ count(insights.labels.bad) }} bad,
           {{ count(insights.labels.unsure) }} not sure.
-          At least {{ count(insights.labels.unrated) }} of them are not rated yet.
+          At least {{ count(insights.labels.unrated) }} not rated yet.
         </template>
         <template v-else>
-          People rated {{ count(insights.labels.good) }} runs good,
+          <!-- No noun after the count: "People rated 1 runs good" is what
+               production said the first time anybody rated anything. -->
+          Runs people rated: {{ count(insights.labels.good) }} good,
           {{ count(insights.labels.bad) }} bad,
           {{ count(insights.labels.unsure) }} not sure.
           {{ count(insights.labels.unrated) }} not rated yet.

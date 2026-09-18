@@ -96,7 +96,9 @@ describe('governance insights panel', () => {
   it('says in plain words how the scanned runs were rated', () => {
     const wrapper = panel()
     const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
-    expect(strip).toContain('People rated 4 runs good')
+    expect(strip).toContain('Runs people rated: 4 good')
+    // No noun after a count: production's first rating read "1 runs good".
+    expect(strip).not.toMatch(/\d runs good/)
     expect(strip).toContain('2 bad')
     expect(strip).toContain('1 not sure')
     expect(strip).toContain('1 not rated yet')
@@ -111,10 +113,10 @@ describe('governance insights panel', () => {
       const wrapper = panel({ ...insight, coverage: { ...insight.coverage, ...bound } })
       const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
       expect(strip, JSON.stringify(bound)).toContain('at least 4 good')
-      expect(strip, JSON.stringify(bound)).toContain('At least 1 of them are not rated yet')
+      expect(strip, JSON.stringify(bound)).toContain('At least 1 not rated yet')
       // The absolute claim is GONE, not merely joined: a reader who sees both
       // has been told two different things about one number.
-      expect(strip, JSON.stringify(bound)).not.toContain('People rated 4 runs good')
+      expect(strip, JSON.stringify(bound)).not.toContain('Runs people rated: 4 good')
     }
   })
 

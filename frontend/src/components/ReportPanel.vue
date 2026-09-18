@@ -29,8 +29,10 @@
  * happened. `data/verdictDisplay.ts` carries the wording and the reasoning.
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { studioApi } from '../services/studioApi'
 import { Check, Copy, FileText, Gauge, OctagonAlert, X } from 'lucide-vue-next'
-import type { RunResult, VerdictSummary } from '../types/studio'
+import RatingControl from './RatingControl.vue'
+import type { RunRating, RunRatingValue, RunResult, VerdictSummary } from '../types/studio'
 import {
   DIMENSION_MAX,
   confidenceChip,
@@ -58,9 +60,68 @@ const props = withDefaults(defineProps<{
    * console is unchanged and no caller has to know about this.
    */
   workflowName?: string
+  /**
+   * The run this report belongs to, so it can be rated (plan 20 §2.4).
+   *
+   * OPTIONAL, and absent means no rating control at all. Two callers mount
+   * this panel with a report and no run in the browser's hands - the mock
+   * transport, and a fixture in a spec - and a rating control over a run id
+   * nobody holds would be a button that cannot do anything.
+   */
+  runId?: string
+  /**
+   * Whether the caller owns this run. The parent decides; the server is the
+   * authority and answers **404, not 403** if the parent gets it wrong.
+   */
+  canRate?: boolean
+  rating?: RunRatingValue | null
+  ratingNote?: string | null
+  /** The run's status, so a run still going is not offered a verdict (409). */
+  runStatus?: string
 }>(), {
   workflowName: '',
+  runId: '',
+  canRate: false,
+  rating: null,
+  ratingNote: '',
+  runStatus: '',
 })
+
+/**
+ * WHAT THIS RUN WAS ALREADY GIVEN, read when the control appears.
+ *
+ * `studioApi.getRating` existed with no caller, so the panel offered three
+ * unpressed buttons over a run somebody had already rated - and pressing one
+ * would have overwritten a verdict the screen never showed them. The read is
+ * the panel's rather than the view's because the panel is what decides the
+ * control exists at all (`canRate && runId`), and it is keyed on the run id so
+ * a relaunch re-asks.
+ *
+ * A FAILED READ IS SILENT. It leaves the control usable and unseeded: a
+ * refusal to READ a rating is not something to put a banner over, and the
+ * mock transport answers `null` here by design rather than throwing.
+ */
+const seeded = ref<RunRating | null>(null)
+
+watch(
+  () => [props.runId, props.canRate] as const,
+  async ([id, may]) => {
+    seeded.value = null
+    if (!id || !may) return
+    const asked = id
+    try {
+      const answer = await studioApi.getRating(id)
+      if (asked === props.runId) seeded.value = answer
+    } catch {
+      /* Unseeded, and nothing is said. See above. */
+    }
+  },
+  { immediate: true },
+)
+
+/** The caller's own value wins; the read is the fallback. */
+const shownRating = computed(() => props.rating ?? seeded.value?.rating ?? null)
+const shownNote = computed(() => props.ratingNote || seeded.value?.note || '')
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -261,6 +322,33 @@ async function copyReport(): Promise<void> {
         title="These scores rest on fewer sources than the rubric asks for."
       >Thin evidence · {{ thinPhrase }}</span>
     </div>
+
+    <!--
+      WAS THIS RUN GOOD? Above the fold rather than after the deliverable.
+      The obvious place is the end of the report - you read it, then judge it -
+      and the obvious place is wrong here for a measured reason: the body and
+      its citations share one scroller (see the comment on `.report-scroll`),
+      so a control at the bottom is a control behind however much markdown the
+      Reporter wrote. Plan 20's whole argument is that this is the one thing no
+      amount of instrumentation can supply, and putting it two thousand words
+      down would be designing for it not to be given.
+    -->
+    <!--
+      NO `data-testid` HERE. A fallthrough attribute lands on the child's ROOT
+      element and OVERWRITES the one the child set, so naming it here would
+      have renamed the control's own handle on this one surface and nowhere
+      else - and every spec that looks for `rating-control` would have found it
+      in the history and not in the report. It is `[data-testid="rating-control"]`
+      inside `.report-panel`, and it is one name everywhere.
+    -->
+    <RatingControl
+      v-if="canRate && runId"
+      class="report-rating"
+      :run-id="runId"
+      :rating="shownRating"
+      :note="shownNote"
+      :status="runStatus"
+    />
 
     <div v-if="hasVerdictDetail" class="verdict-summary">
       <!-- Above the scorecard on purpose: whatever decided this run overrode
@@ -520,6 +608,12 @@ async function copyReport(): Promise<void> {
   border-radius: var(--r-sm);
 }
 .report-flag.is-provisional { color: var(--warn-text-strong); background: var(--warn-bg); border-color: var(--warn-border-strong); }
+
+/* The rating sits in the header stack, not in the scroller. `flex: 0 0 auto`
+   for the same reason every other block above `.report-scroll` carries it: the
+   scroller is the only thing allowed to take the leftover height, and a
+   shrinking control would be a control that disappears on a short viewport. */
+.report-rating { flex: 0 0 auto; margin: var(--space-4) var(--space-7) 0; }
 
 /* Bounded so a long decision block can never squeeze the report body to
    nothing on a short viewport; it scrolls on its own instead. */

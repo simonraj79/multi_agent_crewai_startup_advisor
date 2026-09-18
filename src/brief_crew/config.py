@@ -1733,6 +1733,28 @@ FIRECRAWL_DASHBOARD_URL = "https://www.firecrawl.dev/app/settings?tab=billing"
 #     realistic 12 KB.
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
 
+#: The bound on a rating note, enforced by the request model (422 above it)
+#: and again by the `VARCHAR(512)` column that stores it. Two bounds on one
+#: value, deliberately: the column is what a driver would truncate silently.
+MAX_RATING_NOTE_CHARS = 500
+
+#: How long after a CLEAR the rating's Langfuse score is swept a second time.
+#:
+#: MEASURED, and the reason this constant exists at all. `create_score` sits
+#: in the SDK's asynchronous batch queue while `delete_score` is a synchronous
+#: HTTP call, so a delete issued in the same breath as a queued create arrives
+#: FIRST - answers 404 against a score that does not exist yet - and the
+#: create then lands behind it and stays. Ingestion lag on the upsert path was
+#: measured at roughly 20 s against Langfuse cloud, so one immediate delete
+#: cannot be the whole answer for a clear.
+#:
+#: 45 s is that ~20 s with margin, not a guess at it. A deliberate CONSTANT
+#: and not an environment knob: it is a property of the vendor's ingestion
+#: pipeline rather than a deployment preference, and an operator who lowered
+#: it would only re-open the race. The sweep re-reads the database first, so a
+#: person who re-rates inside the window keeps their rating.
+RATING_SCORE_CLEAR_SWEEP_SECONDS = 45.0
+
 # --------------------------------------------------------------------------
 # The most frames one log export will read, serialise and return.
 #

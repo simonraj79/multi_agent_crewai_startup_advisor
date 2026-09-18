@@ -109,12 +109,60 @@ a `gate` EVENT records the pause; resume continues in the same trace.
 
 ## 7. Scores (generic only — C1)
 
-| Score name | Attached to | Type | Value |
-| --- | --- | --- | --- |
-| `guardrail_passed` | the task SPAN (falls back to the agent span, then the trace) | numeric 0/1 | per guardrail result frame |
-| `task_attempts` | the task SPAN | numeric | number of generations under that task |
-| `run_succeeded` | the trace | numeric 0/1 | terminal status == completed |
-| `run_status` | the trace | categorical | the terminal status string |
+Every score name here is a fact about a run, a task or a check. None names an
+agent, a task, a tool, a crew, a flow or a workflow of this repository, which
+is what keeps `tests/observability/test_no_flow_identifiers.py` green over the
+modules that write them.
+
+| Score name | Attached to | Type | `score_id` | When it is written |
+| --- | --- | --- | --- | --- |
+| `guardrail_passed` | the task SPAN, falling back outwards to the agent span, then the node span, then the trace | numeric 0/1 | minted by Langfuse | per guardrail result frame, `stage == "after"` |
+| `task_attempts` | the task SPAN | numeric | minted by Langfuse | when the task span closes; the number of generations under that task |
+| `gate_outcome` | the task SPAN of the gate's node, falling back outwards the same way | **categorical** | minted by Langfuse | on a `GATE_CLOSED` frame carrying a non-empty `outcome`; the value is that outcome string (`approve` / `revise`), bounded to 64 characters |
+| `run_succeeded` | the trace | numeric 0/1 | minted by Langfuse | at the terminal frame; `1` when the status is `completed` |
+| `run_status` | the trace | categorical | minted by Langfuse | at the terminal frame; the terminal status string |
+| `human_rating` | the **trace** | **categorical** | `f"{trace_id}-human_rating"`, deterministic | whenever a person rates or re-rates the run through `PUT /api/runs/{id}/rating` or the admin door. See below |
+
+**Corrected 2026-09-18.** The `guardrail_passed` row said "falls back to the
+agent span, then the trace" and omitted the node span; the code is
+`scope.task or scope.agent or scope.span` and then the trace
+(`langfuse_exporter._handle_score`). The four scores this table already listed
+are otherwise exactly what the exporter writes, checked against every
+`self._call(state, "score", …)` site.
+
+### `human_rating` is the one score that is not driven by a frame
+
+It arrives **after the trace closed**, sometimes days later, from a person
+clicking a button on a finished run. There is no frame to attach it to, so it
+is addressed by trace id: `observability/scores.py` imports `trace_id_for`
+from `backend.py` rather than re-deriving it, because a second derivation is a
+second answer to "which trace is this run".
+
+Four rules, all of them measured against Langfuse cloud on SDK 4.15.1 rather
+than reasoned:
+
+* **One deterministic id, and every write is an upsert.** `create_score` with
+  no id APPENDS, so without one a re-rating leaves two scores on the trace and
+  a clear leaves both while the app's own row says unrated.
+* **Always CATEGORICAL, with the word as the value.** Under one id, NUMERIC to
+  CATEGORICAL is accepted and CATEGORICAL to NUMERIC is silently ignored, so a
+  design that changes a score's type on a value change fails in one direction
+  without an error.
+* **A write never deletes.** `create_score` is queued asynchronously by the
+  SDK and `delete_score` is a synchronous HTTP call, so a delete issued beside
+  a create overtakes it, 404s, and lets the create land and stay. Measured:
+  four ratings in eight seconds left a stale score permanently.
+* **A clear is the only delete, and it is issued twice.** Once immediately and
+  once after `config.RATING_SCORE_CLEAR_SWEEP_SECONDS` (45 s), the second pass
+  re-reading the database first so a person who re-rates inside the window
+  keeps their rating. Ingestion lag on the upsert path was measured above 12 s
+  and under roughly 20 s. The delete is the **legacy** `score_v1` route
+  (`client.api.legacy.score_v1.delete`), because the v2 score API has none.
+
+`comment` carries the rater's note and is written **only** under
+`LANGFUSE_CAPTURE_CONTENT` (§8), decided in `observability/scores.py` and not
+at the transport. The full description, including the routes and what is not
+built, is [`RUN-LABELS.md`](RUN-LABELS.md).
 
 ## 8. Content policy (E3)
 

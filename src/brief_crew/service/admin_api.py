@@ -67,6 +67,7 @@ from sqlalchemy import Column, DateTime, MetaData, String, Table, func, select
 
 from brief_crew import config
 from brief_crew.service.governance_insights import GovernanceInsightsResponse, TERMINAL, build_insights
+from brief_crew.service.rating_api import RunRatingModel, rating_payload
 
 __all__ = [
     "ADMIN_API_PREFIX",
@@ -343,6 +344,13 @@ class RunRow(AdminModel):
     stop_reason: str | None
     error: str | None
     verdict: str | None
+    #: The post-hoc human label (plan 20). `rated_by` IS here, unlike the
+    #: owner's own history row: this list is every account's runs, an admin
+    #: may have used the lever on somebody else's, and "who said this" is
+    #: exactly the question the console exists to answer.
+    rating: str | None
+    rated_by: str | None
+    rated_at: str | None
     integrity: RunIntegrity
     langfuse: LangfuseRunLinks
 
@@ -395,6 +403,13 @@ class AdminDecisionsModel(AdminModel):
     guardrails: list[GuardrailRetry] = Field(default_factory=list)
     fallback_models: list[FallbackModel] = Field(default_factory=list)
     verdict: dict[str, Any] | None = None
+    #: The post-hoc human label, beside the mid-run ones (plan 20). Always
+    #: present and never null as an OBJECT - an unrated run answers four nulls
+    #: inside it - so the drawer renders one control rather than branching on
+    #: whether the key is there.
+    rating: RunRatingModel = Field(
+        default_factory=lambda: RunRatingModel(run_id="")
+    )
     langfuse: LangfuseRunLinks = Field(default_factory=LangfuseRunLinks)
 
 
@@ -1053,6 +1068,9 @@ def create_admin_router(
                     stop_reason=stop_reason_of(row["error"]),
                     error=row["error"],
                     verdict=(verdicts or {}).get(row["run_id"]),
+                    rating=row.get("rating"),
+                    rated_by=row.get("rated_by"),
+                    rated_at=_iso(row.get("rated_at")),
                     integrity=RunIntegrity(
                         captured=row["captured_frames"],
                         dropped=row["dropped_frames"],
@@ -1434,6 +1452,7 @@ def create_admin_router(
         mode: str | None = Query(default=None),
         user_id: str | None = Query(default=None),
         workflow_id: str | None = Query(default=None),
+        rating: str | None = Query(default=None),
         since: str | None = Query(default=None, alias="from"),
         until: str | None = Query(default=None, alias="to"),
         limit: int = Query(default=50, ge=1),
@@ -1445,6 +1464,14 @@ def create_admin_router(
         `(created_at, id) < (ts, id)` is one spelling that works on both
         dialects, and it does not drift while somebody is reading the list the
         way an OFFSET does.
+
+        `rating` is `good` / `bad` / `unsure` / `unrated`, and an unknown word
+        is a **422** naming the four - `/spend?group_by=` already answers a
+        bad axis that way, and the alternative (ignoring it) would hand back a
+        full page that quietly answered a different question. It is a WHERE
+        clause like the other four filters, so the keyset is unaffected: the
+        cursor names a row in the filtered set and paging cannot skip or
+        repeat one.
         """
 
         start, end = window(since, until)
@@ -1452,16 +1479,20 @@ def create_admin_router(
         size = page_limit(limit)
         # One more than the page, so "is there a next page" is an observation
         # rather than a second COUNT over the same predicate.
-        rows = persistence.admin_list_runs(
-            status=status,
-            mode=mode,
-            user_id=user_id,
-            workflow_id=workflow_id,
-            start=start,
-            end=end,
-            limit=size + 1,
-            cursor=cursor_of(cursor),
-        )
+        try:
+            rows = persistence.admin_list_runs(
+                status=status,
+                mode=mode,
+                user_id=user_id,
+                workflow_id=workflow_id,
+                rating=rating,
+                start=start,
+                end=end,
+                limit=size + 1,
+                cursor=cursor_of(cursor),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         more = len(rows) > size
         page = rows[:size]
         verdicts = verdicts_for([row["run_id"] for row in page])
@@ -1549,6 +1580,9 @@ def create_admin_router(
             guardrails=guardrails,
             fallback_models=fallbacks,
             verdict=verdict,
+            rating=rating_payload(
+                run_id, persistence.run_ratings([run_id]).get(run_id)
+            ),
             langfuse=langfuse_links(run_id),
         )
 

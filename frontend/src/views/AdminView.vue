@@ -40,6 +40,7 @@ import { adminApi } from '../services/adminApi'
 import type {
   AdminDecisions,
   AdminGateStats,
+  AdminRatingFilter,
   AdminHealth,
   AdminInsights as AdminInsightsResponse,
   AdminLinks,
@@ -121,6 +122,15 @@ let insightGeneration = 0
 
 const spendAxis = ref<AdminSpendAxis>('model')
 const userSort = ref<'spend' | 'recent' | 'joined'>('spend')
+
+/**
+ * Which runs the table is showing, by what a person said about them.
+ *
+ * `''` sends no `rating` query at all rather than a word meaning "any", for
+ * the reason the window above gives: the server decides what an absent filter
+ * means, and a client spelling of it would be a second answer to one question.
+ */
+const runRating = ref<AdminRatingFilter>('')
 
 /** Per-panel, so a Money failure never blanks Overview's numbers. */
 const busy = ref<Record<TabId, boolean>>({
@@ -219,7 +229,7 @@ async function loadRuns(): Promise<void> {
     'runs',
     [
       async () => {
-        runs.value = await adminApi.runs(activeWindow.value)
+        runs.value = await adminApi.runs({ ...activeWindow.value, rating: runRating.value })
       },
       async () => {
         gates.value = await adminApi.gates(activeWindow.value)
@@ -302,6 +312,12 @@ watch(activeWindow, () => {
 
 watch(spendAxis, () => void loadMoney())
 watch(userSort, () => void loadPeople())
+/** A new rating filter re-asks the server rather than filtering on screen: the
+ *  table is a page of a keyset walk, so a client-side filter would silently
+ *  narrow one page and call it the answer. */
+watch(runRating, () => {
+  if (visited.value.has('runs')) void loadRuns()
+})
 watch(insightWorkflow, () => {
   if (tab.value === 'insights') void loadInsights()
 })
@@ -392,6 +408,31 @@ async function openPerson(userId: string): Promise<void> {
 function afterCancel(): void {
   void loadOverview()
   if (visited.value.has('runs')) void loadRuns()
+}
+
+/**
+ * A rating written from the drawer changes the row behind it AND the drawer's
+ * own block, so both are re-read from the server (plan 20 §2.4).
+ *
+ * The same judgement as `afterCancel`: the server is the truth on this screen.
+ * A drawer that patched itself would show a rating the database might not hold
+ * if the write half-succeeded, which is the one thing a record built to be
+ * read as evidence must never do. The run list is re-read too, because a
+ * `rating` filter can mean the row has just left the page it was on.
+ */
+async function afterRated(runId: string): Promise<void> {
+  if (visited.value.has('runs')) void loadRuns()
+  if (!runId || drawerRun.value?.run_id !== runId) return
+  const generation = drawerGeneration
+  try {
+    const answer = await adminApi.decisions(runId)
+    if (generation !== drawerGeneration) return
+    drawerDecisions.value = answer
+  } catch {
+    // Quiet. The write itself already reported its own refusal in the control,
+    // and a failed re-read must not put a second sentence over a save that
+    // worked.
+  }
 }
 
 onMounted(() => {
@@ -527,9 +568,11 @@ onMounted(() => {
               :verdicts="verdicts"
               :links="links"
               :selected-run-id="drawerRun?.run_id ?? null"
+              :rating="runRating"
               :loading="busy.runs"
               :problem="problems.runs"
               @open-run="openRun"
+              @select-rating="runRating = $event"
             />
             <AdminInsights
               v-else-if="entry.id === 'insights'"
@@ -562,6 +605,7 @@ onMounted(() => {
           :problem="drawerProblem"
           @close="closeDrawer"
           @cancelled="afterCancel"
+          @rated="afterRated"
         />
       </div>
     </main>

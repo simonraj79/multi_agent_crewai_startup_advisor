@@ -171,7 +171,11 @@ class Backend(Protocol):
         name: str,
         value: Any,
         data_type: str | None = None,
+        comment: str | None = None,
+        score_id: str | None = None,
     ) -> None: ...
+
+    def delete_score(self, score_id: str) -> None: ...
 
     def set_trace_output(self, run_observation: Any, payload_output: Any) -> None: ...
 
@@ -233,6 +237,16 @@ class RecordedScore:
     name: str
     value: Any
     data_type: str | None = None
+    #: Free text a person typed, written only under
+    #: `LANGFUSE_CAPTURE_CONTENT` - `observability/scores.py` is the only
+    #: caller that ever passes one, and it checks the policy first.
+    comment: str | None = None
+    #: The caller's own id for this score, or None to let Langfuse mint one.
+    #: A score written under an id UPSERTS, which is what makes a rating a
+    #: property of the run rather than an append-only log of what somebody
+    #: once thought - `observability/scores.py` carries the reasoning and the
+    #: measurement behind it.
+    score_id: str | None = None
 
 
 class RecordingBackend:
@@ -241,6 +255,8 @@ class RecordingBackend:
     def __init__(self, *, fail_with: BaseException | None = None) -> None:
         self.observations: list[RecordedObservation] = []
         self.scores: list[RecordedScore] = []
+        #: Every `delete_score` this backend was asked for, in order.
+        self.deleted_scores: list[str] = []
         self.trace_output: dict[str, Any] = {}
         self.flushes = 0
         self.closed = False
@@ -356,6 +372,8 @@ class RecordingBackend:
         name: str,
         value: Any,
         data_type: str | None = None,
+        comment: str | None = None,
+        score_id: str | None = None,
     ) -> None:
         self._guard()
         self.scores.append(
@@ -365,8 +383,23 @@ class RecordingBackend:
                 name=name,
                 value=value,
                 data_type=data_type,
+                comment=comment,
+                score_id=score_id,
             )
         )
+
+    def delete_score(self, score_id: str) -> None:
+        """Recorded, not simulated.
+
+        This double deliberately does NOT drop the matching row from
+        `self.scores`: a test asserting "one upsert and one delete" is asking
+        what the exporter SENT, and a double that also modelled the server's
+        state would let an assertion pass over a sequence the real API would
+        have refused.
+        """
+
+        self._guard()
+        self.deleted_scores.append(score_id)
 
     def set_trace_output(self, run_observation: Any, payload_output: Any) -> None:
         self._guard()
@@ -752,15 +785,47 @@ class LangfuseBackend:
         name: str,
         value: Any,
         data_type: str | None = None,
+        comment: str | None = None,
+        score_id: str | None = None,
     ) -> None:
+        # `comment` is OPTIONAL and additive (plan 20 section 2.3). The SDK's
+        # `create_score` has always taken one; nothing here passed it until a
+        # rating note needed somewhere to go, and it is passed only when the
+        # content policy allows - `observability/scores.py` decides that, not
+        # this transport.
+        #
+        # `score_id` is the other half, and it is what makes a re-rating an
+        # EDIT: `create_score` with an id the project already holds upserts
+        # rather than appending. The exporter's own automatic scores pass
+        # None and keep Langfuse's minted id, because `guardrail_passed` is
+        # one fact per check and there is nothing to overwrite.
         self._client.create_score(
             name=name,
             value=value,
             trace_id=trace_id,
             observation_id=getattr(observation, "id", None),
             data_type=data_type,
+            comment=comment,
+            score_id=score_id,
             environment=self._environment,
         )
+
+    def delete_score(self, score_id: str) -> None:
+        """Remove one score by id. A score that is not there is not an error.
+
+        The v2 API has no delete, so this is the **legacy** `score_v1` route,
+        which is the one Langfuse still serves for it (measured against cloud
+        on SDK 4.15.1: the delete returns and the score is gone). A 404 is
+        swallowed because the only caller is the rating sweep, and "the score
+        you wanted removed is not there" is that sweep's goal, not its
+        failure.
+        """
+
+        try:
+            self._client.api.legacy.score_v1.delete(score_id)
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            if "404" not in str(exc) and "not found" not in str(exc).lower():
+                raise
 
     def set_trace_output(self, run_observation: Any, payload_output: Any) -> None:
         from langfuse import LangfuseOtelSpanAttributes as Attr

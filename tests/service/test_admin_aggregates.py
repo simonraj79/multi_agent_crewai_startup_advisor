@@ -26,7 +26,7 @@ from unittest.mock import patch
 
 from brief_crew import config
 from brief_crew.service import registry as registry_module
-from tests.service.admin_fixtures import ALICE, BOB, AdminCase
+from tests.service.admin_fixtures import ADMIN, ALICE, BOB, AdminCase
 
 
 class SummaryShapeTests(AdminCase):
@@ -332,6 +332,13 @@ class RunsAndGatesAndVerdictsShapeTests(AdminCase):
                 "stop_reason",
                 "error",
                 "verdict",
+                # Plan 20. `rated_by` is here and absent from the owner's own
+                # history row: this list is EVERY account's runs, an admin may
+                # have used the lever on somebody else's, and "who said this"
+                # is exactly the question the console exists to answer.
+                "rating",
+                "rated_by",
+                "rated_at",
                 "integrity",
                 "langfuse",
             },
@@ -377,6 +384,79 @@ class RunsAndGatesAndVerdictsShapeTests(AdminCase):
 
         with patch.object(config, "VALIDATOR_RUN_RETENTION_DAYS", 30):
             self.assertFalse(self.ok("/verdicts")["complete"])
+
+
+class RunRatingColumnTests(AdminCase):
+    """Plan 20 L5: the label on the admin list, and the filter over it."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.seed_run("r-good", user_id=ALICE.id, cost="0.0100", age_hours=1)
+        self.seed_run("r-bad", user_id=ALICE.id, cost="0.0100", age_hours=2)
+        self.seed_run("r-unsure", user_id=BOB.id, cost="0.0100", age_hours=3)
+        self.seed_run("r-plain", user_id=None, cost="0.0100", age_hours=4)
+        for run_id, rating in (
+            ("r-good", "good"),
+            ("r-bad", "bad"),
+            ("r-unsure", "unsure"),
+        ):
+            self.store.set_run_rating(
+                run_id, rating=rating, note="a note", rated_by=ADMIN.id
+            )
+
+    def ids(self, **params: object) -> list[str]:
+        return [row["run_id"] for row in self.ok("/runs", params=params)["rows"]]
+
+    def test_the_row_carries_the_rating_the_actor_and_the_moment(self) -> None:
+        row = next(row for row in self.ok("/runs")["rows"] if row["run_id"] == "r-bad")
+        self.assertEqual(row["rating"], "bad")
+        self.assertEqual(row["rated_by"], ADMIN.id)
+        self.assertTrue(row["rated_at"].endswith("Z"), row["rated_at"])
+
+    def test_an_unrated_row_carries_three_nulls_rather_than_omitting_them(self) -> None:
+        row = next(
+            row for row in self.ok("/runs")["rows"] if row["run_id"] == "r-plain"
+        )
+        self.assertEqual(
+            (row["rating"], row["rated_by"], row["rated_at"]), (None, None, None)
+        )
+
+    def test_each_word_returns_exactly_its_own_rows(self) -> None:
+        self.assertEqual(self.ids(rating="good"), ["r-good"])
+        self.assertEqual(self.ids(rating="bad"), ["r-bad"])
+        self.assertEqual(self.ids(rating="unsure"), ["r-unsure"])
+
+    def test_unrated_returns_the_rows_nobody_has_judged(self) -> None:
+        """The interesting filter early on, when it is nearly everything."""
+
+        self.assertEqual(self.ids(rating="unrated"), ["r-plain"])
+
+    def test_the_four_filters_partition_the_list(self) -> None:
+        """The control on the four above: together they are the whole list and
+        no row is in two of them."""
+
+        everything = self.ids()
+        found: list[str] = []
+        for word in ("good", "bad", "unsure", "unrated"):
+            found.extend(self.ids(rating=word))
+        self.assertEqual(sorted(found), sorted(everything))
+        self.assertEqual(len(set(found)), len(found))
+
+    def test_no_filter_is_every_row(self) -> None:
+        self.assertEqual(len(self.ids()), 4)
+
+    def test_an_unknown_word_is_422_naming_the_four(self) -> None:
+        """Not an ignored parameter: a full page that quietly answered a
+        different question is worse than a refusal the client can act on."""
+
+        response = self.get("/runs", params={"rating": "excellent"})
+        self.assertEqual(response.status_code, 422, response.text)
+        for word in ("good", "bad", "unsure", "unrated"):
+            self.assertIn(word, response.text)
+
+    def test_the_filter_composes_with_the_other_filters(self) -> None:
+        self.assertEqual(self.ids(rating="good", user_id=ALICE.id), ["r-good"])
+        self.assertEqual(self.ids(rating="good", user_id=BOB.id), [])
 
 
 if __name__ == "__main__":  # pragma: no cover

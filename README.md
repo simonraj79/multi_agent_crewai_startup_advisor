@@ -550,9 +550,19 @@ prompt plus message and character counts, never the text. Setting
 `LANGFUSE_CAPTURE_CONTENT=1` adds completions and tool payloads, and everything
 outbound is scrubbed for credential shapes either way.
 
+**A finished run can be labelled.** Its owner, or an administrator, answers
+"Was this run good?" with Good, Bad or Not sure plus an optional note. The word
+is stored on the run and mirrored to that run's Langfuse trace as a categorical
+score named `human_rating`, under one deterministic score id per run, so
+re-rating edits the score instead of adding a second one and the trace list can
+be filtered to the runs a person thought were good. The note stays in the app
+unless `LANGFUSE_CAPTURE_CONTENT=1`, and a Langfuse that is off or unreachable
+never fails the button.
+
 The audit, the trace contract, the definition of done and the full evidence tree
 live in [`docs/observability/`](docs/observability/) — start with
-[`TRACE-CONTRACT.md`](docs/observability/TRACE-CONTRACT.md).
+[`TRACE-CONTRACT.md`](docs/observability/TRACE-CONTRACT.md), and
+[`RUN-LABELS.md`](docs/observability/RUN-LABELS.md) for the labels.
 
 ---
 
@@ -569,6 +579,11 @@ or automatic changes to agents. Findings require at least three terminal runs
 for a workflow and two affected runs. The denominator is all sampled terminal
 runs of that workflow, **not** visits to the named node. A pattern is a reason
 to investigate; it does not establish causation or judge an answer's correctness.
+
+The panel also reports how the scanned runs were rated by a person, and raises
+one finding for the runs somebody marked Bad. That finding says in its own words
+that it is a human judgement rather than a computed one, it obeys the same
+floors as the other four, and it never shows the rater's note.
 
 Use the time window and workflow filter to narrow the evidence. Coverage notices
 identify bounded scans, missing frames, retention and recorded integrity loss;

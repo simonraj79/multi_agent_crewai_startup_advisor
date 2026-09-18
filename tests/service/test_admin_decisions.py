@@ -148,11 +148,48 @@ class DecisionsDrawerTests(AdminCase):
         self.assertEqual(body["fallback_models"], [])
         self.assertIsNone(body["verdict"])
 
+    def test_the_post_hoc_rating_rides_beside_the_mid_run_ones(self) -> None:
+        """Plan 20. A gate reply says what somebody accepted DURING a run and
+        a guardrail says what a machine checked; neither answers *was this run
+        any good*, which is what the drawer's own control now sets."""
+
+        self.store.set_run_rating(
+            "r-1", rating="bad", note="the segment was wrong", rated_by=ALICE.id
+        )
+        body = self.ok("/runs/r-1/decisions")
+        self.assertEqual(
+            set(body["rating"]),
+            {"run_id", "rating", "rating_note", "rated_by", "rated_at"},
+        )
+        self.assertEqual(body["rating"]["run_id"], "r-1")
+        self.assertEqual(body["rating"]["rating"], "bad")
+        self.assertEqual(body["rating"]["rating_note"], "the segment was wrong")
+        self.assertEqual(body["rating"]["rated_by"], ALICE.id)
+
+    def test_an_unrated_run_answers_an_object_of_nulls_not_a_null(self) -> None:
+        """So the drawer renders one control rather than branching on whether
+        the key is there at all."""
+
+        body = self.ok("/runs/r-1/decisions")
+        self.assertIsNotNone(body["rating"])
+        self.assertEqual(body["rating"]["run_id"], "r-1")
+        self.assertIsNone(body["rating"]["rating"])
+        self.assertIsNone(body["rating"]["rated_at"])
+
     def test_the_shape_is_section_3s(self) -> None:
         body = self.ok("/runs/r-1/decisions")
         self.assertEqual(
             set(body),
-            {"run_id", "gates", "guardrails", "fallback_models", "verdict", "langfuse"},
+            {
+                "run_id",
+                "gates",
+                "guardrails",
+                "fallback_models",
+                "verdict",
+                # Plan 20's one addition to this drawer.
+                "rating",
+                "langfuse",
+            },
         )
         self.assertEqual(
             set(body["gates"][0]),

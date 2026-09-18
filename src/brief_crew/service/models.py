@@ -609,6 +609,17 @@ class RunHistoryEntry(BaseModel):
     label: str = ""
     total_tokens: int = 0
     cost_usd: float = 0.0
+    #: The post-hoc rating, so a history row can show it and offer to change
+    #: it without a second request per row (plan 20 section 2.2). All three are
+    #: `None` for an unrated run, which is the majority and the default.
+    #:
+    #: `rated_by` is deliberately NOT here: it is an account id, the row is a
+    #: list of the caller's OWN runs, and the only case where it differs from
+    #: the owner is an admin having used the lever - which is a fact for the
+    #: audit log and for `GET /api/runs/{id}/rating`, not for a sidebar.
+    rating: str | None = None
+    rating_note: str | None = None
+    rated_at: datetime | None = None
 
 
 class RunHistoryPage(BaseModel):

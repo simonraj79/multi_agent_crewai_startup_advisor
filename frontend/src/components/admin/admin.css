@@ -277,6 +277,31 @@
 .admin-pill.is-waiting { color: var(--warn-text); border-color: var(--warn-border); }
 .admin-pill.is-completed { color: var(--on-accent-mint); }
 
+/* WHAT A PERSON SAID, in the same three hues the control itself uses, so the
+   chip in this table and the pressed button in the drawer read as one fact.
+   There is no `is-rating-unrated`: an unrated row draws no chip at all. */
+.admin-pill.is-rating-good { color: var(--on-accent-mint); }
+.admin-pill.is-rating-bad { color: var(--err-text); border-color: var(--err-border); }
+.admin-pill.is-rating-unsure { color: var(--warn-text); border-color: var(--warn-border); }
+
+/* The run table's own controls, beside the line that says what the table is.
+   `flex-wrap` because the filter and the caption share a header that is
+   already carrying a heading on the other side of it. */
+.admin-runs-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); justify-content: flex-end; }
+
+/* FOUND BY LOOKING, not by a test. The filter's label is `--type-meta` in
+   `--text-meta`, which is byte-identical to the `.panel-meta` sentence beside
+   it - so at 1440 the header read as one line of prose, "cost is an estimate
+   Rated", and the word naming the control looked like the last word of a
+   caption. The kicker treatment is what every other control label on this
+   console already wears, so the fix is two existing tokens rather than a new
+   one. */
+.admin-runs-controls .admin-insights-filter > span {
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
+  text-transform: uppercase;
+}
+
 /* A cell that opens the drawer. A button, because it changes what is on screen
    rather than where the browser is - an anchor would promise a URL that this
    console does not have. */

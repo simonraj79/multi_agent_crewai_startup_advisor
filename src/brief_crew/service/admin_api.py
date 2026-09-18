@@ -66,6 +66,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Column, DateTime, MetaData, String, Table, func, select
 
 from brief_crew import config
+from brief_crew.service.governance_insights import GovernanceInsightsResponse, TERMINAL, build_insights
 
 __all__ = [
     "ADMIN_API_PREFIX",
@@ -1680,6 +1681,42 @@ def create_admin_router(
             ),
             blind_to=list(BLIND_TO),
         )
+
+    @router.get("/insights", response_model=GovernanceInsightsResponse)
+    def insights(
+        workflow_id: str | None = Query(default=None),
+        since: str | None = Query(default=None, alias="from"),
+        until: str | None = Query(default=None, alias="to"),
+        _: Any = Depends(admin),
+    ) -> GovernanceInsightsResponse:
+        """Explain recurring governance signals from bounded persisted evidence."""
+
+        start, end = window(since, until)
+        persistence = store()
+        cap = int(config.ADMIN_MAX_SCAN_ROWS)
+        rows, run_truncated = persistence.admin_run_window(
+            start=start, end=end, limit=cap + 1, workflow_id=workflow_id, statuses=TERMINAL
+        )
+        if len(rows) > cap:
+            rows, run_truncated = rows[:cap], True
+        run_ids = [row["run_id"] for row in rows]
+        runs_with_frames = persistence.admin_runs_with_frames(run_ids)
+        frames, frame_truncated = persistence.admin_frames_by_kind(
+            ["guardrail", "error", "node_state"], run_ids=run_ids, limit=cap + 1
+        )
+        if len(frames) > cap:
+            frames, frame_truncated = frames[:cap], True
+        gates, gate_truncated = persistence.admin_gate_window(
+            run_ids=run_ids, limit=cap + 1
+        )
+        if len(gates) > cap:
+            gates, gate_truncated = gates[:cap], True
+        payload = build_insights(
+            rows, frames, gates, links=langfuse_links, outcome_of=gate_outcome,
+            truncated=bool(run_truncated or frame_truncated or gate_truncated),
+            runs_with_frames=runs_with_frames,
+        )
+        return GovernanceInsightsResponse.model_validate(payload)
 
     @router.get("/links", response_model=AdminLinksModel)
     async def links(_: Any = Depends(admin)) -> AdminLinksModel:

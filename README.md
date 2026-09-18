@@ -44,6 +44,7 @@ synthetic mode** below. It needs no API keys and spends nothing.
 - [Project layout](#project-layout)
 - [Testing](#testing)
 - [Observability](#observability)
+- [Governance insights](#governance-insights)
 - [Deployment](#deployment)
 - [Getting help](#getting-help)
 - [Contributing](#contributing)
@@ -552,6 +553,29 @@ outbound is scrubbed for credential shapes either way.
 The audit, the trace contract, the definition of done and the full evidence tree
 live in [`docs/observability/`](docs/observability/) — start with
 [`TRACE-CONTRACT.md`](docs/observability/TRACE-CONTRACT.md).
+
+---
+
+## Governance insights
+
+Administrators named in `ADMIN_EMAILS` can open **Admin → Insights** to find
+recurring patterns in recorded runs: failures, guardrail retries, fallback
+attempts and requests for revision at human gates. Every finding includes exact
+counts, a suggested investigation and supporting runs that open the existing
+decisions drawer or Langfuse trace.
+
+The analysis is deterministic and read-only: no model calls, new content capture
+or automatic changes to agents. Findings require at least three terminal runs
+for a workflow and two affected runs. The denominator is all sampled terminal
+runs of that workflow, **not** visits to the named node. A pattern is a reason
+to investigate; it does not establish causation or judge an answer's correctness.
+
+Use the time window and workflow filter to narrow the evidence. Coverage notices
+identify bounded scans, missing frames, retention and recorded integrity loss;
+an empty result is never a guarantee that a workflow is healthy. The endpoint
+`GET /api/admin/insights` uses the same admin authorization as the rest of the
+console. Read the [signal catalogue and audit](docs/observability/GOVERNANCE-INSIGHTS.md)
+for the evidence model and limitations.
 
 ---
 

@@ -59,6 +59,7 @@ ROUTES = (
     ("GET", "/gates"),
     ("GET", "/verdicts"),
     ("GET", "/health"),
+    ("GET", "/insights"),
     ("GET", "/links"),
     ("GET", "/providers"),
     ("GET", "/runs/r1/billed"),
@@ -240,14 +241,14 @@ class OnlyTheListedAdminGetsInTests(AdminCase):
         )
         self.assertEqual(response.status_code, 401, response.text)
 
-    def test_there_are_exactly_fourteen_data_routes(self) -> None:
+    def test_there_are_exactly_fifteen_data_routes(self) -> None:
         """The count the ruling turns on, asserted rather than assumed.
 
         A route added to `ROUTES` without a decision about which side of the
-        line it falls on shows up here as fifteen.
+        line it falls on changes this explicit inventory count.
         """
 
-        self.assertEqual(len(DATA_ROUTES), 14)
+        self.assertEqual(len(DATA_ROUTES), 15)
         self.assertNotIn(WHOAMI, DATA_ROUTES)
         self.assertIn(WHOAMI, ROUTES)
 

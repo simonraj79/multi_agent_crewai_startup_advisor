@@ -42,6 +42,12 @@ function bodyFor(url: string): unknown {
   if (url.includes('/billed')) return F['GET /api/admin/runs/{run_id}/billed']
   if (url.includes('/decisions')) return F['GET /api/admin/runs/{run_id}/decisions']
   if (url.includes('/api/admin/summary')) return F['GET /api/admin/summary']
+  if (url.includes('/api/admin/insights')) return {
+    workflows: [], findings: [], insufficient: [], suppressed_count: 0,
+    thresholds: { min_runs: 3, min_affected_runs: 2 },
+    coverage: { runs_scanned: 0, frames_scanned: 0, gates_scanned: 0, runs_missing_frames: 0,
+      runs_with_integrity_loss: 0, retention_days: 30, truncated: false, incomplete: false, warnings: [] },
+  }
   if (url.includes('/api/admin/spend')) return F['GET /api/admin/spend']
   if (url.includes('/api/admin/users/')) return F['GET /api/admin/users/{user_id}']
   if (url.includes('/api/admin/users')) return F['GET /api/admin/users']
@@ -89,8 +95,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('five docked panels behind a tab rail', () => {
-  it('renders exactly five tabs, in the order the plan names them', async () => {
+describe('six docked panels behind a tab rail', () => {
+  it('renders exactly six tabs, in their navigation order', async () => {
     const wrapper = mountAdmin()
     await settle()
     const tabs = wrapper.findAll('[role="tab"]')
@@ -99,6 +105,7 @@ describe('five docked panels behind a tab rail', () => {
       'Money',
       'People',
       'Runs & decisions',
+      'Insights',
       'Health',
     ])
   })
@@ -107,7 +114,7 @@ describe('five docked panels behind a tab rail', () => {
     const wrapper = mountAdmin()
     await settle()
     const panels = wrapper.findAll('[role="tabpanel"]')
-    expect(panels).toHaveLength(5)
+    expect(panels).toHaveLength(6)
     // `hidden` rather than unmounted: every panel is in the document, so a
     // reader tabbing by structure finds five, and only the chosen one paints.
     const shown = panels.filter((panel) => panel.attributes('hidden') === undefined)
@@ -118,7 +125,7 @@ describe('five docked panels behind a tab rail', () => {
   it('opens each panel when its tab is pressed, and marks it selected', async () => {
     const wrapper = mountAdmin()
     await settle()
-    for (const id of ['money', 'people', 'runs', 'health', 'overview']) {
+    for (const id of ['money', 'people', 'runs', 'insights', 'health', 'overview']) {
       await wrapper.get(`[data-testid="admin-tab-${id}"]`).trigger('click')
       await settle(4)
       const tab = wrapper.get(`[data-testid="admin-tab-${id}"]`)

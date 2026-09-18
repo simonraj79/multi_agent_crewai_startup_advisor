@@ -218,25 +218,240 @@ class ScoreHookTests(unittest.TestCase):
         self.assertEqual(1, written[0]["value"])
 
 
-class RatingScoreValueTests(unittest.TestCase):
-    """`good` and `bad` are a scale; `unsure` is a person declining to say."""
+class ScoreIdTests(unittest.TestCase):
+    """One id, upserted, and a write that never deletes. Refine round 2.
 
-    def test_good_and_bad_are_the_numeric_pair(self) -> None:
-        self.assertEqual((1, "NUMERIC"), scores.rating_score_value("good"))
-        self.assertEqual((0, "NUMERIC"), scores.rating_score_value("bad"))
+    Two designs failed here before this one, and both failed on a REAL trace
+    rather than in a test:
 
-    def test_unsure_is_categorical_and_not_a_made_up_half(self) -> None:
-        value, data_type = scores.rating_score_value("unsure")
-        self.assertEqual("CATEGORICAL", data_type)
-        self.assertNotIsInstance(value, (int, float))
+    * no id at all - `create_score` appends, so `good` then `bad` left both
+      1 and 0 on the trace and a clear left both while Postgres said unrated;
+    * two ids, numeric and categorical, with the write deleting the loser -
+      four PUTs inside eight seconds left TWO scores permanently, because
+      `delete_score` is a synchronous HTTP call while `create_score` sits in
+      the SDK's asynchronous batch queue, so the delete arrived first, 404'd
+      against a create that had not been ingested, and the create landed
+      behind it and stayed.
 
-    def test_a_cleared_rating_scores_nothing(self) -> None:
-        """Langfuse has no "unset a score", and a third value would be a fourth
-        thing for a reader to interpret."""
+    So: **one CATEGORICAL id, the word as the value, and no delete on any
+    write.** These assert what is SENT - the double records deletes rather
+    than simulating them, so nothing here can pass over a sequence the real
+    API would have reordered.
+    """
 
-        self.assertIsNone(scores.rating_score_value(None))
-        self.assertIsNone(scores.rating_score_value("something-else"))
+    def setUp(self) -> None:
+        self.backend = RecordingBackend()
+        self.exporter = FakeExporter(self.backend)
+        self.trace = trace_id_for(RUN_ID)
+        self.score_id = f"{self.trace}{scores.RATING_SCORE_ID_SUFFIX}"
 
+    def rate(self, rating: str | None, **kwargs: object) -> bool:
+        return scores.record_run_rating(
+            RUN_ID, rating, exporter=self.exporter, **kwargs
+        )
+
+    # -- a write is an upsert and NOTHING else ----------------------------
+
+    def test_four_rapid_ratings_are_four_upserts_of_one_id(self) -> None:
+        """The measured failure, as an assertion: a misclick corrected within
+        seconds is the commonest reason anybody re-rates."""
+
+        for word in ("good", "bad", "unsure", "good"):
+            self.rate(word)
+        self.assertEqual(
+            [self.score_id] * 4, [row.score_id for row in self.backend.scores]
+        )
+        self.assertEqual(
+            ["good", "bad", "unsure", "good"],
+            [row.value for row in self.backend.scores],
+        )
+
+    def test_no_write_ever_deletes(self) -> None:
+        """The property that makes the ordering irrelevant. If this fails, the
+        race is back however the ids are named."""
+
+        for word in ("good", "bad", "unsure", "good"):
+            self.rate(word)
+        self.assertEqual([], self.backend.deleted_scores)
+
+    def test_every_write_is_categorical_including_good_and_bad(self) -> None:
+        """Never a type change, because a type change needs two ids."""
+
+        for word in ("good", "bad", "unsure"):
+            self.rate(word)
+        self.assertEqual(
+            {"CATEGORICAL"}, {row.data_type for row in self.backend.scores}
+        )
+
+    def test_one_name_for_every_value(self) -> None:
+        """A Langfuse filter has to see one series."""
+
+        for word in ("good", "unsure"):
+            self.rate(word)
+        self.assertEqual({"human_rating"}, {row.name for row in self.backend.scores})
+
+    def test_a_word_this_module_does_not_know_is_not_written(self) -> None:
+        """A score nobody can count is worse than no score."""
+
+        self.assertFalse(self.rate("excellent"))
+        self.assertEqual([], self.backend.scores)
+
+    # -- a clear is the only delete, and it is issued twice ---------------
+
+    def test_a_clear_deletes_now_and_schedules_one_sweep(self) -> None:
+        self.addCleanup(self._drain)
+        self.assertTrue(self.rate(None, sweep_after_seconds=3600))
+        self.assertEqual([], self.backend.scores)
+        self.assertEqual([self.score_id], self.backend.deleted_scores)
+        self.assertEqual(1, scores.pending_clear_sweeps())
+
+    def test_the_deferred_sweep_deletes_the_same_id_again(self) -> None:
+        """The fix for the race: the create the first delete missed may only
+        have been ingested afterwards."""
+
+        scores.sweep_cleared_rating(run_id=RUN_ID, exporter=self.exporter)
+        self.assertEqual([self.score_id], self.backend.deleted_scores)
+
+    def test_the_sweep_does_nothing_when_somebody_re_rated(self) -> None:
+        """The source of truth wins. A rating made four seconds after a clear
+        must not vanish forty seconds later."""
+
+        self.assertFalse(
+            scores.sweep_cleared_rating(
+                run_id=RUN_ID, exporter=self.exporter, still_cleared=lambda: False
+            )
+        )
+        self.assertEqual([], self.backend.deleted_scores)
+
+    def test_a_store_that_cannot_answer_is_not_a_licence_to_delete(self) -> None:
+        def explode() -> bool:
+            raise RuntimeError("the database is away")
+
+        self.assertFalse(
+            scores.sweep_cleared_rating(
+                run_id=RUN_ID, exporter=self.exporter, still_cleared=explode
+            )
+        )
+        self.assertEqual([], self.backend.deleted_scores)
+
+    def test_a_second_clear_replaces_the_first_timer(self) -> None:
+        self.addCleanup(self._drain)
+        self.rate(None, sweep_after_seconds=3600)
+        self.rate(None, sweep_after_seconds=3600)
+        self.assertEqual(
+            1, scores.pending_clear_sweeps(), "two timers against one score id"
+        )
+
+    def test_a_fired_sweep_leaves_no_entry_behind(self) -> None:
+        self.rate(None, sweep_after_seconds=3600)
+        scores.sweep_cleared_rating(run_id=RUN_ID, exporter=self.exporter)
+        self.assertEqual(0, scores.pending_clear_sweeps())
+
+    def test_a_sweep_that_404s_is_not_an_error(self) -> None:
+        """A 404 is the ORDINARY answer - it means the score was never
+        ingested, which is the goal."""
+
+        class NotFound:
+            def score(self, **_: object) -> None:
+                return None
+
+            def delete_score(self, _score_id: str) -> None:
+                raise RuntimeError("status_code: 404, body: not found")
+
+        self.assertTrue(
+            scores.sweep_cleared_rating(
+                run_id=RUN_ID, exporter=FakeExporter(NotFound())
+            )
+        )
+
+    def test_a_delete_that_explodes_does_not_reach_the_caller(self) -> None:
+        self.addCleanup(self._drain)
+
+        class Stubborn:
+            def score(self, **_: object) -> None:
+                return None
+
+            def delete_score(self, _score_id: str) -> None:
+                raise RuntimeError("langfuse is down")
+
+        self.assertTrue(
+            scores.record_run_rating(
+                RUN_ID, None, exporter=FakeExporter(Stubborn()), sweep_after_seconds=3600
+            )
+        )
+
+    # -- the exporter being off changes none of it ------------------------
+
+    def test_a_clear_with_no_exporter_is_false_and_schedules_nothing(self) -> None:
+        scores.set_score_exporter(None)
+        self.assertFalse(scores.record_run_rating(RUN_ID, None))
+        self.assertEqual(0, scores.pending_clear_sweeps())
+
+    def test_a_null_exporter_schedules_nothing_either(self) -> None:
+        self.assertFalse(
+            scores.record_run_rating(
+                RUN_ID, None, exporter=FakeExporter(None), sweep_after_seconds=3600
+            )
+        )
+        self.assertEqual(0, scores.pending_clear_sweeps())
+
+    # -- older backends still get the value -------------------------------
+
+    def test_a_backend_with_no_delete_still_writes_the_score(self) -> None:
+        written: list[dict[str, object]] = []
+
+        class OldBackend:
+            def score(self, **fields: object) -> None:
+                written.append(fields)
+
+        self.assertTrue(
+            scores.record_run_rating(
+                RUN_ID, "good", exporter=FakeExporter(OldBackend())
+            )
+        )
+        self.assertEqual("good", written[0]["value"])
+
+    def test_a_backend_whose_score_predates_score_id_still_gets_the_value(self) -> None:
+        written: list[dict[str, object]] = []
+
+        class OlderBackend:
+            def score(self, **fields: object) -> None:
+                if "score_id" in fields:
+                    raise TypeError("unexpected keyword argument 'score_id'")
+                written.append(fields)
+
+            def delete_score(self, _score_id: str) -> None:
+                return None
+
+        scores.record_run_rating(
+            RUN_ID, "good", exporter=FakeExporter(OlderBackend())
+        )
+        self.assertEqual(1, len(written))
+        self.assertEqual("good", written[0]["value"])
+
+    def test_the_exporters_own_scores_still_carry_no_id(self) -> None:
+        """`guardrail_passed` is one fact per check; there is nothing to
+        overwrite, and giving it an id would collapse a run's checks into
+        one score."""
+
+        scores.record_run_score(
+            RUN_ID,
+            name="guardrail_passed",
+            value=1,
+            data_type="NUMERIC",
+            exporter=self.exporter,
+        )
+        self.assertIsNone(self.backend.scores[0].score_id)
+        self.assertEqual([], self.backend.deleted_scores)
+
+    @staticmethod
+    def _drain() -> None:
+        """Cancel any armed timer, so no case leaks one into the next."""
+
+        with scores._sweep_lock:
+            for timer in scores._sweeps.values():
+                timer.cancel()
+            scores._sweeps.clear()
 
 class NoFlowIdentifierTests(unittest.TestCase):
     """A13, run from here as well as from its own module.

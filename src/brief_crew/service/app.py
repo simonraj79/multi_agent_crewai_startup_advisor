@@ -80,6 +80,8 @@ from brief_crew.service.rating_api import (
     RatingRequest,
     RunRatingModel,
     create_rating_router,
+    guard_rateable,
+    guard_run_id,
     rating_payload,
     write_rating,
 )
@@ -1398,6 +1400,10 @@ def create_app(
         create_rating_router(
             resolve_user=optional_user,
             persistence_factory=lambda: getattr(registry, "persistence", None),
+            # `require_run`, so the admin door's finished-run guard reads the
+            # SAME record the owner's door reads - including one a restart
+            # restored from the database.
+            run_factory=require_run,
         )
     )
 
@@ -2041,7 +2047,7 @@ def create_app(
         response_model=RunRatingModel,
         responses={404: {"model": ErrorResponse}},
     )
-    async def get_run_rating(
+    def get_run_rating(
         run_id: str,
         user: AuthenticatedUser | None = Depends(current_user),
     ) -> RunRatingModel:
@@ -2050,9 +2056,16 @@ def create_app(
         Owner-only through `require_own_run`, which means **404 and not 403**
         for a run belonging to somebody else - a 403 confirms the run exists.
         A run with no owner is readable by anyone, which is the same carve-out
-        every other run route makes for pre-auth rows.
+        every other run route makes for pre-auth rows, and it is unchanged by
+        D6: what that ruling bounds is the WRITE.
+
+        A plain `def`, not `async def`: `run_ratings` is a synchronous
+        database round trip and FastAPI runs a sync handler on a worker
+        thread. `get_run_state` and `get_frames` beside it make the same call
+        for the same reason.
         """
 
+        run_id = guard_run_id(run_id)
         require_own_run(run_id, user)
         stored = (
             registry.persistence.run_ratings([run_id]).get(run_id)
@@ -2078,17 +2091,32 @@ def create_app(
         opinion of it is worth recording, and an admin has a separate door at
         `PUT /api/admin/runs/{id}/rating` that logs what it did.
 
-        A fifth value is a 422 and a note over `MAX_RATING_NOTE_CHARS` is a
-        422, both from the request model, so neither reaches a column.
+        A fourth word is a 422 and a note over `MAX_RATING_NOTE_CHARS` is a
+        422, both from the request model, so neither reaches a column. A run
+        that has not finished is a **409** and a run nobody owns is a **403**
+        to a signed-in caller - `guard_rateable` carries both, and the admin
+        door asks it the same question with a different answer.
+
+        `write_rating` is handed to the THREADPOOL: it makes a synchronous
+        database round trip and then joins `record_run_rating`'s bounded 2 s
+        worker, and on the event loop that was measured to park every other
+        request - a concurrent `GET /healthz` took 2.012 s against 0.112 s.
+        Audit H5's rule, and `builder_api`'s custom-tool test route is where
+        this repository wrote it down.
         """
 
-        require_own_run(run_id, user)
+        run_id = guard_run_id(run_id)
+        record = require_own_run(run_id, user)
+        guard_rateable(
+            record, actor=user.id if user is not None else None, is_admin=False
+        )
         if registry.persistence is None:
             raise HTTPException(
                 status_code=503,
                 detail="this service has no durable store, so a rating cannot be kept",
             )
-        return write_rating(
+        return await run_in_threadpool(
+            write_rating,
             registry.persistence,
             run_id,
             request,

@@ -169,6 +169,43 @@ class RunRatingColumnsOnPostgres(unittest.TestCase):
         )
         self.assertEqual(note, stored["rating_note"])
 
+    def test_a_nul_in_a_note_is_what_this_dialect_cannot_store(self) -> None:
+        """D2's root cause, on the only dialect that has it.
+
+        PostgreSQL cannot hold `\\x00` in a `text` value at ALL: psycopg
+        raises, the route answered 500, and the traceback wrote the note -
+        user content - into the server log. SQLite stores it happily, so this
+        assertion is the one that proves the request-model strip is load
+        bearing rather than tidy.
+        """
+
+        import psycopg
+
+        store = self.upgrade()
+        with self.assertRaises((psycopg.DataError, Exception)) as caught:
+            store.set_run_rating(
+                "capped-before-the-columns",
+                rating="bad",
+                note="a\x00b",
+                rated_by=None,
+            )
+        self.assertIn("0x00", str(caught.exception).replace("\\x00", "0x00"))
+
+    def test_the_note_the_request_model_produces_stores_fine(self) -> None:
+        """The other half: what actually reaches the column after stripping."""
+
+        from brief_crew.service.rating_api import RatingRequest
+
+        store = self.upgrade()
+        request = RatingRequest(rating="bad", note="a\x00b\nc")
+        stored = store.set_run_rating(
+            "capped-before-the-columns",
+            rating=request.normalised(),
+            note=request.note,
+            rated_by=None,
+        )
+        self.assertEqual("ab\nc", stored["rating_note"])
+
     def test_an_over_long_note_is_clipped_rather_than_refused(self) -> None:
         """The third bound, and PostgreSQL is where it is load-bearing.
 

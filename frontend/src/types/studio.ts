@@ -405,4 +405,46 @@ export interface RunHistoryEntry {
   label: string
   total_tokens: number
   cost_usd: number
+  /**
+   * What the run's owner said about it, when they said anything (plan 20 §2.2,
+   * `GET /api/runs` gains `rating`).
+   *
+   * OPTIONAL, and that is not defensiveness about the server: an API deployed
+   * before this plan answers rows without these keys, and both services carry
+   * `autoDeploy: yes`, so the web service can ship a minute before the API
+   * does. A row with no `rating` key and a row rated `null` are the same thing
+   * here - nobody has said anything yet - and the control renders "not rated"
+   * for both rather than an empty cell.
+   *
+   * `rating_note` and `rated_at` are the row's OPTIONAL extras: §2.2's table
+   * promises only `rating` on this endpoint, so the note box on a history row
+   * is empty whenever the server does not volunteer one.
+   */
+  rating?: RunRatingValue | null
+  rating_note?: string | null
+  rated_at?: string | null
+}
+
+/**
+ * The three things a person may say about their own run, and nothing else.
+ *
+ * `unsure` is a real answer rather than the absence of one: plan 20 §2.3
+ * scores it as a CATEGORICAL companion instead of inventing a number between
+ * good and bad, because "I do not know" is evidence and 0.5 is a fabrication.
+ * Clearing a rating is `null`, which is a fourth STATE and not a fourth value.
+ */
+export type RunRatingValue = 'good' | 'bad' | 'unsure'
+
+/**
+ * What `PUT`/`GET /api/runs/{id}/rating` answers - plan 20 §2.2 verbatim.
+ *
+ * `note` is §2.2's spelling. `data/runRating.ts`'s reader also accepts the
+ * `rating_note` the source branch answers with, and says there why.
+ */
+export interface RunRating {
+  run_id: string
+  rating: RunRatingValue | null
+  note: string | null
+  rated_by?: string | null
+  rated_at: string | null
 }

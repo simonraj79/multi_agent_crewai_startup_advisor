@@ -23,8 +23,10 @@ import { computed, ref, watch } from 'vue'
 import { LoaderCircle, Square, TriangleAlert, X } from 'lucide-vue-next'
 import LangfuseLink from './LangfuseLink.vue'
 import MoneyFigure from './MoneyFigure.vue'
+import RatingControl from '../RatingControl.vue'
 import { count, duration, durationMs, humanise, money, personLabel, when } from './adminFormat'
 import { adminApi } from '../../services/adminApi'
+import { readRunRating, runRatingWord } from '../../data/runRating'
 import type {
   AdminBilled,
   AdminDecisions,
@@ -33,6 +35,7 @@ import type {
   AdminUserDetail,
   ProbeUnavailable,
 } from '../../services/adminApi'
+import type { RunRating } from '../../types/studio'
 
 const props = defineProps<{
   /** What the drawer is about. `null` on neither, and the drawer is not drawn. */
@@ -44,7 +47,7 @@ const props = defineProps<{
   problem: string
 }>()
 
-const emit = defineEmits<{ close: []; cancelled: [runId: string] }>()
+const emit = defineEmits<{ close: []; cancelled: [runId: string]; rated: [runId: string] }>()
 
 const langfuseOn = computed(() => props.links?.langfuse.configured === true)
 
@@ -106,6 +109,31 @@ async function cancelRun(): Promise<void> {
   } finally {
     cancelBusy.value = false
   }
+}
+
+/* ── was this run good? ───────────────────────────────────────────────────── */
+
+/**
+ * The human verdict on this run, as the decisions payload reported it.
+ *
+ * Read through `readRunRating` rather than taken as typed: the note has two
+ * spellings in flight while plan 20's two builders land (see
+ * `data/runRating.ts`), and a drawer that dropped a sentence somebody typed
+ * would be the quietest possible loss.
+ */
+const rating = computed<RunRating | null>(() =>
+  props.decisions?.rating ? readRunRating(props.decisions.rating, props.run?.run_id ?? '') : null,
+)
+
+/**
+ * A save here changes a row on the table beside this drawer, so the PARENT is
+ * told rather than the row patched locally: the admin console's rule is that
+ * the server is the truth and a lever that only edited the screen would be a
+ * lever that lies when it fails. The opposite call from `RunHistory`'s, and
+ * for the opposite reason - there, the reply IS the whole row.
+ */
+function afterRating(answer: RunRating): void {
+  emit('rated', answer.run_id || props.run?.run_id || '')
 }
 
 /** A gate's stored reply, printed as the operator left it. */
@@ -226,6 +254,32 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
           </dl>
           <p v-else-if="billedRefusal" class="admin-warning" role="status">{{ billedRefusal }}</p>
           <p v-if="billedProblem" class="admin-problem" role="alert">{{ billedProblem }}</p>
+        </section>
+
+        <!--
+          THE ONE THING ON THIS SCREEN NOTHING COMPUTES. Every other block in
+          this drawer is machine evidence - what it cost, which guardrail
+          retried, which gate was revised - and none of it says whether the
+          answer was worth having. This block is where that comes from, and an
+          admin writing it is logged with their e-mail on the server.
+        -->
+        <section class="admin-drawer-block" aria-labelledby="admin-rating-title">
+          <header class="admin-block-head">
+            <h3 id="admin-rating-title">Was this run good?</h3>
+            <span class="panel-meta">a judgement, not a measurement</span>
+          </header>
+          <p v-if="rating?.rating" class="admin-facts-line" data-testid="admin-rating-current">
+            {{ runRatingWord(rating.rating) }}<template v-if="rating.rated_by"> · {{ rating.rated_by }}</template><template v-if="rating.rated_at"> · {{ when(rating.rated_at) }}</template>
+            <span v-if="rating.note" class="admin-sub">{{ rating.note }}</span>
+          </p>
+          <p v-else class="admin-empty" data-testid="admin-rating-current">Nobody has rated this run.</p>
+          <RatingControl
+            admin
+            :run-id="run.run_id"
+            :rating="rating?.rating ?? null"
+            :note="rating?.note ?? ''"
+            @saved="afterRating"
+          />
         </section>
 
         <section class="admin-drawer-block" aria-labelledby="admin-trail-title">

@@ -51,7 +51,8 @@ export function takeRevealHistory(): boolean {
 import { computed, onMounted, ref, watch } from 'vue'
 import { Download, History, LoaderCircle, RefreshCw } from 'lucide-vue-next'
 import LangfuseLink from './admin/LangfuseLink.vue'
-import type { RunHistoryEntry } from '../types/studio'
+import RatingControl from './RatingControl.vue'
+import type { RunHistoryEntry, RunRating } from '../types/studio'
 import { studioApi } from '../services/studioApi'
 import { adminApi, adminWhoami, probeAdmin, sessionUrlFor } from '../services/adminApi'
 import type { AdminLinks } from '../services/adminApi'
@@ -159,6 +160,28 @@ function money(value: number): string {
 
 const isEmpty = computed(() => loaded.value && !loading.value && runs.value.length === 0)
 
+/**
+ * Fold a saved rating back into the row it came from (plan 20 §2.4).
+ *
+ * A local patch rather than a refresh, and that is the same judgement
+ * `AdminView` makes in the other direction and for the opposite reason: there,
+ * a cancel changes the summary as well as the row, so the server is re-asked;
+ * here, the server has JUST answered with the authoritative row and re-reading
+ * the whole list would throw away a reply that is by definition fresher than
+ * anything a second request could return.
+ *
+ * EVERY ROW ON THIS LIST IS THE CALLER'S. The API applies the ownership filter
+ * in SQL, so a control on each row is offered to somebody who owns the run by
+ * construction - and the server still answers 404 for anything else.
+ */
+function applyRating(answer: RunRating): void {
+  runs.value = runs.value.map((row) =>
+    row.run_id === answer.run_id
+      ? { ...row, rating: answer.rating, rating_note: answer.note, rated_at: answer.rated_at }
+      : row,
+  )
+}
+
 /* ── the Langfuse link on a row (plan 17, criterion 27) ────────────────────
  *
  * `GET /api/admin/links` is behind `require_admin` and answers 404 to everybody
@@ -260,6 +283,19 @@ onMounted(() => {
               compact
             />
           </span>
+          <!--
+            One rating per row, compact: the three words inline and the note
+            behind a toggle, because a textarea per row would make a list of
+            twenty-five runs unreadable for the sake of a field most rows will
+            never carry.
+          -->
+          <RatingControl
+            :run-id="run.run_id"
+            :rating="run.rating ?? null"
+            :note="run.rating_note ?? ''"
+            compact
+            @saved="applyRating"
+          />
         </div>
         <button
           class="run-history-download"

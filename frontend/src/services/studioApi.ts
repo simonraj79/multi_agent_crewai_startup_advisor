@@ -1,6 +1,7 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
 import { readErrorDetail } from '../data/serverLimits'
+import { readRunRating } from '../data/runRating'
 import { getAccessToken } from './authClient'
 import { API_BASE_URL, authedFetch, fetchJson } from './httpCore'
 import { saveBlob } from '../utils/saveBlob'
@@ -13,6 +14,8 @@ import type {
   GateReply,
   GraphDescriptor,
   RunHistoryEntry,
+  RunRating,
+  RunRatingValue,
   RunResult,
   RunSnapshot,
   StartRunResponse,
@@ -702,6 +705,58 @@ export class StudioApi {
       `/api/runs?limit=${encodeURIComponent(String(limit))}`,
     )
     return page.runs ?? []
+  }
+
+  /* ---------------------------------------------------------------------- *
+   *  Was this run good? - plan 20 §2.2                                       *
+   * ---------------------------------------------------------------------- */
+
+  /**
+   * Say whether a run was good.
+   *
+   * `PUT`, and `null` clears it. Last writer wins on the server DELIBERATELY
+   * rather than by omission (§2.1): a compare-and-set would answer 409 to a
+   * double press, and one person's opinion of their own run has nothing to
+   * lose to a race.
+   *
+   * SOMEBODY ELSE'S RUN IS 404, NOT 403, and this client does nothing to
+   * soften that: `require_own_run`'s rule is that a 403 confirms the run
+   * exists. The refusal arrives here as the server's own sentence, and the
+   * control restores the value it had before.
+   *
+   * Refuses OUTRIGHT in mock mode rather than pretending. A demonstration
+   * transport that answered "saved" would be the silent-mock defect
+   * (gotchas 2) pointed at a row somebody would later read as evidence.
+   */
+  async rateRun(
+    runIdValue: string,
+    rating: RunRatingValue | null,
+    note = '',
+  ): Promise<RunRating> {
+    if (this.mode !== 'live') {
+      throw new Error('This is demonstration mode, so there is no run to rate.')
+    }
+    const body = await fetchJson<unknown>(
+      `/api/runs/${encodeURIComponent(runIdValue)}/rating`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating, note: note || null }),
+      },
+    )
+    return readRunRating(body, runIdValue)
+  }
+
+  /**
+   * The stored rating for one run, so a restored run shows what it was given.
+   *
+   * `null` in mock mode rather than a throw: reading is allowed to answer "no
+   * opinion recorded" - it is only WRITING that must never be faked.
+   */
+  async getRating(runIdValue: string): Promise<RunRating | null> {
+    if (this.mode !== 'live') return null
+    const body = await fetchJson<unknown>(`/api/runs/${encodeURIComponent(runIdValue)}/rating`)
+    return readRunRating(body, runIdValue)
   }
 
   async downloadLogs(runIdValue: string, format: LogFormat = 'ndjson'): Promise<void> {

@@ -97,6 +97,20 @@ function percent(rate: number): string {
         {{ count(insights.suppressed_count) }} signal(s) hidden below the required evidence floors.
       </p>
 
+      <!--
+        WHAT PEOPLE SAID, beside what the rules found (plan 20 §2.2). It is one
+        sentence rather than a chart on purpose: four counts over the same
+        sample every finding below is counted against, in the order a person
+        would read them, and "N not rated yet" last because it is the number
+        that says how much of this is still unanswered.
+      -->
+      <p v-if="insights.labels" class="admin-insights-note" data-testid="admin-insights-labels">
+        People rated {{ count(insights.labels.good) }} runs good,
+        {{ count(insights.labels.bad) }} bad,
+        {{ count(insights.labels.unsure) }} not sure.
+        {{ count(insights.labels.unrated) }} not rated yet.
+      </p>
+
       <div class="admin-insights-coverage" data-testid="admin-insights-coverage">
         <span>{{ count(insights.coverage.runs_scanned) }} terminal runs</span>
         <span>{{ count(insights.coverage.frames_scanned) }} frames</span>
@@ -124,7 +138,10 @@ function percent(rate: number): string {
           <p class="admin-insight-suggestion"><Lightbulb :size="14" aria-hidden="true" />{{ finding.suggestion }}</p>
           <p class="panel-meta">
             Denominator: all sampled terminal {{ finding.workflow_id }} runs.
-            <template v-if="finding.rule_id === 'failed_run'">Scope: whole workflow</template>
+            <!-- `rated_bad` joins `failed_run` here because its `node_id` is
+                 the literal `(run)` (§2.2): a rating is about the whole run,
+                 so "Node (run)" would be a node name that is not one. -->
+            <template v-if="finding.rule_id === 'failed_run' || finding.rule_id === 'rated_bad'">Scope: whole workflow</template>
             <template v-else>Node {{ finding.node_id }}</template><template v-if="finding.gate_id"> · gate {{ finding.gate_id }}</template>
           </p>
           <ul v-if="finding.samples.length" class="admin-insight-samples" aria-label="Sample runs">

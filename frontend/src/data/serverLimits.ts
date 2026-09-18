@@ -56,6 +56,20 @@ export const MAX_UTTERANCE_CHARS = 4096
 export const MAX_NODE_CARD_ERROR_CHARS = 120
 
 /**
+ * How long a note on a rating may be - plan 20 §2.1, and the server answers
+ * 422 past it (`config.MAX_RATING_NOTE_CHARS`).
+ *
+ * A duplicated constant, named here for this file's own stated reason: the
+ * bound is already right on the server and the client simply did not know it
+ * existed, which is how somebody types a paragraph into a helpful counter and
+ * is then shown a refusal. `tests/runRating.spec.ts` pins the pair.
+ */
+export const MAX_RATING_NOTE_CHARS = 500
+
+/** Below this many characters remaining, the note counter starts warning. */
+export const RATING_NOTE_WARN_AT = 40
+
+/**
  * Pull a human sentence out of whatever the API returned.
  *
  * FastAPI answers `{"detail": "..."}` for a refusal the operator can act on -

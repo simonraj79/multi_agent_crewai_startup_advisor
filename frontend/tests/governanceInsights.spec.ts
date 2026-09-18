@@ -30,6 +30,7 @@ const insight: Insights = {
     }],
   }],
   insufficient: [],
+  labels: { good: 4, bad: 2, unsure: 1, unrated: 1 },
   suppressed_count: 1,
   thresholds: { min_runs: 3, min_affected_runs: 2 },
   coverage: {
@@ -81,6 +82,70 @@ describe('governance insights panel', () => {
     const mixed = panel({ ...insight, insufficient: [{ workflow_id: 'new-flow', total_runs: 1, required_runs: 3 }] })
     expect(mixed.find('[data-testid="admin-insight-findings"]').exists()).toBe(true)
     expect(mixed.get('[data-testid="admin-insights-small-sample"]').text()).toContain('1 of 3')
+  })
+
+  /*
+   * ── what people said, beside what the rules found (plan 20, criterion L11)
+   *
+   * The strip is one sentence over the SAME sample every finding below is
+   * counted against. It is absent rather than zeroed when the server does not
+   * send `labels`, because an API a minute older than this bundle has never
+   * been asked the question - and "0 rated good" would be a measurement of
+   * something that was never measured.
+   */
+  it('says in plain words how the scanned runs were rated', () => {
+    const wrapper = panel()
+    const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
+    expect(strip).toContain('People rated 4 runs good')
+    expect(strip).toContain('2 bad')
+    expect(strip).toContain('1 not sure')
+    expect(strip).toContain('1 not rated yet')
+    // This programme's private vocabulary never reaches the screen.
+    for (const banned of ['label', 'mining', 'hotspot']) {
+      expect(strip.toLowerCase(), banned).not.toContain(banned)
+    }
+  })
+
+  it('draws no strip at all when the server did not answer the question', () => {
+    const older = { ...insight }
+    delete (older as { labels?: unknown }).labels
+    const wrapper = panel(older)
+    expect(wrapper.find('[data-testid="admin-insights-labels"]').exists()).toBe(false)
+    // Everything else still renders: an older API is a missing strip, not a
+    // blank panel.
+    expect(wrapper.text()).toContain('Repeated failures')
+  })
+
+  /*
+   * A finding somebody's judgement produced, rendered exactly as a computed one
+   * is - card, rate, suggestion, samples - because it IS one row of the same
+   * table. The only concession is its scope line: `node_id` is the literal
+   * `(run)` (§2.2), so "Node (run)" would name a node that does not exist.
+   */
+  it('renders a rated_bad finding like any other, and its samples open the drawer', async () => {
+    const wrapper = panel({
+      ...insight,
+      findings: [{
+        ...insight.findings[0],
+        rule_id: 'rated_bad',
+        severity: 'high',
+        node_id: '(run)',
+        title: 'People rated these runs bad',
+        explanation: 'A person said the answer was not worth having. This is a judgement, not a measurement.',
+        suggestion: 'Read the notes on these runs before changing the workflow.',
+      }],
+    })
+    const text = wrapper.get('[data-testid="admin-insight-findings"]').text()
+    expect(text).toContain('People rated these runs bad')
+    expect(text).toContain('3 / 8')
+    expect(text).toContain('Read the notes on these runs')
+    expect(text).toContain('Scope: whole workflow')
+    expect(text).not.toContain('Node (run)')
+
+    await wrapper.get('[data-testid="admin-insight-run-sample-1"]').trigger('click')
+    expect(wrapper.emitted('openRun')?.[0]?.[0]).toMatchObject({
+      run_id: 'sample-1', workflow_id: 'idea-validator', status: 'failed',
+    })
   })
 
   it('never displays old findings underneath loading or error feedback', async () => {

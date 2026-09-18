@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminView from '../src/views/AdminView.vue'
 import AdminDrawer from '../src/components/admin/AdminDrawer.vue'
+import AdminRuns from '../src/components/admin/AdminRuns.vue'
 import { resetAdminGate } from '../src/services/adminApi'
 import type { AdminRunRow } from '../src/services/adminApi'
 import fixture from './fixtures/adminApi.json'
@@ -39,15 +40,21 @@ let asked: string[] = []
  */
 function bodyFor(url: string): unknown {
   if (url.includes('/api/admin/whoami')) return fixture['GET /api/admin/whoami']
+  // Before `/api/admin/runs`, or a `PUT …/rating` would be handed a page of
+  // runs where it asked for one run's rating - the same ordering hazard the
+  // decisions line below is written for.
+  if (url.includes('/rating')) {
+    return { run_id: '073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba', rating: 'good', note: null,
+      rated_by: 'admin@example.test', rated_at: '2026-09-18T12:03:11Z' }
+  }
   if (url.includes('/billed')) return F['GET /api/admin/runs/{run_id}/billed']
   if (url.includes('/decisions')) return F['GET /api/admin/runs/{run_id}/decisions']
   if (url.includes('/api/admin/summary')) return F['GET /api/admin/summary']
-  if (url.includes('/api/admin/insights')) return {
-    workflows: [], findings: [], insufficient: [], suppressed_count: 0,
-    thresholds: { min_runs: 3, min_affected_runs: 2 },
-    coverage: { runs_scanned: 0, frames_scanned: 0, gates_scanned: 0, runs_missing_frames: 0,
-      runs_with_integrity_loss: 0, retention_days: 30, truncated: false, incomplete: false, warnings: [] },
-  }
+  // The fixture carries this endpoint since plan 20 (criterion L8, which
+  // closed the audit's gap); it used to be hand-typed here, which made the one
+  // panel nobody could check against the server the one panel served by a
+  // shape this file invented.
+  if (url.includes('/api/admin/insights')) return F['GET /api/admin/insights']
   if (url.includes('/api/admin/spend')) return F['GET /api/admin/spend']
   if (url.includes('/api/admin/users/')) return F['GET /api/admin/users/{user_id}']
   if (url.includes('/api/admin/users')) return F['GET /api/admin/users']
@@ -348,6 +355,111 @@ describe('the drawer says what is fragile about what it shows', () => {
     const blind = wrapper.get('[data-testid="admin-blind"]').text()
     expect(blind).toContain('sign-ins')
     expect(blind).toContain('not that the figure is zero')
+  })
+
+  /*
+   * ── was this run good? (plan 20, criterion L11) ────────────────────────
+   *
+   * Three assertions, one per surface, and each of them is about the thing
+   * that would be wrong in a way nobody notices: a chip that reports a rating
+   * for a run that has none, a filter that narrows the page on screen instead
+   * of asking the server, and an admin control writing through the owner's
+   * door, where it would 404 on everybody else's run.
+   */
+  it('shows a chip only on a rated row, and asks the server to filter', async () => {
+    const page = {
+      rows: [
+        { ...RUN, rating: 'good' as const, rated_by: 'admin@example.test' },
+        { ...RUN, run_id: '9a2f0000-0000-4000-8000-000000000002', rating: null },
+      ],
+      next: null,
+    }
+    const wrapper = mount(AdminRuns, {
+      props: {
+        runs: page, gates: null, verdicts: null, links: null,
+        selectedRunId: null, rating: '' as const, loading: false, problem: '',
+      },
+    })
+    expect(wrapper.get(`[data-testid="admin-run-rating-${RUN.run_id}"]`).text()).toBe('Good')
+    // Nothing at all on an unrated row: an empty cell already reads as "not
+    // rated", and a chip saying so would be a second word for silence in every
+    // row of the table.
+    expect(
+      wrapper.find('[data-testid="admin-run-rating-9a2f0000-0000-4000-8000-000000000002"]').exists(),
+    ).toBe(false)
+
+    const filter = wrapper.get('[data-testid="admin-runs-rating-filter"]')
+    expect(filter.findAll('option').map((option) => option.text())).toEqual([
+      'All', 'Good', 'Bad', 'Not sure', 'Not rated',
+    ])
+    await filter.setValue('unrated')
+    expect(wrapper.emitted('selectRating')?.[0]).toEqual(['unrated'])
+    wrapper.unmount()
+  })
+
+  it('sends the chosen rating as a query and re-asks the server for it', async () => {
+    const wrapper = mountAdmin()
+    await settle()
+    await wrapper.get('[data-testid="admin-tab-runs"]').trigger('click')
+    await settle()
+    // Nothing until somebody chooses: the server decides what an absent filter
+    // means, and a client spelling of "any" would be a second answer to it.
+    expect(asked.filter((url) => url.includes('/api/admin/runs?')).join('')).not.toContain('rating=')
+
+    await wrapper.get('[data-testid="admin-runs-rating-filter"]').setValue('bad')
+    await settle()
+    const runLists = asked.filter((url) => url.includes('/api/admin/runs?'))
+    expect(runLists[runLists.length - 1]).toContain('rating=bad')
+  })
+
+  it('rates a run from the drawer through the ADMIN door, and re-reads it after', async () => {
+    const wrapper = mountAdmin()
+    await settle()
+    await wrapper.get('[data-testid="admin-tab-runs"]').trigger('click')
+    await settle()
+    await wrapper.get(`[data-testid="admin-run-${RUN.run_id}"]`).trigger('click')
+    await settle()
+
+    const drawer = wrapper.get('[data-testid="admin-drawer"]')
+    expect(drawer.text()).toContain('Was this run good?')
+    // Read off the fixture's OWN `rating` object, note included - which is the
+    // whole point of reading it through `readRunRating`: the server answers
+    // `rating_note` where §2.2 says `note`, and a drawer that read only one of
+    // the two spellings would drop the sentence somebody typed and say nothing.
+    const current = drawer.get('[data-testid="admin-rating-current"]').text()
+    expect(current).toContain('Good')
+    expect(current).toContain('user_owner')
+    expect(current).toContain('the segment was right and every claim was cited')
+    expect(drawer.get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('true')
+
+    await drawer.get('[data-testid="rating-bad"]').trigger('click')
+    await settle()
+    const writes = asked.filter((url) => url.includes('/rating'))
+    expect(writes).toHaveLength(1)
+    // `/api/admin/runs/{id}/rating`, never `/api/runs/{id}/rating`:
+    // `require_own_run` would answer 404 for somebody else's run, which is
+    // every run an admin opens this drawer on.
+    expect(writes[0]).toContain(`/api/admin/runs/${RUN.run_id}/rating`)
+    // The server is the truth on this screen, so a save re-reads the row and
+    // the drawer rather than patching either of them.
+    expect(asked.filter((url) => url.includes('/decisions')).length).toBeGreaterThan(1)
+  })
+
+  it('reads the labels strip and the rated_bad card off the SERVER own insights shape', async () => {
+    // Against `GET /api/admin/insights` as W-API generates it, not a payload
+    // this file typed: the strip's four counts and the finding a person's
+    // judgement produced both have to survive the real response.
+    const wrapper = mountAdmin()
+    await settle()
+    await wrapper.get('[data-testid="admin-tab-insights"]').trigger('click')
+    await settle()
+    const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
+    expect(strip).toContain('People rated 9 runs good')
+    expect(strip).toContain('4 bad')
+    expect(strip).toContain('10 not rated yet')
+    const findings = wrapper.get('[data-testid="admin-insight-findings"]').text()
+    expect(findings).toContain('Scope: whole workflow')
+    expect(findings).not.toContain('Node (run)')
   })
 
   it('offers the cancel lever only while a run can still be stopped', () => {

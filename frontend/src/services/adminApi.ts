@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 import { authedFetch, fetchJson } from './httpCore'
+import { readRunRating } from '../data/runRating'
+import type { RunRating, RunRatingValue } from '../types/studio'
 
 /**
  * Everything `/api/admin/*` answers, and the one call that decides whether the
@@ -201,7 +203,22 @@ export interface AdminRunRow {
   verdict?: string | null
   integrity?: { captured: number; dropped: number; gaps: number }
   langfuse?: AdminLangfuseLinks
+  /**
+   * What a person said about this run, when anybody did (plan 20 §2.2).
+   *
+   * OPTIONAL for the reason every other optional field here is: an API
+   * deployed before plan 20 answers rows without these keys, and both Render
+   * services carry `autoDeploy: yes`, so the console can ship a minute before
+   * the API does. Absent and `null` mean the same thing - nobody has said
+   * anything - and the row draws no chip for either.
+   */
+  rating?: RunRatingValue | null
+  rated_by?: string | null
+  rated_at?: string | null
 }
+
+/** The four states the admin Runs filter may ask for (plan 20 §2.2). */
+export type AdminRatingFilter = '' | RunRatingValue | 'unrated'
 
 export interface AdminRunsPage {
   rows: AdminRunRow[]
@@ -234,8 +251,24 @@ export interface AdminInsightFinding {
   samples: AdminInsightSample[]
 }
 
+/**
+ * How the scanned runs were rated, over the same sample every finding counts
+ * against (plan 20 §2.2).
+ *
+ * OPTIONAL, so a console built against plan 20 still draws an older API's
+ * insights rather than a row of `undefined`. The strip is simply absent then,
+ * which is honest: nobody has been asked yet.
+ */
+export interface AdminInsightLabels {
+  good: number
+  bad: number
+  unsure: number
+  unrated: number
+}
+
 export interface AdminInsights {
   workflows: { workflow_id: string; runs: number }[]
+  labels?: AdminInsightLabels
   findings: AdminInsightFinding[]
   insufficient: { workflow_id: string; total_runs: number; required_runs: number }[]
   suppressed_count: number
@@ -285,6 +318,14 @@ export interface AdminDecisions {
   fallback_models: AdminFallbackRow[]
   verdict?: Record<string, unknown> | null
   langfuse?: AdminLangfuseLinks
+  /**
+   * The human verdict on this run, beside the machine's (plan 20 §2.2).
+   *
+   * Read through `readRunRating` rather than trusted as typed, because it is
+   * the one field on this response whose note has two spellings in flight -
+   * see `data/runRating.ts` for which and why.
+   */
+  rating?: RunRating | null
 }
 
 export interface AdminGateStats {
@@ -556,6 +597,7 @@ export interface AdminApiLike {
   billed(runId: string): Promise<AdminBilled | ProbeUnavailable>
   cancelRun(runId: string): Promise<void>
   unpublish(documentId: string): Promise<void>
+  rateRun(runId: string, rating: RunRatingValue | null, note?: string): Promise<RunRating>
 }
 
 export interface AdminRunFilters extends AdminWindow {
@@ -563,6 +605,8 @@ export interface AdminRunFilters extends AdminWindow {
   mode?: string
   user_id?: string
   workflow_id?: string
+  /** `good` / `bad` / `unsure` / `unrated`, and 422 for anything else (§2.2). */
+  rating?: AdminRatingFilter
   limit?: number
   cursor?: string
 }
@@ -630,5 +674,26 @@ export const adminApi: AdminApiLike = {
     await fetchJson(path(`/workflows/${encodeURIComponent(documentId)}/unpublish`), {
       method: 'POST',
     })
+  },
+
+  /**
+   * Rate anybody's run, through the admin door (§2.2).
+   *
+   * THE SECOND DOOR ONTO ONE WRITE, and the server logs the actor's e-mail
+   * beside the run it touched - the same shape as this console's other two
+   * levers. A rating an owner did not write has to be findable when the owner
+   * asks why it is there, not only by reading the column.
+   *
+   * `require_admin` answers **404, never 403**, so a caller who is not an
+   * admin reads "that run was not found" like any stranger. That is the
+   * surface staying invisible, not a lost message.
+   */
+  rateRun: async (runId, rating, note = '') => {
+    const body = await fetchJson<unknown>(path(`/runs/${encodeURIComponent(runId)}/rating`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, note: note || null }),
+    })
+    return readRunRating(body, runId)
   },
 }

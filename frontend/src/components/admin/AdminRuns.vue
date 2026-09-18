@@ -18,7 +18,14 @@ import AdminBar from './AdminBar.vue'
 import LangfuseLink from './LangfuseLink.vue'
 import MoneyFigure from './MoneyFigure.vue'
 import { count, duration, durationMs, humanise, personLabel, shortId, when } from './adminFormat'
-import type { AdminGateStats, AdminLinks, AdminRunsPage, AdminVerdicts } from '../../services/adminApi'
+import { runRatingWord } from '../../data/runRating'
+import type {
+  AdminGateStats,
+  AdminLinks,
+  AdminRatingFilter,
+  AdminRunsPage,
+  AdminVerdicts,
+} from '../../services/adminApi'
 
 const props = defineProps<{
   runs: AdminRunsPage | null
@@ -26,11 +33,34 @@ const props = defineProps<{
   verdicts: AdminVerdicts | null
   links: AdminLinks | null
   selectedRunId: string | null
+  /** What the list is filtered to. `''` is every run, rated or not. */
+  rating: AdminRatingFilter
   loading: boolean
   problem: string
 }>()
 
-const emit = defineEmits<{ openRun: [runId: string] }>()
+const emit = defineEmits<{ openRun: [runId: string]; selectRating: [rating: AdminRatingFilter] }>()
+
+/**
+ * The five things the filter may ask for (plan 20 §2.2).
+ *
+ * `unrated` is a real option rather than the absence of one, and it is the
+ * most useful of the five: "which of these has nobody looked at" is the
+ * question somebody opens this table to answer. The wire words are the
+ * server's; the words on screen are the ones a person would use.
+ */
+const RATING_FILTERS: ReadonlyArray<{ value: AdminRatingFilter; label: string }> = [
+  { value: '', label: 'All' },
+  { value: 'good', label: 'Good' },
+  { value: 'bad', label: 'Bad' },
+  { value: 'unsure', label: 'Not sure' },
+  { value: 'unrated', label: 'Not rated' },
+]
+
+/** The word a row's chip shows, or '' when nobody has said anything. */
+function ratingWord(value: string | null | undefined): string {
+  return runRatingWord(value)
+}
 
 const langfuseOn = computed(() => props.links?.langfuse.configured === true)
 
@@ -142,7 +172,27 @@ const slowestGate = computed(() => {
     <section class="admin-block" aria-labelledby="admin-runtable-title">
       <header class="admin-block-head">
         <h3 id="admin-runtable-title">Runs</h3>
-        <span class="panel-meta">newest first · cost is an estimate</span>
+        <div class="admin-runs-controls">
+          <span class="panel-meta">newest first · cost is an estimate</span>
+          <!--
+            The same labelled-select idiom the Insights workflow filter uses,
+            for the same reason: five options is one too many for a pressed
+            group, and the select already carries the 44px floor and the focus
+            ring this console holds every control to.
+          -->
+          <label class="admin-insights-filter">
+            <span>Rated</span>
+            <select
+              :value="rating"
+              data-testid="admin-runs-rating-filter"
+              @change="emit('selectRating', ($event.target as HTMLSelectElement).value as AdminRatingFilter)"
+            >
+              <option v-for="option in RATING_FILTERS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+        </div>
       </header>
       <div v-if="runs?.rows.length" class="admin-table-wrap">
         <table class="admin-table" data-testid="admin-runs-table">
@@ -157,6 +207,10 @@ const slowestGate = computed(() => {
               <th scope="col" class="is-number">Took</th>
               <th scope="col" class="is-number">Est.</th>
               <th scope="col">Verdict</th>
+              <!-- The machine's conclusion and a person's are separate columns
+                   on purpose: one is computed and one is judged, and a reader
+                   who has to work out which is which has been misled. -->
+              <th scope="col">Rated</th>
               <th scope="col">Trace</th>
             </tr>
           </thead>
@@ -186,6 +240,17 @@ const slowestGate = computed(() => {
               <td class="is-number">{{ durationMs(row.duration_ms) }}</td>
               <td class="is-number"><MoneyFigure :value="row.cost_usd" :tag="false" /></td>
               <td>{{ row.verdict ?? '—' }}</td>
+              <td>
+                <!-- Nothing at all when nobody has said anything. An empty
+                     cell reads as "not rated"; a chip saying so would be a
+                     second word for silence in every row of the table. -->
+                <span
+                  v-if="ratingWord(row.rating)"
+                  class="admin-pill"
+                  :class="`is-rating-${row.rating}`"
+                  :data-testid="`admin-run-rating-${row.run_id}`"
+                >{{ ratingWord(row.rating) }}</span>
+              </td>
               <td>
                 <LangfuseLink
                   :href="row.langfuse?.trace_url"

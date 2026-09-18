@@ -180,7 +180,7 @@ class CorsMiddlewareTests(unittest.TestCase):
         allowed_methods = response.headers["access-control-allow-methods"]
         self.assertEqual(
             [method.strip() for method in allowed_methods.split(",")],
-            ["GET", "POST", "OPTIONS"],
+            ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         )
         self.assertIn("Content-Type", response.headers["access-control-allow-headers"])
         # Vary: Origin, or a shared cache would serve one origin's answer to
@@ -195,11 +195,75 @@ class CorsMiddlewareTests(unittest.TestCase):
                 "/api/sessions/session-cors/runs",
                 headers={
                     "Origin": ALLOWED_ORIGIN,
-                    "Access-Control-Request-Method": "DELETE",
+                    "Access-Control-Request-Method": "PATCH",
                 },
             )
         self.assertEqual(response.status_code, 400)
         self.assertIn("method", response.text)
+
+    def test_a_put_and_a_delete_preflight_are_granted(self) -> None:
+        """The verbs the builder, the attachments and the run rating send.
+
+        This test asserted the OPPOSITE for DELETE until 2026-09-18: it was
+        written when no DELETE route existed and never revisited, so it pinned
+        a production defect in place - see `config.CORS_ALLOW_METHODS`.
+        """
+
+        for method in ("PUT", "DELETE"):
+            with self.subTest(method=method), cors_client([ALLOWED_ORIGIN]) as client:
+                response = client.options(
+                    "/api/runs/00000000-0000-0000-0000-000000000000/rating",
+                    headers={
+                        "Origin": ALLOWED_ORIGIN,
+                        "Access-Control-Request-Method": method,
+                        "Access-Control-Request-Headers": "authorization,content-type",
+                    },
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+
+
+@unittest.skipUnless(
+    FASTAPI_AVAILABLE,
+    "FastAPI is not installed; install the existing project service extra",
+)
+class EveryRouteMethodIsGrantedTests(unittest.TestCase):
+    """No route may declare a verb a browser on another origin cannot send.
+
+    The studio and this API are separate origins in production, and the list
+    of granted verbs is hand-maintained. It fell behind the routes once, for
+    sixteen days, and nothing local could notice: a Vite proxy makes every
+    local and E2E request same-origin. This walks the app's own route table,
+    so adding a PATCH route without granting PATCH fails here and not on the
+    deployed site.
+    """
+
+    def test_every_declared_method_is_in_the_cors_list(self) -> None:
+        from brief_crew import config as project_config
+        from brief_crew.service.app import create_app
+
+        # A store, or the builder, credential and admin routers are never
+        # mounted and the walk would see four verbs' worth of routes fewer.
+        app = create_app(
+            synthetic=True, database_url="sqlite+pysqlite:///:memory:"
+        )
+        # The OpenAPI schema and not `app.routes`: an included router is a
+        # nested object there, so a flat walk of `app.routes` sees only the
+        # routes `app.py` declares itself and misses every builder, credential
+        # and admin route - which is where every DELETE lives.
+        declared: dict[str, set[str]] = {}
+        for path, operations in app.openapi()["paths"].items():
+            for method in operations:
+                declared.setdefault(method.upper(), set()).add(path)
+        self.assertIn("PUT", declared, "the control: the app does declare PUT routes")
+        self.assertIn("DELETE", declared, "the control: and DELETE routes")
+        granted = set(project_config.CORS_ALLOW_METHODS)
+        missing = {m: sorted(paths)[:3] for m, paths in declared.items() if m not in granted}
+        self.assertEqual(
+            missing,
+            {},
+            "routes declare verbs CORS_ALLOW_METHODS does not grant, so a browser "
+            "on the studio origin can never send them: " + repr(missing),
+        )
 
     def test_simple_request_from_an_allowed_origin_carries_the_allow_header(
         self,

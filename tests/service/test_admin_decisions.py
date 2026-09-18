@@ -200,6 +200,11 @@ class NoJsonPathInAnySqlTests(unittest.TestCase):
         start, end = now - timedelta(days=30), now
         self.store.admin_status_counts(start=start, end=end)
         self.store.admin_run_window(start=start, end=end)
+        self.store.admin_run_window(
+            start=start, end=end, workflow_id="authored-workflow",
+            statuses=("completed", "failed", "cancelled"),
+        )
+        self.store.admin_runs_with_frames(["r-1"])
         for axis in ("user", "workflow", "model", "node"):
             self.store.admin_spend_by(axis, start=start, end=end)
         self.store.admin_run_costs(["r-1"])
@@ -216,6 +221,7 @@ class NoJsonPathInAnySqlTests(unittest.TestCase):
         self.store.admin_user_totals(utc_day="2026-09-08")
         self.store.admin_user_totals(user_ids=["user_alice", "__unowned__"], utc_day="2026-09-08")
         self.store.admin_gate_window(start=start, end=end)
+        self.store.admin_gate_window(run_ids=["r-1"])
         self.store.admin_frames_by_kind(["verdict"], start=start, end=end)
         self.store.admin_frames_by_kind(["guardrail", "error"], run_ids=["r-1"])
         self.store.admin_integrity_totals()

@@ -1659,6 +1659,13 @@ ADMIN_MAX_WINDOW_DAYS = 365
 #: something is wrong.
 ADMIN_MAX_SCAN_ROWS = 5000
 
+#: Evidence floors for deterministic admin governance insights.  These are
+#: constants rather than handler literals so the claim a finding makes and
+#: the tests which prove its sample floor cannot drift apart.
+GOVERNANCE_INSIGHTS_MIN_RUNS = 3
+GOVERNANCE_INSIGHTS_MIN_AFFECTED = 2
+GOVERNANCE_INSIGHTS_SAMPLE_RUNS = 3
+
 #: The ceiling on `?limit=` for the two paginated lists (default 50).
 ADMIN_PAGE_LIMIT_MAX = 200
 

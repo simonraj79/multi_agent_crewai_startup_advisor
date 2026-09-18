@@ -25,11 +25,12 @@
  * because it is an outbound call to Langfuse on the server's own thread.
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { Activity, Coins, Gauge, HeartPulse, Users } from 'lucide-vue-next'
+import { Activity, Coins, Gauge, HeartPulse, Lightbulb, Users } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
 import BrandLockup from '../components/BrandLockup.vue'
 import AdminDrawer from '../components/admin/AdminDrawer.vue'
 import AdminHealthPanel from '../components/admin/AdminHealth.vue'
+import AdminInsights from '../components/admin/AdminInsights.vue'
 import AdminMoney from '../components/admin/AdminMoney.vue'
 import AdminOverview from '../components/admin/AdminOverview.vue'
 import AdminPeople from '../components/admin/AdminPeople.vue'
@@ -40,6 +41,7 @@ import type {
   AdminDecisions,
   AdminGateStats,
   AdminHealth,
+  AdminInsights as AdminInsightsResponse,
   AdminLinks,
   AdminProviders,
   AdminRunRow,
@@ -88,13 +90,14 @@ const activeWindow = computed<AdminWindow | undefined>(() => {
 
 /* ── the tabs ─────────────────────────────────────────────────────────────── */
 
-type TabId = 'overview' | 'money' | 'people' | 'runs' | 'health'
+type TabId = 'overview' | 'money' | 'people' | 'runs' | 'insights' | 'health'
 
 const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'money', label: 'Money' },
   { id: 'people', label: 'People' },
   { id: 'runs', label: 'Runs & decisions' },
+  { id: 'insights', label: 'Insights' },
   { id: 'health', label: 'Health' },
 ]
 
@@ -111,6 +114,10 @@ const users = ref<AdminUsersPage | null>(null)
 const runs = ref<AdminRunsPage | null>(null)
 const gates = ref<AdminGateStats | null>(null)
 const verdicts = ref<AdminVerdicts | null>(null)
+const insights = ref<AdminInsightsResponse | null>(null)
+const insightWorkflow = ref('')
+const insightWorkflows = ref<Array<{ workflow_id: string; runs: number | null }>>([])
+let insightGeneration = 0
 
 const spendAxis = ref<AdminSpendAxis>('model')
 const userSort = ref<'spend' | 'recent' | 'joined'>('spend')
@@ -121,6 +128,7 @@ const busy = ref<Record<TabId, boolean>>({
   money: false,
   people: false,
   runs: false,
+  insights: false,
   health: false,
 })
 const problems = ref<Record<TabId, string>>({
@@ -128,6 +136,7 @@ const problems = ref<Record<TabId, string>>({
   money: '',
   people: '',
   runs: '',
+  insights: '',
   health: '',
 })
 
@@ -223,21 +232,53 @@ async function loadRuns(): Promise<void> {
   )
 }
 
+async function loadInsights(): Promise<void> {
+  const generation = ++insightGeneration
+  busy.value = { ...busy.value, insights: true }
+  problems.value = { ...problems.value, insights: '' }
+  try {
+    const answer = await adminApi.insights(activeWindow.value, insightWorkflow.value)
+    if (generation !== insightGeneration || tab.value !== 'insights') return
+    insights.value = answer
+    const options = new Map(insightWorkflows.value.map((row) => [row.workflow_id, row]))
+    for (const row of answer.workflows) options.set(row.workflow_id, row)
+    insightWorkflows.value = [...options.values()]
+  } catch (error) {
+    if (generation !== insightGeneration || tab.value !== 'insights') return
+    problems.value = { ...problems.value, insights: sentence(error, 'the governance insights could not be read.') }
+  } finally {
+    if (generation === insightGeneration) busy.value = { ...busy.value, insights: false }
+  }
+}
+
 /** Which tabs have asked for their data, so opening one twice is free. */
 const visited = ref(new Set<TabId>(['overview', 'health']))
 
 function openTab(id: TabId): void {
+  if (tab.value === 'insights' && id !== 'insights') {
+    const requestWasPending = busy.value.insights
+    insightGeneration += 1
+    busy.value = { ...busy.value, insights: false }
+    if (requestWasPending) insights.value = null
+  }
   tab.value = id
-  if (visited.value.has(id)) return
+  if (visited.value.has(id)) {
+    if (id === 'insights' && !insights.value && !busy.value.insights) void loadInsights()
+    return
+  }
   visited.value = new Set([...visited.value, id])
   if (id === 'money') void loadMoney()
   if (id === 'people') void loadPeople()
   if (id === 'runs') void loadRuns()
+  if (id === 'insights') void loadInsights()
 }
 
 /** A new window invalidates every answer on the screen, not only the visible
  *  one - two panels reading different fortnights is the failure this avoids. */
 watch(activeWindow, () => {
+  insightWorkflows.value = insightWorkflow.value
+    ? [{ workflow_id: insightWorkflow.value, runs: null }]
+    : []
   visited.value = new Set<TabId>(['overview', 'health'])
   void loadOverview()
   void loadHealth()
@@ -253,10 +294,17 @@ watch(activeWindow, () => {
     visited.value = new Set([...visited.value, 'runs'])
     void loadRuns()
   }
+  if (tab.value === 'insights') {
+    visited.value = new Set([...visited.value, 'insights'])
+    void loadInsights()
+  }
 })
 
 watch(spendAxis, () => void loadMoney())
 watch(userSort, () => void loadPeople())
+watch(insightWorkflow, () => {
+  if (tab.value === 'insights') void loadInsights()
+})
 
 /* ── the drawer ───────────────────────────────────────────────────────────── */
 
@@ -265,8 +313,10 @@ const drawerDecisions = ref<AdminDecisions | null>(null)
 const drawerPerson = ref<AdminUserDetail | null>(null)
 const drawerBusy = ref(false)
 const drawerProblem = ref('')
+let drawerGeneration = 0
 
 function closeDrawer(): void {
+  drawerGeneration += 1
   drawerRun.value = null
   drawerDecisions.value = null
   drawerPerson.value = null
@@ -280,34 +330,59 @@ function closeDrawer(): void {
  */
 async function openRun(runId: string): Promise<void> {
   closeDrawer()
+  const generation = drawerGeneration
   drawerBusy.value = true
   const known = runs.value?.rows.find((row) => row.run_id === runId) ?? null
   drawerRun.value = known
   try {
     if (!known) {
       const page = await adminApi.runs({ ...activeWindow.value, limit: 1, user_id: undefined })
-      drawerRun.value =
-        page.rows.find((row) => row.run_id === runId) ??
+      if (generation !== drawerGeneration) return
+      drawerRun.value = page.rows.find((row) => row.run_id === runId) ??
         ({ run_id: runId, user_id: null, email: null, workflow_id: '', status: 'unknown',
-            created_at: '', cost_usd: 0 } as AdminRunRow)
+          created_at: '', cost_usd: 0 } as AdminRunRow)
     }
-    drawerDecisions.value = await adminApi.decisions(runId)
+    const answer = await adminApi.decisions(runId)
+    if (generation !== drawerGeneration) return
+    drawerDecisions.value = answer
   } catch (error) {
+    if (generation !== drawerGeneration) return
     drawerProblem.value = sentence(error, 'this run could not be read.')
   } finally {
-    drawerBusy.value = false
+    if (generation === drawerGeneration) drawerBusy.value = false
+  }
+}
+
+async function openInsightRun(run: AdminRunRow): Promise<void> {
+  closeDrawer()
+  const generation = drawerGeneration
+  drawerRun.value = run
+  drawerBusy.value = true
+  try {
+    const answer = await adminApi.decisions(run.run_id)
+    if (generation !== drawerGeneration) return
+    drawerDecisions.value = answer
+  } catch (error) {
+    if (generation !== drawerGeneration) return
+    drawerProblem.value = sentence(error, 'this run could not be read.')
+  } finally {
+    if (generation === drawerGeneration) drawerBusy.value = false
   }
 }
 
 async function openPerson(userId: string): Promise<void> {
   closeDrawer()
+  const generation = drawerGeneration
   drawerBusy.value = true
   try {
-    drawerPerson.value = await adminApi.user(userId)
+    const answer = await adminApi.user(userId)
+    if (generation !== drawerGeneration) return
+    drawerPerson.value = answer
   } catch (error) {
+    if (generation !== drawerGeneration) return
     drawerProblem.value = sentence(error, 'this account could not be read.')
   } finally {
-    drawerBusy.value = false
+    if (generation === drawerGeneration) drawerBusy.value = false
   }
 }
 
@@ -380,6 +455,7 @@ onMounted(() => {
             <Coins v-else-if="entry.id === 'money'" :size="13" aria-hidden="true" />
             <Users v-else-if="entry.id === 'people'" :size="13" aria-hidden="true" />
             <Activity v-else-if="entry.id === 'runs'" :size="13" aria-hidden="true" />
+            <Lightbulb v-else-if="entry.id === 'insights'" :size="13" aria-hidden="true" />
             <HeartPulse v-else :size="13" aria-hidden="true" />
             {{ entry.label }}
           </button>
@@ -454,6 +530,17 @@ onMounted(() => {
               :loading="busy.runs"
               :problem="problems.runs"
               @open-run="openRun"
+            />
+            <AdminInsights
+              v-else-if="entry.id === 'insights'"
+              :insights="insights"
+              :workflows="insightWorkflows"
+              :workflow-id="insightWorkflow"
+              :loading="busy.insights"
+              :problem="problems.insights"
+              @refresh="loadInsights"
+              @select-workflow="insightWorkflow = $event"
+              @open-run="openInsightRun"
             />
             <AdminHealthPanel
               v-else

@@ -208,6 +208,51 @@ export interface AdminRunsPage {
   next: string | null
 }
 
+export interface AdminInsightSample {
+  run_id: string
+  user_id: string | null
+  cost_usd: number
+  status: string
+  created_at: string
+  seq: number | null
+  gate_id: string | null
+  langfuse: AdminLangfuseLinks
+}
+
+export interface AdminInsightFinding {
+  rule_id: string
+  severity: string
+  workflow_id: string
+  node_id: string
+  gate_id: string | null
+  title: string
+  explanation: string
+  suggestion: string
+  affected_runs: number
+  total_runs: number
+  rate: number
+  samples: AdminInsightSample[]
+}
+
+export interface AdminInsights {
+  workflows: { workflow_id: string; runs: number }[]
+  findings: AdminInsightFinding[]
+  insufficient: { workflow_id: string; total_runs: number; required_runs: number }[]
+  suppressed_count: number
+  thresholds: { min_runs: number; min_affected_runs: number }
+  coverage: {
+    runs_scanned: number
+    frames_scanned: number
+    gates_scanned: number
+    runs_missing_frames: number
+    runs_with_integrity_loss: number
+    retention_days: number
+    truncated: boolean
+    incomplete: boolean
+    warnings: string[]
+  }
+}
+
 export interface AdminGateRow {
   gate_id: string
   node_id?: string | null
@@ -501,6 +546,7 @@ export interface AdminApiLike {
   users(sort?: 'spend' | 'recent' | 'joined', limit?: number, cursor?: string): Promise<AdminUsersPage>
   user(userId: string): Promise<AdminUserDetail>
   runs(filters?: AdminRunFilters): Promise<AdminRunsPage>
+  insights(window?: AdminWindow, workflowId?: string): Promise<AdminInsights>
   decisions(runId: string): Promise<AdminDecisions>
   gates(window?: AdminWindow): Promise<AdminGateStats>
   verdicts(window?: AdminWindow): Promise<AdminVerdicts>
@@ -548,6 +594,11 @@ export const adminApi: AdminApiLike = {
     if (cursor) extra.cursor = cursor
     return fetchJson<AdminRunsPage>(path(`/runs${windowQuery({ from, to }, extra)}`))
   },
+
+  insights: (window, workflowId = '') =>
+    fetchJson<AdminInsights>(
+      path(`/insights${windowQuery(window, { workflow_id: workflowId })}`),
+    ),
 
   decisions: (runId) =>
     fetchJson<AdminDecisions>(path(`/runs/${encodeURIComponent(runId)}/decisions`)),

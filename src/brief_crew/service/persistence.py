@@ -1850,6 +1850,8 @@ class PostgresFlowPersistence(FlowPersistence):
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = 5000,
+        workflow_id: str | None = None,
+        statuses: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], bool]:
         """One row per run in the window, with its estimated cost joined on.
 
@@ -1886,6 +1888,9 @@ class PostgresFlowPersistence(FlowPersistence):
                 runs.c.workflow_id,
                 runs.c.status,
                 runs.c.error,
+                runs.c.captured_frames,
+                runs.c.dropped_frames,
+                runs.c.frame_gaps,
                 runs.c.created_at,
                 runs.c.completed_at,
                 func.coalesce(costs.c.cost_usd, 0).label("cost_usd"),
@@ -1893,7 +1898,12 @@ class PostgresFlowPersistence(FlowPersistence):
             runs.c.created_at,
             start,
             end,
-        ).order_by(runs.c.created_at.desc(), runs.c.id.desc()).limit(limit)
+        )
+        if workflow_id is not None:
+            statement = statement.where(runs.c.workflow_id == workflow_id)
+        if statuses:
+            statement = statement.where(runs.c.status.in_(tuple(statuses)))
+        statement = statement.order_by(runs.c.created_at.desc(), runs.c.id.desc()).limit(limit)
         with self._connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return (
@@ -1904,6 +1914,9 @@ class PostgresFlowPersistence(FlowPersistence):
                     "workflow_id": row["workflow_id"],
                     "status": row["status"],
                     "error": row["error"],
+                    "captured_frames": int(row["captured_frames"] or 0),
+                    "dropped_frames": int(row["dropped_frames"] or 0),
+                    "frame_gaps": int(row["frame_gaps"] or 0),
                     "created_at": _as_utc(row["created_at"]),
                     "completed_at": _as_utc(row["completed_at"]),
                     "cost_usd": Decimal(str(row["cost_usd"] or 0)),
@@ -2283,6 +2296,7 @@ class PostgresFlowPersistence(FlowPersistence):
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = 5000,
+        run_ids: Sequence[str] | None = None,
     ) -> tuple[list[dict[str, Any]], bool]:
         """Every gate whose RUN started in the window, with its reply intact.
 
@@ -2311,7 +2325,13 @@ class PostgresFlowPersistence(FlowPersistence):
             runs.c.created_at,
             start,
             end,
-        ).order_by(run_gates.c.opened_at.desc()).limit(limit)
+        )
+        if run_ids is not None:
+            wanted = tuple(dict.fromkeys(run_ids))
+            if not wanted:
+                return [], False
+            statement = statement.where(run_gates.c.run_id.in_(wanted))
+        statement = statement.order_by(run_gates.c.opened_at.desc()).limit(limit)
         with self._connect() as connection:
             rows = connection.execute(statement).mappings().all()
         return (
@@ -2401,6 +2421,18 @@ class PostgresFlowPersistence(FlowPersistence):
             ],
             len(rows) == limit,
         )
+
+    def admin_runs_with_frames(self, run_ids: Sequence[str]) -> set[str]:
+        """Which sampled runs have any persisted frame, independent of detail scan caps."""
+
+        wanted = tuple(dict.fromkeys(_identifier(item, label="run_id") for item in run_ids))
+        if not wanted:
+            return set()
+        statement = select(run_frames.c.run_id).where(
+            run_frames.c.run_id.in_(wanted)
+        ).group_by(run_frames.c.run_id)
+        with self._connect() as connection:
+            return {str(row[0]) for row in connection.execute(statement).all()}
 
     def admin_gates_for_user(self, user_id: str) -> list[dict[str, Any]]:
         """Every gate on one account's runs - the gate stats of `/users/{id}`.

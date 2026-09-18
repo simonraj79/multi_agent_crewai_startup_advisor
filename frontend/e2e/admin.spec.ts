@@ -154,7 +154,7 @@ test.describe('the admin console', () => {
     }
   })
 
-  test('draws five panels with real numbers, and nothing on the console', async ({
+  test('draws six panels with real numbers, and nothing on the console', async ({
     page,
     request,
   }) => {
@@ -182,17 +182,18 @@ test.describe('the admin console', () => {
     await entry.click()
     await expect(page).toHaveURL(/#\/admin$/)
 
-    // Five tabs, five panels, one showing.
+    // Six tabs, six panels, one showing.
     const tabs = page.locator('[role="tab"]')
-    await expect(tabs).toHaveCount(5)
+    await expect(tabs).toHaveCount(6)
     await expect(tabs).toHaveText([
       'Overview',
       'Money',
       'People',
       'Runs & decisions',
+      'Insights',
       'Health',
     ])
-    await expect(page.locator('[role="tabpanel"]')).toHaveCount(5)
+    await expect(page.locator('[role="tabpanel"]')).toHaveCount(6)
 
     // Every panel renders, and each carries a figure the SERVER produced. The
     // synthetic backend starts empty, so the honest assertion is that each

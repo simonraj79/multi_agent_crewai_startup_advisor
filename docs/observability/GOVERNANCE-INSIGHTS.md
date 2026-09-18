@@ -16,9 +16,19 @@ pattern worth investigating. Local documents described a larger improvement
 programme, but that programme was not implemented on the audited main branch.
 
 Governance Insights addresses that gap with one deterministic, read-only panel.
-It adds no model judge, new telemetry content, schema, review labels or automatic
-prompt changes. Future experiments can use the cited runs as examples; this
-feature itself does not perform training or claim continual learning.
+It adds no model judge, new telemetry content, schema or automatic prompt
+changes. Future experiments can use the cited runs as examples; this feature
+itself does not perform training or claim continual learning.
+
+**Amended 2026-09-18 by plan 20 (run labels).** This list said "no review
+labels" until a human label existed. It does now: a finished run's owner or an
+admin answers *was this run good* with `good` / `bad` / `unsure`, stored in
+four additive nullable columns on `runs`
+([`RUN-LABELS.md`](RUN-LABELS.md) is the binding description, and it owns the
+columns, the routes and the Langfuse mirror). This panel **reads** that column
+and adds nothing of its own: a labels summary and one more deterministic rule,
+both described below. It still performs no model call, captures no new
+telemetry content and changes no prompt, and it never reads the rater's note.
 
 ## Data and access
 
@@ -37,11 +47,35 @@ gate free text is returned by this endpoint.
 | Guardrail retries | Recorded guardrail retry evidence at a node | Check expected output and the guardrail's requirements |
 | Fallback attempts | A `node_state` retry with a fallback model, or an error from a fallback attempt | Inspect the original attempt and provider/model reliability |
 | Human revisions | Answered gate with an explicit revision outcome | Inspect what reviewers repeatedly needed changed |
+| Runs a person rated bad (`rated_bad`, plan 20) | The stored `runs.rating` word, and nothing else from the rating | Open the supporting runs and look at what they produced before choosing a change |
 
 Findings group by workflow and, where present, node/gate. Each run counts once
 per finding even if the signal appears repeatedly. At least three sampled
 terminal runs in the workflow and two affected runs are required. These are
 triage floors, not statistical significance tests. Thresholds live in `config.py`.
+
+`rated_bad` is the only rule whose evidence is a person rather than a frame,
+and it is reported as such. It files under the literal `node_id` `"(run)"`,
+because a rating is about the whole run and inventing a node id would point the
+console at a card nobody edited; `gate_id` is null; its severity is `high`,
+which ranks between `critical` and `warning`. Its explanation ends with a
+clause the other four do not carry, stating that this is a person's own
+judgement typed in the console and not something the system worked out. A run
+rated `bad` is still counted by all four of the other rules: a run somebody
+disliked that also retried a guardrail is two facts, not one. The rating note
+is free text and is never selected, joined on or returned here.
+
+### Labels
+
+The response carries `labels: {good, bad, unsure, unrated}`, counted over the
+**same** rows every rule above is counted over, so the summary and the findings
+can never describe different windows. `unrated` is a real count rather than a
+remainder the client works out, because early on it is nearly everything.
+
+Like every numerator here, these are bounded by the scan. When the scan was
+truncated or incomplete the panel says "at least" and "of the runs scanned",
+in the same words it already uses for finding rates. They are not prevalence
+estimates over the window and must not be compared across workflows.
 
 The denominator is all scanned completed, failed or cancelled runs for the
 workflow. It is not the number of visits to the node: branches can skip nodes,

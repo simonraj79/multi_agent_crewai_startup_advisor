@@ -105,10 +105,24 @@ function percent(rate: number): string {
         that says how much of this is still unanswered.
       -->
       <p v-if="insights.labels" class="admin-insights-note" data-testid="admin-insights-labels">
-        People rated {{ count(insights.labels.good) }} runs good,
-        {{ count(insights.labels.bad) }} bad,
-        {{ count(insights.labels.unsure) }} not sure.
-        {{ count(insights.labels.unrated) }} not rated yet.
+        <!--
+          A LOWER BOUND WHEN THE SCAN WAS ONE, in the words this panel already
+          uses for its finding rates. The counts are over the runs that were
+          scanned, so under a truncated or incomplete scan "People rated 9 runs
+          good" is a claim about the whole window that nobody measured.
+        -->
+        <template v-if="insights.coverage.truncated || insights.coverage.incomplete">
+          Of the runs scanned, people rated at least {{ count(insights.labels.good) }} good,
+          {{ count(insights.labels.bad) }} bad,
+          {{ count(insights.labels.unsure) }} not sure.
+          At least {{ count(insights.labels.unrated) }} of them are not rated yet.
+        </template>
+        <template v-else>
+          People rated {{ count(insights.labels.good) }} runs good,
+          {{ count(insights.labels.bad) }} bad,
+          {{ count(insights.labels.unsure) }} not sure.
+          {{ count(insights.labels.unrated) }} not rated yet.
+        </template>
       </p>
 
       <div class="admin-insights-coverage" data-testid="admin-insights-coverage">

@@ -140,6 +140,31 @@ export function runStatusDisplay(status: string | null | undefined): RunStatusDi
 }
 
 /**
+ * Whether a run is over, whichever union its status came from.
+ *
+ * DERIVED FROM THE TABLE ABOVE, never a fourth list. There were already three
+ * on this client and no two agreed: `useRunChoreography.TERMINAL` and
+ * `useValidatorRun.TERMINAL_STATUSES` are both
+ * `['completed', 'cancelled', 'error']` over `RunStatus`, and `AdminDrawer`
+ * carried `['completed', 'failed', 'error', 'cancelled']`. None of them covers
+ * both spellings, and the one that matters here is the one they all miss: a
+ * HISTORY row carries `BackendRunStatus`, so it says `failed`, and a rating
+ * control gated on the first list would be hidden on every failed run - which
+ * is the run somebody most wants to say `Bad` about.
+ *
+ * The tone already encodes the answer, so this asks it rather than restating
+ * it: `done`, `failed` and `stopped` are over; `idle`, `active` and
+ * `attention` are not. An UNKNOWN status falls to `idle` and is therefore not
+ * terminal, which is the safe direction - the server answers 409 for a run
+ * that has not finished, and offering a control that cannot work is worse than
+ * withholding one that could.
+ */
+export function isTerminalRunStatus(status: string | null | undefined): boolean {
+  const tone = runStatusDisplay(status).tone
+  return tone === 'done' || tone === 'failed' || tone === 'stopped'
+}
+
+/**
  * What the console says about its CONNECTION, in one place for the two
  * surfaces that say it.
  *

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminView from '../src/views/AdminView.vue'
 import AdminDrawer from '../src/components/admin/AdminDrawer.vue'
 import AdminRuns from '../src/components/admin/AdminRuns.vue'
+import { personLabel } from '../src/components/admin/adminFormat'
 import { resetAdminGate } from '../src/services/adminApi'
 import type { AdminRunRow } from '../src/services/adminApi'
 import fixture from './fixtures/adminApi.json'
@@ -428,9 +429,25 @@ describe('the drawer says what is fragile about what it shows', () => {
     // the two spellings would drop the sentence somebody typed and say nothing.
     const current = drawer.get('[data-testid="admin-rating-current"]').text()
     expect(current).toContain('Good')
-    expect(current).toContain('user_owner')
+    // D9: the console's own `personLabel`, so a long account id is elided the
+    // way it is in every other cell rather than printed raw in this one.
+    expect(current).toContain(personLabel('user_owner', null))
     expect(current).toContain('the segment was right and every claim was cited')
     expect(drawer.get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('true')
+    // A raw account id is what this used to print. `personLabel` elides one
+    // that does not fit, so the long form must NOT appear whole.
+    const long = mount(AdminDrawer, {
+      props: {
+        run: RUN, person: null, links: null, loading: false, problem: '',
+        decisions: { gates: [], guardrails: [], fallback_models: [],
+          rating: { run_id: RUN.run_id, rating: 'bad', rating_note: null,
+            rated_by: 'user_a_very_long_account_identifier', rated_at: null } },
+      },
+    })
+    const line = long.get('[data-testid="admin-rating-current"]').text()
+    expect(line).not.toContain('user_a_very_long_account_identifier')
+    expect(line).toContain(personLabel('user_a_very_long_account_identifier', null))
+    long.unmount()
 
     await drawer.get('[data-testid="rating-bad"]').trigger('click')
     await settle()
@@ -453,10 +470,14 @@ describe('the drawer says what is fragile about what it shows', () => {
     await settle()
     await wrapper.get('[data-testid="admin-tab-insights"]').trigger('click')
     await settle()
+    // The fixture's own coverage is bounded, so the strip states a LOWER BOUND
+    // in the same words this panel already uses for its finding rates (D10) -
+    // "People rated 9 runs good" would be a claim about the whole window that
+    // nobody measured.
     const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
-    expect(strip).toContain('People rated 9 runs good')
+    expect(strip).toContain('at least 9 good')
     expect(strip).toContain('4 bad')
-    expect(strip).toContain('10 not rated yet')
+    expect(strip).toContain('At least 10 of them are not rated yet')
     const findings = wrapper.get('[data-testid="admin-insight-findings"]').text()
     expect(findings).toContain('Scope: whole workflow')
     expect(findings).not.toContain('Node (run)')

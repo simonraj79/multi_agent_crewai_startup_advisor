@@ -39,6 +39,7 @@ import { computed, ref, watch } from 'vue'
 import { CircleHelp, Eraser, LoaderCircle, MessageSquare, ThumbsDown, ThumbsUp } from 'lucide-vue-next'
 import { MAX_RATING_NOTE_CHARS, RATING_NOTE_WARN_AT } from '../data/serverLimits'
 import { RUN_RATING_CHOICES } from '../data/runRating'
+import { isTerminalRunStatus } from '../data/runStatusDisplay'
 import { studioApi } from '../services/studioApi'
 import { adminApi } from '../services/adminApi'
 import type { RunRating, RunRatingValue } from '../types/studio'
@@ -58,9 +59,19 @@ const props = withDefaults(
     compact?: boolean
     /** Write through the admin door instead of the owner's one (§2.2). */
     admin?: boolean
+    /**
+     * The run's own status, so a run still going is not offered a verdict.
+     *
+     * The server answers **409** while a run has not finished, and a control
+     * that could only ever earn a refusal is worse than no control: it invites
+     * somebody to type a sentence the server will not keep. Absent means the
+     * caller does not know, and the control stays usable - withholding it on a
+     * missing prop would hide it everywhere nobody thought to pass one.
+     */
+    status?: string
     api?: RatingApiLike
   }>(),
-  { rating: null, note: '', compact: false, admin: false, api: undefined },
+  { rating: null, note: '', compact: false, admin: false, status: '', api: undefined },
 )
 
 const emit = defineEmits<{ saved: [RunRating] }>()
@@ -98,6 +109,27 @@ const noteDirty = computed(() => draftNote.value !== savedNote.value)
 const noteId = computed(() => `rating-note-${props.runId || 'none'}`)
 
 /**
+ * Whether this run can be rated at all.
+ *
+ * `status` absent means the caller did not say, and the control stays open -
+ * the server is the authority either way, and its 409 lands in the status line
+ * like any other refusal.
+ */
+const rateable = computed(() => Boolean(props.runId) && (!props.status || isTerminalRunStatus(props.status)))
+
+/**
+ * THE NOTE IS LOCKED UNTIL A CHOICE EXISTS, and this is a data-loss fix rather
+ * than a nicety.
+ *
+ * `Save note` sent `apply(current)` with `current === null`, and `null` is the
+ * CLEAR: the server nulls the rating, the note, the actor and the timestamp,
+ * answers 200, and the control said "Saved." over a sentence that had just
+ * been destroyed. A note is a reason for a verdict, so there is nothing for it
+ * to be a reason for until the verdict exists.
+ */
+const canNote = computed(() => rateable.value && current.value !== null)
+
+/**
  * Save, optimistically, and put it back if the server disagrees.
  *
  * The previous value is captured BEFORE anything paints, so the restore is the
@@ -106,20 +138,29 @@ const noteId = computed(() => `rating-note-${props.runId || 'none'}`)
  * control somebody uses once and walks away from.
  */
 async function apply(next: RunRatingValue | null, note = draftNote.value): Promise<void> {
-  if (!props.runId || busy.value) return
+  // The in-flight guard is a FLAG and not a `disabled` attribute, because the
+  // button that fires this is the one with focus: disabling it mid-save moves
+  // the browser's focus to `<body>` and a keyboard reader is dropped out of
+  // the control they were using. `aria-busy` says the same thing to a screen
+  // reader without taking the element out of the tab order.
+  if (!rateable.value || busy.value) return
   const previousRating = current.value
   const previousNote = savedNote.value
+  // A CLEAR CARRIES NO NOTE. `rating: null` nulls the note server-side anyway,
+  // so sending one would be asking for it to be thrown away - and a draft left
+  // in the box after a clear is a draft somebody can still choose to save.
+  const outgoing = next === null ? '' : note
   current.value = next
   busy.value = true
   problem.value = ''
   saved.value = false
   try {
-    const answer = await transport.value.rateRun(props.runId, next, note)
+    const answer = await transport.value.rateRun(props.runId, next, outgoing)
     current.value = answer.rating ?? null
     savedNote.value = answer.note ?? ''
     // Only overwrite the box when the person is not mid-edit, for the reason
     // the watcher above gives.
-    if (!noteDirty.value || note === draftNote.value) draftNote.value = savedNote.value
+    if (!noteDirty.value || outgoing === draftNote.value) draftNote.value = savedNote.value
     saved.value = true
     emit('saved', answer)
   } catch (error) {
@@ -165,10 +206,12 @@ function choose(value: RunRatingValue): void {
           :key="choice.value"
           type="button"
           class="rating-choice"
-          :class="[`is-${choice.value}`, { 'is-chosen': current === choice.value }]"
+          :class="[`is-${choice.value}`, { 'is-chosen': current === choice.value, 'is-busy': busy }]"
           :aria-pressed="current === choice.value"
-          :disabled="busy || !runId"
-          :title="choice.hint"
+          :aria-busy="busy"
+          :aria-disabled="busy || undefined"
+          :disabled="!rateable"
+          :title="rateable ? choice.hint : 'You can rate this run when it has finished'"
           :data-testid="`rating-${choice.value}`"
           @click="choose(choice.value)"
         >
@@ -196,7 +239,9 @@ function choose(value: RunRatingValue): void {
         v-if="current"
         type="button"
         class="rating-clear"
-        :disabled="busy"
+        :aria-busy="busy"
+        :aria-disabled="busy || undefined"
+        :disabled="!rateable"
         data-testid="rating-clear"
         @click="apply(null)"
       >
@@ -215,10 +260,19 @@ function choose(value: RunRatingValue): void {
         class="rating-note"
         rows="2"
         :maxlength="MAX_RATING_NOTE_CHARS"
-        :disabled="busy || !runId"
+        :disabled="!canNote"
+        :aria-describedby="canNote ? undefined : `${noteId}-locked`"
         data-testid="rating-note"
         placeholder="What was right or wrong about this answer?"
       />
+      <p
+        v-if="!canNote"
+        :id="`${noteId}-locked`"
+        class="rating-hint"
+        data-testid="rating-note-locked"
+      >
+        {{ rateable ? 'Choose Good, Bad or Not sure first.' : 'You can rate this run when it has finished.' }}
+      </p>
       <div class="rating-note-foot">
         <!--
           The ceiling is STATED, not merely enforced: past it `maxlength` starts
@@ -235,7 +289,8 @@ function choose(value: RunRatingValue): void {
         <button
           type="button"
           class="rating-save"
-          :disabled="busy || !noteDirty || !runId"
+          :aria-busy="busy"
+          :disabled="busy || !noteDirty || !canNote"
           data-testid="rating-note-save"
           @click="apply(current)"
         >
@@ -249,6 +304,9 @@ function choose(value: RunRatingValue): void {
     </p>
     <p v-else-if="saved" class="rating-saved" role="status" data-testid="rating-saved">
       Saved.
+    </p>
+    <p v-else-if="!rateable" class="rating-hint" data-testid="rating-hint">
+      You can rate this run when it has finished.
     </p>
     <p v-else-if="!compact && !current" class="rating-hint" data-testid="rating-hint">
       Not rated yet.
@@ -312,9 +370,18 @@ function choose(value: RunRatingValue): void {
 .rating-clear:hover:not(:disabled),
 .rating-save:hover:not(:disabled) { color: var(--text-body); border-color: var(--border-hover); }
 
+/* `is-busy` paints what `:disabled` used to, WITHOUT taking the element out of
+   the tab order - the pressed button keeps focus through its own save. */
 .rating-choice:disabled,
 .rating-clear:disabled,
-.rating-save:disabled { opacity: 0.45; cursor: default; }
+.rating-save:disabled,
+.rating-note:disabled,
+.rating-choice.is-busy { opacity: 0.45; }
+
+.rating-choice:disabled,
+.rating-clear:disabled,
+.rating-save:disabled { cursor: default; }
+.rating-choice.is-busy { cursor: progress; }
 
 .rating-choice:focus-visible,
 .rating-note-toggle:focus-visible,

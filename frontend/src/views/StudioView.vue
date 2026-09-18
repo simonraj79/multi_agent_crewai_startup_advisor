@@ -804,6 +804,7 @@ function backToValidator(): void {
           :workflow-name="identity.authored ? workflowName : undefined"
           :run-id="runId"
           :can-rate="authenticated"
+          :run-status="status"
           @close="reportOpen = false"
         />
 

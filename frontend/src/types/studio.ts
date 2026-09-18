@@ -448,3 +448,22 @@ export interface RunRating {
   rated_by?: string | null
   rated_at: string | null
 }
+
+/**
+ * The same object AS IT ARRIVES, with the note under either spelling.
+ *
+ * Typed rather than narrowed to `unknown`, because the ambiguity is a fact
+ * about this wire and not a gap in anybody's knowledge: §2.2 names the field
+ * `note`, `service/rating_api.py` answers `rating_note`, and both are live
+ * while the two halves of plan 20 land. Everything downstream takes `RunRating`
+ * and gets there through `readRunRating`, so this shape appears exactly at the
+ * boundary and nowhere else.
+ */
+export interface RunRatingWire {
+  run_id?: string
+  rating?: string | null
+  note?: string | null
+  rating_note?: string | null
+  rated_by?: string | null
+  rated_at?: string | null
+}

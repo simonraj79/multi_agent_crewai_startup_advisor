@@ -5,7 +5,7 @@ import type { RatingApiLike } from '../src/components/RatingControl.vue'
 import ReportPanel from '../src/components/ReportPanel.vue'
 import RunHistory from '../src/components/RunHistory.vue'
 import { MAX_RATING_NOTE_CHARS } from '../src/data/serverLimits'
-import { readRunRating } from '../src/data/runRating'
+import { ratingToSend, readRunRating } from '../src/data/runRating'
 import { adminApi, resetAdminGate } from '../src/services/adminApi'
 import { studioApi } from '../src/services/studioApi'
 import type { RunHistoryEntry, RunRating, RunRatingValue, RunResult } from '../src/types/studio'
@@ -45,10 +45,20 @@ class FakeRatingApi implements RatingApiLike {
   answer: RunRating = { ...STORED }
   fail: Error | null = null
 
+  /** Set to hold every call open, so a spec can assert what "mid-save" looks
+   *  like. Released by `release()`. */
+  hold: Array<() => void> = []
+  defer = false
+
   async rateRun(runId: string, rating: RunRatingValue | null, note = ''): Promise<RunRating> {
     this.calls.push({ runId, rating, note })
+    if (this.defer) await new Promise<void>((resolve) => this.hold.push(resolve))
     if (this.fail) throw this.fail
     return { ...this.answer, rating, note: note || null }
+  }
+
+  release(): void {
+    for (const resolve of this.hold.splice(0)) resolve()
   }
 }
 
@@ -99,7 +109,8 @@ describe('three answers, a note, and a counter that states the ceiling', () => {
   })
 
   it('bounds the note at the server own ceiling and says so', async () => {
-    const { wrapper } = mountControl()
+    // Rated, because the box is locked until a choice exists (D3).
+    const { wrapper } = mountControl({ rating: 'good' })
     const note = wrapper.get('[data-testid="rating-note"]')
     expect(note.attributes('maxlength')).toBe(String(MAX_RATING_NOTE_CHARS))
     expect(wrapper.get('[data-testid="rating-note-count"]').text()).toBe(
@@ -124,13 +135,18 @@ describe('three answers, a note, and a counter that states the ceiling', () => {
 describe('optimistic, then reconciled', () => {
   it('paints the press immediately and sends the run id, the value and the note', async () => {
     const { wrapper, api } = mountControl()
-    await wrapper.get('[data-testid="rating-note"]').setValue('the segment was right')
+    // The choice comes first: the note is locked until there is a verdict for
+    // it to be the reason for (D3).
     await wrapper.get('[data-testid="rating-good"]').trigger('click')
     await settle()
-
-    expect(api.calls).toEqual([{ runId: RUN_ID, rating: 'good', note: 'the segment was right' }])
+    expect(api.calls).toEqual([{ runId: RUN_ID, rating: 'good', note: '' }])
     expect(wrapper.get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('true')
     expect(wrapper.get('[data-testid="rating-saved"]').text()).toBe('Saved.')
+
+    await wrapper.get('[data-testid="rating-note"]').setValue('the segment was right')
+    await wrapper.get('[data-testid="rating-note-save"]').trigger('click')
+    await settle()
+    expect(api.calls[1]).toEqual({ runId: RUN_ID, rating: 'good', note: 'the segment was right' })
     wrapper.unmount()
   })
 
@@ -179,6 +195,126 @@ describe('optimistic, then reconciled', () => {
     await wrapper.get('[data-testid="rating-unsure"]').trigger('click')
     await settle()
     expect(api.calls[0].rating).toBeNull()
+    wrapper.unmount()
+  })
+})
+
+/* ── refine round 1: the four defects the verifier found ─────────────────── */
+
+describe('a note cannot be typed into a clear (D3)', () => {
+  it('locks the note and its Save until a choice exists, and says why', async () => {
+    const { wrapper } = mountControl()
+    expect(wrapper.get('[data-testid="rating-note"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="rating-note-save"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="rating-note-locked"]').text()).toBe(
+      'Choose Good, Bad or Not sure first.',
+    )
+    // And it unlocks the moment there is a verdict for the note to explain.
+    await wrapper.setProps({ rating: 'bad' })
+    expect(wrapper.get('[data-testid="rating-note"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('[data-testid="rating-note-locked"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  /*
+   * THE DATA LOSS ITSELF. `Save note` used to send `apply(current)` with
+   * `current === null`, which the server reads as a CLEAR: it nulls the
+   * rating, the note, the actor and the timestamp, answers 200, and the
+   * control said "Saved." over the sentence it had just destroyed.
+   */
+  it('never sends a note alongside a null rating', async () => {
+    const { wrapper, api } = mountControl({ rating: 'good' })
+    await wrapper.get('[data-testid="rating-note"]').setValue('the segment was right')
+    await wrapper.get('[data-testid="rating-clear"]').trigger('click')
+    await settle()
+    expect(api.calls).toEqual([{ runId: RUN_ID, rating: null, note: '' }])
+    wrapper.unmount()
+  })
+})
+
+describe('every refusal reaches the person in the SERVER own words', () => {
+  /*
+   * Three new ones since the first round - 409 for a run that has not
+   * finished, 403 for a signed-in person on a run nobody owns, 422 for an
+   * empty word - and none of them needs a branch here. That is the property
+   * worth pinning: the control renders `error.message` verbatim, so a sentence
+   * the server learns to say tomorrow arrives on screen without a client
+   * release. A client that mapped status codes to its own wording would be a
+   * second, quieter copy of the server's rules.
+   */
+  it.each([
+    ['this run has not finished yet, so it cannot be rated'],
+    ['that run has no owner, so only an admin can rate it'],
+    ['rating must be one of good, bad, unsure, or null'],
+  ])('renders %s without rewriting it', async (sentence) => {
+    const { wrapper, api } = mountControl({ rating: 'good' })
+    api.fail = new Error(sentence)
+    await wrapper.get('[data-testid="rating-bad"]').trigger('click')
+    await settle()
+    expect(wrapper.get('[data-testid="rating-problem"]').text()).toBe(sentence)
+    // And the value that was really there is back.
+    expect(wrapper.get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('true')
+    wrapper.unmount()
+  })
+})
+
+describe('a run still going is not offered a verdict (409)', () => {
+  it('disables every control and says when it can be rated', () => {
+    const { wrapper } = mountControl({ status: 'running' })
+    for (const value of ['good', 'bad', 'unsure']) {
+      expect(wrapper.get(`[data-testid="rating-${value}"]`).attributes('disabled'), value)
+        .toBeDefined()
+    }
+    expect(wrapper.get('[data-testid="rating-hint"]').text()).toBe(
+      'You can rate this run when it has finished.',
+    )
+    wrapper.unmount()
+  })
+
+  it('offers it on every terminal spelling, including the history row own `failed`', () => {
+    // `failed` is `BackendRunStatus`; `error` is `RunStatus`. A gate written
+    // over one union would hide the control on the run somebody most wants to
+    // call Bad.
+    for (const status of ['completed', 'failed', 'error', 'cancelled']) {
+      const { wrapper } = mountControl({ status })
+      expect(wrapper.get('[data-testid="rating-good"]').attributes('disabled'), status)
+        .toBeUndefined()
+      wrapper.unmount()
+    }
+  })
+
+  it('refuses to send an empty string, which is now a 422', async () => {
+    expect(ratingToSend('')).toBeNull()
+    expect(ratingToSend('good')).toBe('good')
+    expect(ratingToSend('excellent')).toBeNull()
+  })
+})
+
+describe('the pressed button keeps focus through its own save (D8)', () => {
+  it('leaves document.activeElement on the button rather than dropping to body', async () => {
+    const api = new FakeRatingApi()
+    const wrapper = mount(RatingControl, {
+      props: { runId: RUN_ID, api },
+      attachTo: document.body,
+    })
+    api.defer = true
+    const button = wrapper.get('[data-testid="rating-good"]')
+    ;(button.element as HTMLButtonElement).focus()
+    await button.trigger('click')
+    await settle(1)
+    // Mid-flight, with the call held open. `disabled` here is what moved focus
+    // to `<body>`; `aria-busy` says the same thing and keeps the element in the
+    // tab order.
+    expect(button.attributes('aria-busy')).toBe('true')
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(document.activeElement).toBe(button.element)
+    // A second press while the first is in flight is swallowed by the FLAG,
+    // which is the guard that replaced the attribute.
+    await button.trigger('click')
+    expect(api.calls).toHaveLength(1)
+    api.release()
+    await settle()
+    expect(document.activeElement).toBe(button.element)
     wrapper.unmount()
   })
 })
@@ -283,6 +419,58 @@ describe('the report carries the control, above the scroller', () => {
     wrapper.unmount()
   })
 
+  /*
+   * D5. `studioApi.getRating` had no caller, so the panel showed three
+   * unpressed buttons over a run somebody had already rated - and pressing one
+   * would have overwritten a verdict the screen never showed them.
+   */
+  it('seeds the control from what the server already holds', async () => {
+    const read = vi.spyOn(studioApi, 'getRating').mockResolvedValue({
+      ...STORED, rating: 'bad', note: 'two branches came home empty',
+    })
+    const wrapper = mount(ReportPanel, {
+      props: { report: REPORT, verdict: null, open: true, runId: RUN_ID, canRate: true },
+    })
+    await settle()
+    expect(read).toHaveBeenCalledWith(RUN_ID)
+    const control = wrapper.get('[data-testid="rating-control"]')
+    expect(control.get('[data-testid="rating-bad"]').attributes('aria-pressed')).toBe('true')
+    expect((control.get('[data-testid="rating-note"]').element as HTMLTextAreaElement).value)
+      .toBe('two branches came home empty')
+
+    // A new run re-asks rather than carrying the last run's verdict over.
+    await wrapper.setProps({ runId: '9a2f0000-0000-4000-8000-000000000002' })
+    await settle()
+    expect(read).toHaveBeenCalledTimes(2)
+    read.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('stays usable and unseeded when the rating cannot be read, with no banner', async () => {
+    const read = vi.spyOn(studioApi, 'getRating').mockRejectedValue(new Error('read refused'))
+    const wrapper = mount(ReportPanel, {
+      props: { report: REPORT, verdict: null, open: true, runId: RUN_ID, canRate: true },
+    })
+    await settle()
+    expect(read).toHaveBeenCalled()
+    const control = wrapper.get('[data-testid="rating-control"]')
+    expect(control.find('[data-testid="rating-problem"]').exists()).toBe(false)
+    expect(control.get('[data-testid="rating-good"]').attributes('disabled')).toBeUndefined()
+    read.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('withholds the control while the run is still going', async () => {
+    vi.spyOn(studioApi, 'getRating').mockResolvedValue(null)
+    const wrapper = mount(ReportPanel, {
+      props: { report: REPORT, verdict: null, open: true, runId: RUN_ID, canRate: true, runStatus: 'running' },
+    })
+    await settle()
+    expect(wrapper.get('[data-testid="rating-good"]').attributes('disabled')).toBeDefined()
+    vi.restoreAllMocks()
+    wrapper.unmount()
+  })
+
   it('renders nothing when the caller does not own the run, or there is no run', () => {
     const off = mount(ReportPanel, {
       props: { report: REPORT, verdict: null, open: true, runId: RUN_ID, canRate: false },
@@ -324,6 +512,16 @@ const ROWS: RunHistoryEntry[] = [
     total_tokens: 0,
     cost_usd: 0,
   },
+  {
+    run_id: '9a2f0000-0000-4000-8000-000000000003',
+    workflow_id: 'ug_4d2b81ac',
+    status: 'running',
+    created_at: '2026-09-16T10:12:44Z',
+    completed_at: null,
+    label: 'a run that has not finished',
+    total_tokens: 0,
+    cost_usd: 0,
+  },
 ]
 
 describe('every row of your own history can be rated', () => {
@@ -349,7 +547,10 @@ describe('every row of your own history can be rated', () => {
     const wrapper = mount(RunHistory, { props: { reloadKey: 'x', enabled: true } })
     await settle(6)
     const controls = wrapper.findAll('[data-testid="rating-control"]')
-    expect(controls).toHaveLength(2)
+    expect(controls).toHaveLength(3)
+    // The third row is still running, so its control is there and inert (409).
+    expect(controls[2].get('[data-testid="rating-good"]').attributes('disabled')).toBeDefined()
+    expect(controls[0].get('[data-testid="rating-good"]').attributes('disabled')).toBeUndefined()
     expect(controls[0].attributes('data-run-id')).toBe(RUN_ID)
     expect(controls[0].get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('true')
     expect(controls[1].get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('false')

@@ -27,6 +27,7 @@ import RatingControl from '../RatingControl.vue'
 import { count, duration, durationMs, humanise, money, personLabel, when } from './adminFormat'
 import { adminApi } from '../../services/adminApi'
 import { readRunRating, runRatingWord } from '../../data/runRating'
+import { isTerminalRunStatus } from '../../data/runStatusDisplay'
 import type {
   AdminBilled,
   AdminDecisions,
@@ -89,9 +90,8 @@ const billedRefusal = computed(() =>
 
 /* ── the one lever this drawer offers ─────────────────────────────────────── */
 
-const TERMINAL = ['completed', 'failed', 'error', 'cancelled']
 const cancellable = computed(
-  () => props.run !== null && !TERMINAL.includes(props.run.status.toLowerCase()),
+  () => props.run !== null && !isTerminalRunStatus(props.run.status),
 )
 const cancelBusy = ref(false)
 const cancelProblem = ref('')
@@ -269,7 +269,7 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
             <span class="panel-meta">a judgement, not a measurement</span>
           </header>
           <p v-if="rating?.rating" class="admin-facts-line" data-testid="admin-rating-current">
-            {{ runRatingWord(rating.rating) }}<template v-if="rating.rated_by"> · {{ rating.rated_by }}</template><template v-if="rating.rated_at"> · {{ when(rating.rated_at) }}</template>
+            {{ runRatingWord(rating.rating) }}<template v-if="rating.rated_by"> · {{ personLabel(rating.rated_by, null) }}</template><template v-if="rating.rated_at"> · {{ when(rating.rated_at) }}</template>
             <span v-if="rating.note" class="admin-sub">{{ rating.note }}</span>
           </p>
           <p v-else class="admin-empty" data-testid="admin-rating-current">Nobody has rated this run.</p>
@@ -278,6 +278,7 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
             :run-id="run.run_id"
             :rating="rating?.rating ?? null"
             :note="rating?.note ?? ''"
+            :status="run.status"
             @saved="afterRating"
           />
         </section>

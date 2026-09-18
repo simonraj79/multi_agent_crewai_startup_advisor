@@ -29,9 +29,10 @@
  * happened. `data/verdictDisplay.ts` carries the wording and the reasoning.
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { studioApi } from '../services/studioApi'
 import { Check, Copy, FileText, Gauge, OctagonAlert, X } from 'lucide-vue-next'
 import RatingControl from './RatingControl.vue'
-import type { RunRatingValue, RunResult, VerdictSummary } from '../types/studio'
+import type { RunRating, RunRatingValue, RunResult, VerdictSummary } from '../types/studio'
 import {
   DIMENSION_MAX,
   confidenceChip,
@@ -75,13 +76,52 @@ const props = withDefaults(defineProps<{
   canRate?: boolean
   rating?: RunRatingValue | null
   ratingNote?: string | null
+  /** The run's status, so a run still going is not offered a verdict (409). */
+  runStatus?: string
 }>(), {
   workflowName: '',
   runId: '',
   canRate: false,
   rating: null,
   ratingNote: '',
+  runStatus: '',
 })
+
+/**
+ * WHAT THIS RUN WAS ALREADY GIVEN, read when the control appears.
+ *
+ * `studioApi.getRating` existed with no caller, so the panel offered three
+ * unpressed buttons over a run somebody had already rated - and pressing one
+ * would have overwritten a verdict the screen never showed them. The read is
+ * the panel's rather than the view's because the panel is what decides the
+ * control exists at all (`canRate && runId`), and it is keyed on the run id so
+ * a relaunch re-asks.
+ *
+ * A FAILED READ IS SILENT. It leaves the control usable and unseeded: a
+ * refusal to READ a rating is not something to put a banner over, and the
+ * mock transport answers `null` here by design rather than throwing.
+ */
+const seeded = ref<RunRating | null>(null)
+
+watch(
+  () => [props.runId, props.canRate] as const,
+  async ([id, may]) => {
+    seeded.value = null
+    if (!id || !may) return
+    const asked = id
+    try {
+      const answer = await studioApi.getRating(id)
+      if (asked === props.runId) seeded.value = answer
+    } catch {
+      /* Unseeded, and nothing is said. See above. */
+    }
+  },
+  { immediate: true },
+)
+
+/** The caller's own value wins; the read is the fallback. */
+const shownRating = computed(() => props.rating ?? seeded.value?.rating ?? null)
+const shownNote = computed(() => props.ratingNote || seeded.value?.note || '')
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -305,8 +345,9 @@ async function copyReport(): Promise<void> {
       v-if="canRate && runId"
       class="report-rating"
       :run-id="runId"
-      :rating="rating"
-      :note="ratingNote"
+      :rating="shownRating"
+      :note="shownNote"
+      :status="runStatus"
     />
 
     <div v-if="hasVerdictDetail" class="verdict-summary">

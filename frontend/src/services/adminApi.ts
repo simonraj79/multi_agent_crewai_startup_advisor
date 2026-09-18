@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { authedFetch, fetchJson } from './httpCore'
-import { readRunRating } from '../data/runRating'
-import type { RunRating, RunRatingValue } from '../types/studio'
+import { ratingToSend, readRunRating } from '../data/runRating'
+import type { RunRating, RunRatingValue, RunRatingWire } from '../types/studio'
 
 /**
  * Everything `/api/admin/*` answers, and the one call that decides whether the
@@ -325,7 +325,7 @@ export interface AdminDecisions {
    * the one field on this response whose note has two spellings in flight -
    * see `data/runRating.ts` for which and why.
    */
-  rating?: RunRating | null
+  rating?: RunRatingWire | null
 }
 
 export interface AdminGateStats {
@@ -692,7 +692,7 @@ export const adminApi: AdminApiLike = {
     const body = await fetchJson<unknown>(path(`/runs/${encodeURIComponent(runId)}/rating`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rating, note: note || null }),
+      body: JSON.stringify({ rating: ratingToSend(rating), note: note || null }),
     })
     return readRunRating(body, runId)
   },

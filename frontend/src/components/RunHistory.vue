@@ -293,6 +293,7 @@ onMounted(() => {
             :run-id="run.run_id"
             :rating="run.rating ?? null"
             :note="run.rating_note ?? ''"
+            :status="run.status"
             compact
             @saved="applyRating"
           />

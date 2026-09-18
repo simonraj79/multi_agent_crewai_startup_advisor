@@ -1,7 +1,7 @@
 import { buildMockSegments, type MockScriptStep } from '../data/mockFrames'
 import { MOCK_GRAPH } from '../data/mockGraph'
 import { readErrorDetail } from '../data/serverLimits'
-import { readRunRating } from '../data/runRating'
+import { ratingToSend, readRunRating } from '../data/runRating'
 import { getAccessToken } from './authClient'
 import { API_BASE_URL, authedFetch, fetchJson } from './httpCore'
 import { saveBlob } from '../utils/saveBlob'
@@ -741,7 +741,7 @@ export class StudioApi {
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating, note: note || null }),
+        body: JSON.stringify({ rating: ratingToSend(rating), note: note || null }),
       },
     )
     return readRunRating(body, runIdValue)

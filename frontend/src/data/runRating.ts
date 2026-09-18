@@ -12,7 +12,7 @@
  * than a fourth one. Nothing anywhere turns it into a number between good and
  * bad, because "I do not know" is evidence and a midpoint would be invented.
  */
-import type { RunRating, RunRatingValue } from '../types/studio'
+import type { RunRating, RunRatingValue, RunRatingWire } from '../types/studio'
 
 /** The wire vocabulary. The server answers 422 to anything else (§2.2). */
 export const RUN_RATING_VALUES: readonly RunRatingValue[] = ['good', 'bad', 'unsure']
@@ -35,6 +35,19 @@ export const RUN_RATING_CHOICES: ReadonlyArray<{
   { value: 'unsure', label: 'Not sure', hint: 'Recorded as its own answer, never as a middle value.' },
 ]
 
+/**
+ * The value a request may carry, or `null`.
+ *
+ * `""` IS NOW A 422 (§2.2), so it must be impossible to send rather than
+ * merely unlikely: every caller funnels through here, and anything that is not
+ * one of the three words becomes `null` - which clears, which is a state the
+ * server understands. An empty string is not a rating and never was; it is
+ * what an uninitialised `<select>` or a trimmed-to-nothing prop looks like.
+ */
+export function ratingToSend(value: unknown): RunRatingValue | null {
+  return RUN_RATING_VALUES.includes(value as RunRatingValue) ? (value as RunRatingValue) : null
+}
+
 /** The word for a stored value, or '' when nobody has said anything. */
 export function runRatingWord(value: string | null | undefined): string {
   return RUN_RATING_CHOICES.find((choice) => choice.value === value)?.label ?? ''
@@ -52,7 +65,7 @@ export function runRatingWord(value: string | null | undefined): string {
  * `??` and cannot be wrong either way; the canonical spelling everything
  * downstream uses is §2.2's.
  */
-export function readRunRating(body: unknown, fallbackRunId = ''): RunRating {
+export function readRunRating(body: RunRatingWire | unknown, fallbackRunId = ''): RunRating {
   const row = (body ?? {}) as Record<string, unknown>
   const rating = row.rating
   return {

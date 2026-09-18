@@ -106,6 +106,18 @@ describe('governance insights panel', () => {
     }
   })
 
+  it('states a lower bound rather than a count when the scan was bounded (D10)', () => {
+    for (const bound of [{ truncated: true }, { incomplete: true }]) {
+      const wrapper = panel({ ...insight, coverage: { ...insight.coverage, ...bound } })
+      const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
+      expect(strip, JSON.stringify(bound)).toContain('at least 4 good')
+      expect(strip, JSON.stringify(bound)).toContain('At least 1 of them are not rated yet')
+      // The absolute claim is GONE, not merely joined: a reader who sees both
+      // has been told two different things about one number.
+      expect(strip, JSON.stringify(bound)).not.toContain('People rated 4 runs good')
+    }
+  })
+
   it('draws no strip at all when the server did not answer the question', () => {
     const older = { ...insight }
     delete (older as { labels?: unknown }).labels

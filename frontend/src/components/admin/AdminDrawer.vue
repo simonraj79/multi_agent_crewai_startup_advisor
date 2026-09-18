@@ -269,7 +269,7 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
             <span class="panel-meta">a judgement, not a measurement</span>
           </header>
           <p v-if="rating?.rating" class="admin-facts-line" data-testid="admin-rating-current">
-            {{ runRatingWord(rating.rating) }}<template v-if="rating.rated_by"> · {{ personLabel(rating.rated_by, null) }}</template><template v-if="rating.rated_at"> · {{ when(rating.rated_at) }}</template>
+            {{ runRatingWord(rating.rating) }}<template v-if="rating.rated_by"> · {{ personLabel(rating.rated_by, run && rating.rated_by === run.user_id ? run.email : null) }}</template><template v-if="rating.rated_at"> · {{ when(rating.rated_at) }}</template>
             <span v-if="rating.note" class="admin-sub">{{ rating.note }}</span>
           </p>
           <p v-else class="admin-empty" data-testid="admin-rating-current">Nobody has rated this run.</p>

@@ -430,8 +430,11 @@ describe('the drawer says what is fragile about what it shows', () => {
     const current = drawer.get('[data-testid="admin-rating-current"]').text()
     expect(current).toContain('Good')
     // D9: the console's own `personLabel`, so a long account id is elided the
-    // way it is in every other cell rather than printed raw in this one.
-    expect(current).toContain(personLabel('user_owner', null))
+    // way it is in every other cell rather than printed raw in this one. When
+    // the rater IS the run's owner the drawer already holds their e-mail, and
+    // production's first rating read "gkHdcQ0SRs…" two lines under it.
+    expect(current).toContain(personLabel('user_owner', 'owner@example.test'))
+    expect(current).not.toContain('user_owner')
     expect(current).toContain('the segment was right and every claim was cited')
     expect(drawer.get('[data-testid="rating-good"]').attributes('aria-pressed')).toBe('true')
     // A raw account id is what this used to print. `personLabel` elides one
@@ -477,7 +480,7 @@ describe('the drawer says what is fragile about what it shows', () => {
     const strip = wrapper.get('[data-testid="admin-insights-labels"]').text()
     expect(strip).toContain('at least 9 good')
     expect(strip).toContain('4 bad')
-    expect(strip).toContain('At least 10 of them are not rated yet')
+    expect(strip).toContain('At least 10 not rated yet')
     const findings = wrapper.get('[data-testid="admin-insight-findings"]').text()
     expect(findings).toContain('Scope: whole workflow')
     expect(findings).not.toContain('Node (run)')

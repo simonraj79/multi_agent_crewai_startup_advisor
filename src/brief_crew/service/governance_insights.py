@@ -4,6 +4,11 @@ This module reads metadata only.  It never returns prompts, outputs, gate
 replies, model explanations or raw errors, and it performs no network or model
 call.  JSON frame details are interpreted in Python for SQLite/PostgreSQL
 portability.
+
+Plan 20 added one rule whose evidence is a PERSON rather than a frame -
+`rated_bad`, over `runs.rating` - and it obeys the same rule: the word is
+metadata and is read, the rater's `rating_note` is free text somebody typed
+and is never selected, never joined and never rendered here.
 """
 
 from collections import defaultdict
@@ -68,6 +73,21 @@ class InsightThresholds(StrictModel):
     min_affected_runs: int
 
 
+class InsightLabels(StrictModel):
+    """How the scanned terminal runs were judged by a person (plan 20).
+
+    Counted over the SAME rows every rule below is counted over, so the strip
+    and the findings can never describe different windows. `unrated` is a real
+    count and not a remainder the client works out: it is the interesting one
+    early on, when it is nearly everything.
+    """
+
+    good: int = 0
+    bad: int = 0
+    unsure: int = 0
+    unrated: int = 0
+
+
 class InsightCoverage(StrictModel):
     runs_scanned: int
     frames_scanned: int
@@ -86,7 +106,27 @@ class GovernanceInsightsResponse(StrictModel):
     insufficient: list[InsufficientEvidence] = Field(default_factory=list)
     thresholds: InsightThresholds
     suppressed_count: int
+    labels: InsightLabels = Field(default_factory=InsightLabels)
     coverage: InsightCoverage
+
+
+#: The node a run-level finding is filed under. A rating is about the whole
+#: run and not about anything in it, so inventing a node id would point the
+#: console at a card nobody edited; `"(run)"` is parenthesised for the same
+#: reason `"(none)"` is in the spend table - it is a label, never an id that
+#: could collide with one an author typed.
+RUN_LEVEL_NODE = "(run)"
+
+#: A clause appended to one rule's explanation. Only `rated_bad` has one, and
+#: it exists because the generic sentence reads identically for a signal a
+#: machine observed and for an opinion a person typed - and those are not the
+#: same kind of fact to act on.
+EXPLANATION_TAILS = {
+    "rated_bad": (
+        " This one is a person's own judgement of the finished run, typed in "
+        "the console - not something the system worked out."
+    ),
+}
 
 
 def build_insights(
@@ -131,6 +171,13 @@ def build_insights(
         )
         if str(row["status"]) == "failed" and not governed_stop:
             mark("failed_run", str(row["run_id"]), "workflow")
+        # Plan 20. The only rule here whose evidence is a person rather than a
+        # frame, and the run is still counted by all four of the others: a run
+        # somebody disliked that ALSO retried a guardrail is two facts, not
+        # one. The rater's note is deliberately not read at any point below -
+        # it is free text a person typed, and this response carries metadata.
+        if str(row.get("rating") or "") == "bad":
+            mark("rated_bad", str(row["run_id"]), RUN_LEVEL_NODE)
     for frame in frames:
         run_id, details = str(frame["run_id"]), dict(frame.get("details") or {})
         retry_count = details.get("retry_count")
@@ -197,6 +244,11 @@ def build_insights(
             "People repeatedly request revisions",
             "Review this gate's requirements and the preceding work in the supporting runs.",
         ),
+        "rated_bad": (
+            "high",
+            "People marked these runs as bad",
+            "Open the supporting runs and look at what they produced before choosing a change.",
+        ),
     }
     row_by_id = {str(row["run_id"]): row for row in rows}
     findings: list[dict[str, Any]] = []
@@ -238,7 +290,11 @@ def build_insights(
                 "node_id": node,
                 "gate_id": gate_id,
                 "title": title,
-                "explanation": f"{qualifier}{count} of {total} sampled terminal runs ({round(count / total * 100, 1)}%) matched this rule.",
+                "explanation": (
+                    f"{qualifier}{count} of {total} sampled terminal runs "
+                    f"({round(count / total * 100, 1)}%) matched this rule."
+                    + EXPLANATION_TAILS.get(rule, "")
+                ),
                 "suggestion": suggestion,
                 "affected_runs": count,
                 "total_runs": total,
@@ -246,7 +302,9 @@ def build_insights(
                 "samples": samples,
             }
         )
-    rank = {"critical": 0, "warning": 1, "info": 2}
+    # `high` sits between `critical` and `warning`: a person saying a run was
+    # bad is a stronger signal than a retry and a weaker one than a crash.
+    rank = {"critical": 0, "high": 1, "warning": 2, "info": 3}
     findings.sort(
         key=lambda item: (
             rank[item["severity"]],
@@ -266,6 +324,10 @@ def build_insights(
         for workflow, items in sorted(by_workflow.items())
         if len(items) < config.GOVERNANCE_INSIGHTS_MIN_RUNS
     ]
+    labels = {"good": 0, "bad": 0, "unsure": 0, "unrated": 0}
+    for row in rows:
+        value = row.get("rating")
+        labels[value if value in ("good", "bad", "unsure") else "unrated"] += 1
     missing = len({str(row["run_id"]) for row in rows} - runs_with_frames)
     loss = sum(
         1
@@ -299,6 +361,7 @@ def build_insights(
             "min_affected_runs": config.GOVERNANCE_INSIGHTS_MIN_AFFECTED,
         },
         "suppressed_count": suppressed_count,
+        "labels": labels,
         "coverage": {
             "runs_scanned": len(rows),
             "frames_scanned": len(frames),

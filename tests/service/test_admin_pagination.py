@@ -139,6 +139,60 @@ class KeysetPaginationTests(AdminCase):
         self.assertEqual([row["run_id"] for row in body["rows"]], ["run-nobody"])
         self.assertEqual(body["rows"][0]["user_id"], "__unowned__")
 
+    # -- plan 20: the keyset still holds under the rating filter -----------
+
+    def walk_filtered(self, limit: int, rating: str) -> list[str]:
+        seen: list[str] = []
+        cursor: str | None = None
+        for _guard in range(TOTAL + 5):
+            params: dict[str, object] = {"limit": limit, "rating": rating}
+            if cursor:
+                params["cursor"] = cursor
+            body = self.ok("/runs", params=params)
+            seen.extend(row["run_id"] for row in body["rows"])
+            cursor = body["next"]
+            if not cursor:
+                break
+        else:  # pragma: no cover - a pager that never terminates
+            self.fail("the filtered pager did not reach a last page")
+        return seen
+
+    def test_the_rating_filter_pages_totally_and_without_overlap(self) -> None:
+        """L5's last clause, and the failure it guards against is the one this
+        module opens with: rows appear once, in order, and nobody notices that
+        three of them were never shown.
+
+        Every third run is rated `bad`, so the filtered set is 40 of 120 and
+        spans every page boundary of the unfiltered walk.
+        """
+
+        rated = [f"run-{index:03d}" for index in range(0, TOTAL, 3)]
+        for run_id in rated:
+            self.store.set_run_rating(
+                run_id, rating="bad", note=None, rated_by="user_admin"
+            )
+        for size in (1, 7, 50):
+            with self.subTest(limit=size):
+                seen = self.walk_filtered(size, "bad")
+                self.assertEqual(len(seen), len(rated))
+                self.assertEqual(len(set(seen)), len(rated), "a page overlapped")
+                self.assertEqual(seen, sorted(seen), "the order was not created_at DESC")
+                self.assertEqual(seen, rated)
+
+    def test_the_unrated_walk_is_the_exact_complement(self) -> None:
+        """The control on the test above: a filter that dropped rows from both
+        arms would pass it and fail this one."""
+
+        rated = {f"run-{index:03d}" for index in range(0, TOTAL, 3)}
+        for run_id in sorted(rated):
+            self.store.set_run_rating(
+                run_id, rating="bad", note=None, rated_by="user_admin"
+            )
+        unrated = self.walk_filtered(7, "unrated")
+        self.assertEqual(len(unrated), TOTAL - len(rated))
+        self.assertEqual(set(unrated) & rated, set())
+        self.assertEqual(set(unrated) | rated, set(self.walk(50)))
+
 
 class UsersPaginationTests(AdminCase):
     def test_the_users_page_is_total_over_every_account(self) -> None:

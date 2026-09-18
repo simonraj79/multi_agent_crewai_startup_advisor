@@ -171,6 +171,7 @@ class Backend(Protocol):
         name: str,
         value: Any,
         data_type: str | None = None,
+        comment: str | None = None,
     ) -> None: ...
 
     def set_trace_output(self, run_observation: Any, payload_output: Any) -> None: ...
@@ -233,6 +234,10 @@ class RecordedScore:
     name: str
     value: Any
     data_type: str | None = None
+    #: Free text a person typed, written only under
+    #: `LANGFUSE_CAPTURE_CONTENT` - `observability/scores.py` is the only
+    #: caller that ever passes one, and it checks the policy first.
+    comment: str | None = None
 
 
 class RecordingBackend:
@@ -356,6 +361,7 @@ class RecordingBackend:
         name: str,
         value: Any,
         data_type: str | None = None,
+        comment: str | None = None,
     ) -> None:
         self._guard()
         self.scores.append(
@@ -365,6 +371,7 @@ class RecordingBackend:
                 name=name,
                 value=value,
                 data_type=data_type,
+                comment=comment,
             )
         )
 
@@ -752,13 +759,20 @@ class LangfuseBackend:
         name: str,
         value: Any,
         data_type: str | None = None,
+        comment: str | None = None,
     ) -> None:
+        # `comment` is OPTIONAL and additive (plan 20 section 2.3). The SDK's
+        # `create_score` has always taken one; nothing here passed it until a
+        # rating note needed somewhere to go, and it is passed only when the
+        # content policy allows - `observability/scores.py` decides that, not
+        # this transport.
         self._client.create_score(
             name=name,
             value=value,
             trace_id=trace_id,
             observation_id=getattr(observation, "id", None),
             data_type=data_type,
+            comment=comment,
             environment=self._environment,
         )
 

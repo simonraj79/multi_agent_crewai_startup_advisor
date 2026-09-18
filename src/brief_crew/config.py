@@ -1733,6 +1733,11 @@ FIRECRAWL_DASHBOARD_URL = "https://www.firecrawl.dev/app/settings?tab=billing"
 #     realistic 12 KB.
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
 
+#: The bound on a rating note, enforced by the request model (422 above it)
+#: and again by the `VARCHAR(512)` column that stores it. Two bounds on one
+#: value, deliberately: the column is what a driver would truncate silently.
+MAX_RATING_NOTE_CHARS = 500
+
 # --------------------------------------------------------------------------
 # The most frames one log export will read, serialise and return.
 #

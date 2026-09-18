@@ -545,5 +545,170 @@ class RunCeilingColumnsTests(unittest.TestCase):
                 self.assertIn(("runs", name), declared)
 
 
+#: Plan 20's four adds, and `runs` is the table taking columns this way for
+#: the third time.
+RATING_COLUMNS = ("rating", "rating_note", "rated_by", "rated_at")
+
+
+class RunRatingColumnsTests(unittest.TestCase):
+    """Plan 20 L1: four nullable columns on a SHIPPED `runs` table.
+
+    The same fixture the ceiling columns used - `runs` as `ea611a9` left it,
+    with one queued row owned by `alice`. That row is the whole point: a
+    migration that recreated the table would pass every column assertion and
+    lose the history the product organises.
+
+    Nothing is backfilled and nothing could be. A rating is a person's opinion
+    and nobody has given one for a row written before the column existed, so
+    NULL is not a gap in the data - it is the honest answer.
+    """
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.engine = create_engine(f"sqlite:///{Path(directory.name) / 'shipped.db'}")
+        self.addCleanup(self.engine.dispose)
+        with self.engine.begin() as connection:
+            connection.execute(text(SHIPPED_RUNS_DDL))
+            connection.execute(text(SHIPPED_ROW))
+
+    def columns(self) -> set[str]:
+        return {c["name"] for c in inspect(self.engine).get_columns("runs")}
+
+    def upgrade(self) -> PostgresFlowPersistence:
+        store = PostgresFlowPersistence(self.engine, initialize=False)
+        store.init_db()
+        self.addCleanup(store.close)
+        return store
+
+    def test_the_fixture_really_is_the_shipped_shape(self) -> None:
+        """The control. Without it every assertion below could pass on a fresh
+        table that never needed migrating."""
+
+        present = self.columns()
+        self.assertIn("user_id", present)
+        for name in RATING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertNotIn(name, present)
+
+    def test_all_four_are_added_to_a_shipped_runs_table(self) -> None:
+        self.upgrade()
+        for name in RATING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertIn(name, self.columns())
+
+    def test_they_reach_a_fresh_database_too(self) -> None:
+        """`create_all()` makes them; the additive list is for the other case."""
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        engine = create_engine(f"sqlite:///{Path(directory.name) / 'fresh.db'}")
+        self.addCleanup(engine.dispose)
+        PostgresFlowPersistence(engine, initialize=False).init_db()
+        columns = {c["name"] for c in inspect(engine).get_columns("runs")}
+        for name in RATING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertIn(name, columns)
+
+    def test_the_pre_existing_row_survives_with_four_nulls(self) -> None:
+        self.upgrade()
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT id, rating, rating_note, rated_by, rated_at FROM runs"
+                )
+            ).one()
+        self.assertEqual(row.id, "capped-before-the-columns")
+        self.assertIsNone(row.rating)
+        self.assertIsNone(row.rating_note)
+        self.assertIsNone(row.rated_by)
+        self.assertIsNone(row.rated_at)
+
+    def test_the_old_row_can_be_rated_after_the_migration(self) -> None:
+        """The point of an additive column: yesterday's rows become usable."""
+
+        store = self.upgrade()
+        stored = store.set_run_rating(
+            "capped-before-the-columns",
+            rating="good",
+            note="rated long after the fact",
+            rated_by="alice",
+        )
+        self.assertEqual("good", stored["rating"])
+        self.assertEqual("rated long after the fact", stored["rating_note"])
+
+    def test_an_unknown_run_answers_none_rather_than_raising(self) -> None:
+        """So a caller can tell "rated" from "no such run" without a second
+        read, which is what lets the route answer 404 rather than 500."""
+
+        store = self.upgrade()
+        self.assertIsNone(
+            store.set_run_rating("no-such-run", rating="good", note=None, rated_by=None)
+        )
+
+    def test_clearing_a_rating_clears_the_note_and_the_actor_with_it(self) -> None:
+        store = self.upgrade()
+        store.set_run_rating(
+            "capped-before-the-columns", rating="bad", note="a note", rated_by="alice"
+        )
+        cleared = store.set_run_rating(
+            "capped-before-the-columns", rating=None, note=None, rated_by=None
+        )
+        self.assertIsNone(cleared["rating"])
+        self.assertIsNone(cleared["rating_note"])
+        self.assertIsNone(cleared["rated_by"])
+        self.assertIsNone(cleared["rated_at"])
+
+    def test_run_ratings_is_keyed_on_the_run_existing_not_on_it_being_rated(
+        self,
+    ) -> None:
+        """An unrated run answers nulls; a run that is not here is absent.
+
+        The read routes lean on exactly that: both states mean "nobody has
+        said", and neither route has to decide whether the run exists - which
+        is `require_own_run`'s job.
+        """
+
+        store = self.upgrade()
+        unrated = store.run_ratings(["capped-before-the-columns", "no-such-run"])
+        self.assertEqual(["capped-before-the-columns"], list(unrated))
+        self.assertIsNone(unrated["capped-before-the-columns"]["rating"])
+
+        store.set_run_rating(
+            "capped-before-the-columns", rating="unsure", note=None, rated_by="alice"
+        )
+        found = store.run_ratings(["capped-before-the-columns"])
+        self.assertEqual("unsure", found["capped-before-the-columns"]["rating"])
+        self.assertEqual("alice", found["capped-before-the-columns"]["rated_by"])
+
+    def test_no_run_ids_makes_no_query_at_all(self) -> None:
+        self.assertEqual({}, self.upgrade().run_ratings([]))
+
+    def test_running_it_twice_changes_nothing(self) -> None:
+        """It runs on every boot, so it has to be safe on every boot."""
+
+        self.upgrade()
+        before = self.columns()
+        self.upgrade()
+        self.assertEqual(before, self.columns())
+        with self.engine.begin() as connection:
+            self.assertEqual(
+                1, connection.execute(text("SELECT COUNT(*) FROM runs")).scalar_one()
+            )
+
+    def test_each_column_is_declared_in_the_additive_list_too(self) -> None:
+        """A `Table()` column with no `_ADDITIVE_COLUMNS` row reaches a fresh
+        database and no deployed one, and the failure is the first INSERT
+        naming it - in production, mid-request."""
+
+        declared = {
+            (table, column)
+            for table, column, _type in self.upgrade()._ADDITIVE_COLUMNS
+        }
+        for name in RATING_COLUMNS:
+            with self.subTest(column=name):
+                self.assertIn(("runs", name), declared)
+
+
 if __name__ == "__main__":
     unittest.main()

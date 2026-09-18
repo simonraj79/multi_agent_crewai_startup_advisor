@@ -179,6 +179,9 @@
         "stop_reason": null,
         "error": null,
         "verdict": "NEEDS_WORK",
+        "rating": "good",
+        "rated_by": "user_owner",
+        "rated_at": "2026-09-08T11:44:00Z",
         "integrity": {
           "captured": 412,
           "dropped": 0,
@@ -214,6 +217,9 @@
         "stop_reason": null,
         "error": null,
         "verdict": "NEEDS_WORK",
+        "rating": "good",
+        "rated_by": "user_owner",
+        "rated_at": "2026-09-08T11:44:00Z",
         "integrity": {
           "captured": 412,
           "dropped": 0,
@@ -266,6 +272,13 @@
       "score": 4.2,
       "confidence": 0.62,
       "decision_reason": "SCORE_BAND"
+    },
+    "rating": {
+      "run_id": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
+      "rating": "good",
+      "rating_note": "the segment was right and every claim was cited",
+      "rated_by": "user_owner",
+      "rated_at": "2026-09-08T11:44:00Z"
     },
     "langfuse": {
       "session_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/sessions/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
@@ -423,6 +436,75 @@
     "session_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/sessions/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
     "trace_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/traces/073c021f4ff743e184d5d9e8dd7fa0ba",
     "fetched_at": "2026-09-08T12:03:11Z"
+  },
+  "GET /api/admin/insights": {
+    "workflows": [
+      {
+        "workflow_id": "idea-validator",
+        "runs": 24
+      }
+    ],
+    "findings": [
+      {
+        "rule_id": "rated_bad",
+        "severity": "high",
+        "workflow_id": "idea-validator",
+        "node_id": "(run)",
+        "gate_id": null,
+        "title": "People marked these runs as bad",
+        "explanation": "4 of 24 sampled terminal runs (16.7%) matched this rule. This one is a person's own judgement of the finished run, typed in the console - not something the system worked out.",
+        "suggestion": "Open the supporting runs and look at what they produced before choosing a change.",
+        "affected_runs": 4,
+        "total_runs": 24,
+        "rate": 0.1667,
+        "samples": [
+          {
+            "run_id": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
+            "user_id": "user_owner",
+            "status": "completed",
+            "created_at": "2026-09-08T11:38:02Z",
+            "cost_usd": 0.0562551,
+            "seq": null,
+            "gate_id": null,
+            "langfuse": {
+              "session_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/sessions/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
+              "trace_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/traces/073c021f4ff743e184d5d9e8dd7fa0ba"
+            }
+          }
+        ]
+      }
+    ],
+    "insufficient": [
+      {
+        "workflow_id": "ug_0123abcd",
+        "total_runs": 1,
+        "required_runs": 3
+      }
+    ],
+    "thresholds": {
+      "min_runs": 3,
+      "min_affected_runs": 2
+    },
+    "suppressed_count": 2,
+    "labels": {
+      "good": 9,
+      "bad": 4,
+      "unsure": 1,
+      "unrated": 10
+    },
+    "coverage": {
+      "runs_scanned": 24,
+      "frames_scanned": 180,
+      "gates_scanned": 31,
+      "runs_missing_frames": 1,
+      "runs_with_integrity_loss": 0,
+      "retention_days": 0,
+      "truncated": false,
+      "incomplete": true,
+      "warnings": [
+        "1 sampled run(s) have no persisted frames."
+      ]
+    }
   },
   "POST /api/admin/runs/{run_id}/cancel": {
     "run_id": "073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",

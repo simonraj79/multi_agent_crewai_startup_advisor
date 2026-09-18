@@ -218,8 +218,12 @@ class HandlerShapesTests(AdminCase):
             if key.startswith("GET ") and not key.startswith("_")
         ]
         # The count is asserted so an endpoint deleted from the fixture cannot
-        # quietly remove itself from this check.
-        self.assertEqual(len(endpoints), 13)
+        # quietly remove itself from this check. It was 13 until 2026-09-18,
+        # when plan 20 added the example for `/insights` - which had shipped
+        # in `0f45c0a` with no fixture entry at all, so the one endpoint whose
+        # response is a list of generated sentences was the one endpoint this
+        # module was not checking.
+        self.assertEqual(len(endpoints), 14)
         for endpoint in endpoints:
             with self.subTest(endpoint=endpoint):
                 # The endpoint leads the path, so `OPAQUE`'s entries - which

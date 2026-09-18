@@ -73,6 +73,16 @@ from brief_crew.service.models import (
     RunHistoryEntry,
     RunHistoryPage,
 )
+# Module scope, for the same reason `BuilderRunnerFactory` above is: this
+# module has no `from __future__ import annotations`, and the two owner-facing
+# rating handlers below annotate against these names.
+from brief_crew.service.rating_api import (
+    RatingRequest,
+    RunRatingModel,
+    create_rating_router,
+    rating_payload,
+    write_rating,
+)
 from brief_crew.service.registry import (
     TERMINAL_STATUSES as TERMINAL_RUN_STATUSES,
     AccountSpendCapError,
@@ -1380,6 +1390,27 @@ def create_app(
         )
     )
 
+    # `PUT /api/admin/runs/{id}/rating` (plan 20). Its own router rather than a
+    # route on `create_admin_router`, because the WRITE it performs is shared
+    # with the owner's own `PUT /api/runs/{id}/rating` below and neither door
+    # may own it - `service/rating_api.py` says why.
+    app.include_router(
+        create_rating_router(
+            resolve_user=optional_user,
+            persistence_factory=lambda: getattr(registry, "persistence", None),
+        )
+    )
+
+    # The score hook's exporter, set beside `registry.frame_observer` above.
+    # A rating arrives AFTER a trace closed, so it is addressed by trace id
+    # rather than carried on a frame - `observability/scores.py` says why.
+    try:
+        from brief_crew.observability import scores as _scores
+
+        _scores.set_score_exporter(getattr(registry, "frame_observer", None))
+    except Exception:  # noqa: BLE001 - telemetry never stops a service starting
+        pass
+
     def dry_run_payload(
         workflow_id: str, user: AuthenticatedUser | None
     ) -> DryRunResponse:
@@ -1962,6 +1993,11 @@ def create_app(
             return RunHistoryPage(runs=[])
 
         rows = registry.persistence.list_runs_for_user(user.id, limit=limit)
+        # ONE statement for every row's rating, not one per row.
+        # `list_runs_for_user` does not select the columns, and a per-row read
+        # would be 25 queries to draw a sidebar - the same argument that
+        # function's own docstring makes about the columns it does select.
+        ratings = registry.persistence.run_ratings([row["id"] for row in rows])
         entries: list[RunHistoryEntry] = []
         for row in rows:
             inputs = row.get("inputs") or {}
@@ -1980,6 +2016,10 @@ def create_app(
                     label=str(raw_label)[:160],
                     total_tokens=int(usage.get("total_tokens") or 0),
                     cost_usd=float(usage.get("cost_usd") or 0.0),
+                    **{
+                        key: (ratings.get(row["id"]) or {}).get(key)
+                        for key in ("rating", "rating_note", "rated_at")
+                    },
                 )
             )
         return RunHistoryPage(runs=entries)
@@ -1995,6 +2035,65 @@ def create_app(
     ) -> RunStatusResponse:
         require_own_run(run_id, user)
         return RunStatusResponse.model_validate(registry.status_payload(run_id))
+
+    @app.get(
+        "/api/runs/{run_id}/rating",
+        response_model=RunRatingModel,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def get_run_rating(
+        run_id: str,
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> RunRatingModel:
+        """This run's rating, so a restored run shows what somebody said.
+
+        Owner-only through `require_own_run`, which means **404 and not 403**
+        for a run belonging to somebody else - a 403 confirms the run exists.
+        A run with no owner is readable by anyone, which is the same carve-out
+        every other run route makes for pre-auth rows.
+        """
+
+        require_own_run(run_id, user)
+        stored = (
+            registry.persistence.run_ratings([run_id]).get(run_id)
+            if registry.persistence is not None
+            else None
+        )
+        return rating_payload(run_id, stored)
+
+    @app.put(
+        "/api/runs/{run_id}/rating",
+        response_model=RunRatingModel,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def put_run_rating(
+        run_id: str,
+        request: RatingRequest,
+        user: AuthenticatedUser | None = Depends(current_user),
+    ) -> RunRatingModel:
+        """Rate your own run: good, bad, unsure, or `null` to clear it.
+
+        Plan 20 section 2.2, and the guard is `require_own_run` and NOT
+        `require_admin`: the person who launched a run is the person whose
+        opinion of it is worth recording, and an admin has a separate door at
+        `PUT /api/admin/runs/{id}/rating` that logs what it did.
+
+        A fifth value is a 422 and a note over `MAX_RATING_NOTE_CHARS` is a
+        422, both from the request model, so neither reaches a column.
+        """
+
+        require_own_run(run_id, user)
+        if registry.persistence is None:
+            raise HTTPException(
+                status_code=503,
+                detail="this service has no durable store, so a rating cannot be kept",
+            )
+        return write_rating(
+            registry.persistence,
+            run_id,
+            request,
+            user.id if user is not None else None,
+        )
 
     @app.get(
         "/api/runs/{run_id}/state",

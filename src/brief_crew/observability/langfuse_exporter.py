@@ -1028,6 +1028,7 @@ class LangfuseExporter:
             self._event(state, frame, details, parent=self._scope(state, frame, details))
         else:
             self._event(state, frame, details, parent=self._scope(state, frame, details))
+            self._handle_gate_outcome(state, frame, details)
 
     @staticmethod
     def _is_run_level(frame: FrameData) -> bool:
@@ -2498,6 +2499,43 @@ class LangfuseExporter:
             trace_id=state.trace_id,
             name="guardrail_passed",
             value=1 if bool(details.get("success")) else 0,
+        )
+
+    def _handle_gate_outcome(
+        self, state: _RunState, frame: FrameData, details: Mapping[str, Any]
+    ) -> None:
+        """`gate_outcome` on a gate-closed frame, beside `guardrail_passed`.
+
+        Plan 20 section 2.3. What a person DECIDED at a gate is a label on the
+        run - the only one this application collects while a run is still in
+        flight - and until now it was an EVENT's metadata, which cannot be
+        charted or filtered on the way a score can. The gate-closed frame is
+        still recorded as an event; this is additive to it.
+
+        CATEGORICAL rather than numeric, because `approve` and `revise` are
+        two words and not two ends of a scale: averaging them would produce a
+        number whose middle means nothing. It names no gate of any particular
+        flow - the VALUE is read off the frame the author's own graph
+        produced - so `test_no_flow_identifiers.py` is unaffected.
+        """
+
+        if frame.kind is not FrameKind.GATE_CLOSED:
+            return
+        outcome = details.get("outcome")
+        if not isinstance(outcome, str) or not outcome.strip():
+            return
+        scope = state.nodes.get(frame.node_id)
+        target = None
+        if scope is not None:
+            target = scope.task or scope.agent or scope.span
+        self._call(
+            state,
+            "score",
+            observation=target.handle if target is not None else None,
+            trace_id=state.trace_id,
+            name="gate_outcome",
+            value=self._id(outcome.strip(), limit=64),
+            data_type="CATEGORICAL",
         )
 
     def _event(

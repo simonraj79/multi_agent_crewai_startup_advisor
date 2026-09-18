@@ -68,6 +68,9 @@ from brief_crew.service.admin_api import (  # noqa: E402
     SPEND_ERROR_NOTE,
     VERDICT_NOTE,
 )
+from brief_crew.service.governance_insights import (  # noqa: E402
+    GovernanceInsightsResponse,
+)
 
 FIXTURE = REPO_ROOT / "frontend" / "tests" / "fixtures" / "adminApi.json"
 
@@ -120,8 +123,21 @@ RUN_ROW: dict[str, Any] = {
     "stop_reason": None,
     "error": None,
     "verdict": "NEEDS_WORK",
+    "rating": "good",
+    "rated_by": "user_owner",
+    "rated_at": "2026-09-08T11:44:00Z",
     "integrity": {"captured": 412, "dropped": 0, "gaps": 0},
     "langfuse": {"session_url": SESSION_URL, "trace_url": TRACE_URL},
+}
+
+#: The run label, as three endpoints carry it. One example, referenced by all
+#: of them, so the client reads one shape whichever door it came in by.
+RUN_RATING: dict[str, Any] = {
+    "run_id": RUN_ID,
+    "rating": "good",
+    "rating_note": "the segment was right and every claim was cited",
+    "rated_by": "user_owner",
+    "rated_at": "2026-09-08T11:44:00Z",
 }
 
 
@@ -272,6 +288,7 @@ def examples() -> dict[str, Any]:
                 "confidence": 0.62,
                 "decision_reason": "SCORE_BAND",
             },
+            rating=RUN_RATING,
             langfuse={"session_url": SESSION_URL, "trace_url": TRACE_URL},
         ),
         "GET /api/admin/gates": AdminGatesModel(
@@ -407,6 +424,76 @@ def examples() -> dict[str, Any]:
             session_url=SESSION_URL,
             trace_url=TRACE_URL,
             fetched_at="2026-09-08T12:03:11Z",
+        ),
+        # ADDED 2026-09-18 (plan 20 criterion L8). `/insights` shipped with
+        # `0f45c0a` and had no example here at all, so the one endpoint whose
+        # response is a list of generated SENTENCES was the one the client had
+        # no pinned shape for - precisely the gap this file exists to close.
+        # The seeded world in `test_admin_fixture_shapes` has two runs against
+        # a floor of three, so its `findings` come back empty and the shape
+        # comparison treats them as a wildcard; the example is carried
+        # non-empty anyway, because W-UI builds the card off it.
+        "GET /api/admin/insights": GovernanceInsightsResponse(
+            workflows=[{"workflow_id": "idea-validator", "runs": 24}],
+            findings=[
+                {
+                    "rule_id": "rated_bad",
+                    "severity": "high",
+                    "workflow_id": "idea-validator",
+                    "node_id": "(run)",
+                    "gate_id": None,
+                    "title": "People marked these runs as bad",
+                    "explanation": (
+                        "4 of 24 sampled terminal runs (16.7%) matched this "
+                        "rule. This one is a person's own judgement of the "
+                        "finished run, typed in the console - not something "
+                        "the system worked out."
+                    ),
+                    "suggestion": (
+                        "Open the supporting runs and look at what they "
+                        "produced before choosing a change."
+                    ),
+                    "affected_runs": 4,
+                    "total_runs": 24,
+                    "rate": 0.1667,
+                    "samples": [
+                        {
+                            "run_id": RUN_ID,
+                            "user_id": "user_owner",
+                            "status": "completed",
+                            "created_at": "2026-09-08T11:38:02Z",
+                            "cost_usd": 0.0562551,
+                            "seq": None,
+                            "gate_id": None,
+                            "langfuse": {
+                                "session_url": SESSION_URL,
+                                "trace_url": TRACE_URL,
+                            },
+                        }
+                    ],
+                }
+            ],
+            insufficient=[
+                {
+                    "workflow_id": "ug_0123abcd",
+                    "total_runs": 1,
+                    "required_runs": 3,
+                }
+            ],
+            thresholds={"min_runs": 3, "min_affected_runs": 2},
+            suppressed_count=2,
+            labels={"good": 9, "bad": 4, "unsure": 1, "unrated": 10},
+            coverage={
+                "runs_scanned": 24,
+                "frames_scanned": 180,
+                "gates_scanned": 31,
+                "runs_missing_frames": 1,
+                "runs_with_integrity_loss": 0,
+                "retention_days": 0,
+                "truncated": False,
+                "incomplete": True,
+                "warnings": ["1 sampled run(s) have no persisted frames."],
+            },
         ),
         "POST /api/admin/runs/{run_id}/cancel": {
             "run_id": RUN_ID,

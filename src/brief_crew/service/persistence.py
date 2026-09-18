@@ -48,7 +48,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from threading import RLock
 
-from brief_crew.config import ADMIN_UNOWNED_KEY
+from brief_crew.config import ADMIN_UNOWNED_KEY, MAX_RATING_NOTE_CHARS
 from brief_crew.events import FrameData
 from brief_crew.events.redaction import (
     REDACTED,
@@ -144,6 +144,14 @@ _URL_CREDENTIALS = re.compile(
 #: a class attribute because `PostgresFlowPersistence` is a pydantic model and
 #: an unannotated class attribute there is a field.
 ADMIN_SPEND_GROUPS = ("user", "workflow", "model", "node")
+
+#: The four words `/admin/runs?rating=` may filter on, and the ONE place the
+#: mapping from a query-string word to a predicate lives. `unrated` is here
+#: and `null` is not: a caller asking for the rows nobody has judged is asking
+#: a real question, and spelling it as the absence of a value would make an
+#: omitted parameter and an explicit one indistinguishable. Same module-scope
+#: reasoning as `ADMIN_SPEND_GROUPS` above.
+ADMIN_RUN_RATING_FILTERS = ("good", "bad", "unsure", "unrated")
 
 
 def _published_status() -> str:
@@ -246,6 +254,25 @@ runs = Table(
     Column("max_cost_usd", Numeric(12, 6)),
     Column("ceiling_kind", String(16)),
     Column("account_cap_usd", Numeric(12, 6)),
+    # The post-hoc human label: was this run any good (plan 20 section 2.1).
+    #
+    # A run is useful to the NEXT run only if somebody said whether it was any
+    # good, and until these four columns there was nowhere to say it: the
+    # gates carry what a person accepted mid-run and the guardrails carry what
+    # a machine checked, and neither is a judgement about the run as a whole.
+    # `rating` is one of `good` / `bad` / `unsure`, NULL for unrated, and NULL
+    # is what every row written before this shipped means - nothing is
+    # backfilled and nothing could be.
+    #
+    # `rated_by` is the actor, not the owner: an admin may rate somebody
+    # else's run through a separate route that logs it, so "who rated this"
+    # and "whose run is this" are different questions and the row answers
+    # both. Last writer wins by design (plan 20 section 2.1) - a
+    # compare-and-set would 409 a double press and there is nothing to lose.
+    Column("rating", String(16)),
+    Column("rating_note", String(512)),
+    Column("rated_by", String(128)),
+    Column("rated_at", DateTime(timezone=True)),
     Column("inputs", _json_type(), nullable=False),
     Column("usage", _json_type(), nullable=False),
     Column("result", _json_type()),
@@ -839,6 +866,17 @@ class PostgresFlowPersistence(FlowPersistence):
         ("runs", "max_cost_usd", "NUMERIC(12, 6)"),
         ("runs", "ceiling_kind", "VARCHAR(16)"),
         ("runs", "account_cap_usd", "NUMERIC(12, 6)"),
+        # Plan 20: the four rating columns. The reasoning is on the columns
+        # themselves, above. All four nullable, nothing backfilled, nothing
+        # dropped - which is the whole of what this list is allowed to do.
+        # `TIMESTAMP WITH TIME ZONE` is the spelling the other datetime
+        # columns are created with by `DateTime(timezone=True)` on both
+        # dialects; SQLite stores the declared type verbatim and PostgreSQL
+        # creates a real `timestamptz`.
+        ("runs", "rating", "VARCHAR(16)"),
+        ("runs", "rating_note", "VARCHAR(512)"),
+        ("runs", "rated_by", "VARCHAR(128)"),
+        ("runs", "rated_at", "TIMESTAMP WITH TIME ZONE"),
     )
 
     def _add_missing_columns(self) -> None:
@@ -1893,6 +1931,12 @@ class PostgresFlowPersistence(FlowPersistence):
                 runs.c.frame_gaps,
                 runs.c.created_at,
                 runs.c.completed_at,
+                # Plan 20: the labels strip and the `rated_bad` rule are read
+                # off the SAME scan as the other four rules, rather than a
+                # second query - the whole argument this method's docstring
+                # makes about four figures being one set of rows read four
+                # ways, applied to a fifth.
+                runs.c.rating,
                 func.coalesce(costs.c.cost_usd, 0).label("cost_usd"),
             ).select_from(runs.outerjoin(costs, costs.c.run_id == runs.c.id)),
             runs.c.created_at,
@@ -1919,6 +1963,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     "frame_gaps": int(row["frame_gaps"] or 0),
                     "created_at": _as_utc(row["created_at"]),
                     "completed_at": _as_utc(row["completed_at"]),
+                    "rating": row["rating"],
                     "cost_usd": Decimal(str(row["cost_usd"] or 0)),
                 }
                 for row in rows
@@ -2029,6 +2074,7 @@ class PostgresFlowPersistence(FlowPersistence):
         mode: str | None = None,
         user_id: str | None = None,
         workflow_id: str | None = None,
+        rating: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = 50,
@@ -2046,6 +2092,12 @@ class PostgresFlowPersistence(FlowPersistence):
 
         `user_id=ADMIN_UNOWNED_KEY` means `user_id IS NULL`, the one place
         that mapping is applied to a filter rather than to a group.
+
+        `rating` is one of `ADMIN_RUN_RATING_FILTERS`, and `unrated` means
+        `rating IS NULL`. It is a WHERE clause like every other filter here,
+        which is what keeps the keyset intact: the order is unchanged and the
+        cursor still names a row in the filtered set, so paging a filtered
+        list cannot skip or repeat a row.
 
         Fetches `limit` rows exactly; the caller asks for one more than it
         means to show if it wants to know whether there is a next page.
@@ -2069,6 +2121,9 @@ class PostgresFlowPersistence(FlowPersistence):
             runs.c.created_at,
             runs.c.started_at,
             runs.c.completed_at,
+            runs.c.rating,
+            runs.c.rated_by,
+            runs.c.rated_at,
         )
         statement = self._window(statement, runs.c.created_at, start, end)
         if status:
@@ -2094,6 +2149,16 @@ class PostgresFlowPersistence(FlowPersistence):
         if workflow_id:
             statement = statement.where(
                 runs.c.workflow_id == _identifier(workflow_id, label="workflow_id")
+            )
+        if rating:
+            if rating not in ADMIN_RUN_RATING_FILTERS:
+                raise ValueError(
+                    f"rating must be one of {ADMIN_RUN_RATING_FILTERS}"
+                )
+            statement = statement.where(
+                runs.c.rating.is_(None)
+                if rating == "unrated"
+                else runs.c.rating == rating
             )
         if cursor is not None:
             moment, last_id = cursor
@@ -2123,6 +2188,9 @@ class PostgresFlowPersistence(FlowPersistence):
                 "created_at": _as_utc(row["created_at"]),
                 "started_at": _as_utc(row["started_at"]),
                 "completed_at": _as_utc(row["completed_at"]),
+                "rating": row["rating"],
+                "rated_by": row["rated_by"],
+                "rated_at": _as_utc(row["rated_at"]),
             }
             for row in rows
         ]
@@ -2526,6 +2594,126 @@ class PostgresFlowPersistence(FlowPersistence):
             "emit_errors": int(row[3] or 0),
             "subscriber_dropped": int(row[4] or 0),
             "runs_with_drop": int(row[5] or 0),
+        }
+
+    def set_run_rating(
+        self,
+        run_id: str,
+        *,
+        rating: str | None,
+        note: str | None,
+        rated_by: str | None,
+        rated_at: datetime | None = None,
+    ) -> dict[str, Any] | None:
+        """Write one run's post-hoc rating. Last writer wins, deliberately.
+
+        NOT a compare-and-set, and this is the one write in this module that
+        deviates from that pattern on purpose (plan 20 section 2.1). Every
+        other `UPDATE ... WHERE ...; rowcount` here guards a state machine
+        where two writers mean two different outcomes - a gate answered twice,
+        a run claimed by two sweepers. A rating is one person's opinion of
+        their own finished run: a 409 on a double click would be a refusal
+        with nothing to protect, and the second click is the answer they meant.
+
+        `rating=None` CLEARS the row - the note, the actor and the timestamp
+        with it, because a note about a rating that no longer exists is a
+        sentence with no subject.
+
+        Returns the stored four as a mapping, or None for a run that is not
+        here - so a caller can tell "rated" from "no such run" without a
+        second read.
+        """
+
+        run_id = _identifier(run_id, label="run_id")
+        if rating is None:
+            values: dict[str, Any] = {
+                "rating": None,
+                "rating_note": None,
+                "rated_by": None,
+                "rated_at": None,
+            }
+        else:
+            values = {
+                "rating": _identifier(rating, label="rating", limit=16),
+                # Bounded twice: the request model refuses a longer note with a
+                # 422 above this, and the column is VARCHAR(512). This is the
+                # third bound and the one that stops a driver truncating
+                # silently if either of the other two is ever relaxed.
+                "rating_note": (
+                    str(note)[:MAX_RATING_NOTE_CHARS] if note else None
+                ),
+                "rated_by": (
+                    _identifier(rated_by, label="rated_by") if rated_by else None
+                ),
+                "rated_at": _as_utc(rated_at) or _utcnow(),
+            }
+        values["updated_at"] = _utcnow()
+        with self._begin() as connection:
+            result = connection.execute(
+                update(runs).where(runs.c.id == run_id).values(**values)
+            )
+            if result.rowcount == 0:
+                return None
+            row = (
+                connection.execute(
+                    select(
+                        runs.c.rating,
+                        runs.c.rating_note,
+                        runs.c.rated_by,
+                        runs.c.rated_at,
+                    ).where(runs.c.id == run_id)
+                )
+                .mappings()
+                .one()
+            )
+        return {
+            "rating": row["rating"],
+            "rating_note": row["rating_note"],
+            "rated_by": row["rated_by"],
+            "rated_at": _as_utc(row["rated_at"]),
+        }
+
+    def run_ratings(self, run_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """The rating of each of these runs, for a LIST.
+
+        `GET /api/runs` renders 25 rows and `get_run` pays two subqueries a
+        row, so the history list reads its ratings here in one statement -
+        `list_runs_for_user`'s own argument, applied to the columns it does
+        not select.
+
+        Keyed on a run's EXISTENCE, not on its having been rated: a run that
+        is here but unrated answers four nulls, and a run that is not here is
+        absent from the mapping. That is what lets the two read routes treat a
+        miss and a null the same way - "nobody has said" - without either of
+        them deciding whether the run exists, which is `require_own_run`'s job
+        and not this one's.
+        """
+
+        wanted = [_identifier(run_id, label="run_id") for run_id in run_ids]
+        if not wanted:
+            return {}
+        with self._connect() as connection:
+            rows = (
+                connection.execute(
+                    select(
+                        runs.c.id,
+                        runs.c.rating,
+                        runs.c.rating_note,
+                        runs.c.rated_by,
+                        runs.c.rated_at,
+                    ).where(runs.c.id.in_(wanted))
+                )
+                .mappings()
+                .all()
+            )
+        return {
+            row["id"]: {
+                "rating": row["rating"],
+                "rating_note": row["rating_note"],
+                "rated_by": row["rated_by"],
+                "rated_at": _as_utc(row["rated_at"]),
+            }
+            for row in rows
         }
 
     def list_runs_for_user(

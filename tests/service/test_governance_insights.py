@@ -256,6 +256,142 @@ class GovernanceInsightsTests(AdminCase):
         }
         self.assertNotIn("gate_revise", rules)
 
+    # -- plan 20: the labels strip and the `rated_bad` rule ----------------
+
+    def rate(self, run_id: str, rating: str | None, note: str | None = None) -> None:
+        self.store.set_run_rating(
+            run_id, rating=rating, note=note, rated_by="user_alice"
+        )
+
+    def test_labels_count_every_scanned_terminal_run(self) -> None:
+        """`unrated` is a real count, not a remainder the client works out -
+        and early on it is nearly everything, which is the point."""
+
+        self.seed_three("wf-a")
+        self.rate("wf-a-0", "good")
+        self.rate("wf-a-1", "bad")
+        body = self.ok("/insights?workflow_id=wf-a")
+        self.assertEqual(
+            body["labels"], {"good": 1, "bad": 1, "unsure": 0, "unrated": 1}
+        )
+        self.assertEqual(
+            sum(body["labels"].values()), body["coverage"]["runs_scanned"]
+        )
+
+    def test_labels_obey_the_workflow_and_window_scope(self) -> None:
+        self.seed_three("wf-a")
+        self.seed_three("wf-b")
+        self.rate("wf-a-0", "good")
+        self.rate("wf-b-0", "bad")
+        self.assertEqual(
+            self.ok("/insights?workflow_id=wf-a")["labels"],
+            {"good": 1, "bad": 0, "unsure": 0, "unrated": 2},
+        )
+        cutoff = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
+        outside = self.ok(f"/insights?from={cutoff}")
+        self.assertEqual(
+            outside["labels"], {"good": 0, "bad": 0, "unsure": 0, "unrated": 0}
+        )
+
+    def test_a_non_terminal_run_is_in_neither_the_labels_nor_the_rule(self) -> None:
+        self.seed_three("wf-a")
+        self.seed_run("still-running", workflow_id="wf-a", status="running")
+        self.rate("still-running", "bad")
+        body = self.ok("/insights?workflow_id=wf-a")
+        self.assertEqual(body["labels"]["bad"], 0)
+        self.assertEqual(body["labels"]["unrated"], 3)
+
+    def test_rated_bad_fires_at_the_floors(self) -> None:
+        self.seed_three("wf-a")
+        self.rate("wf-a-0", "bad", note="SECRET HUMAN WORDS")
+        self.rate("wf-a-1", "bad")
+        findings = {
+            row["rule_id"]: row
+            for row in self.ok("/insights?workflow_id=wf-a")["findings"]
+        }
+        self.assertIn("rated_bad", findings)
+        row = findings["rated_bad"]
+        self.assertEqual(
+            (row["severity"], row["node_id"], row["gate_id"]), ("high", "(run)", None)
+        )
+        self.assertEqual((row["affected_runs"], row["total_runs"]), (2, 3))
+        self.assertEqual(len(row["samples"]), 2)
+        self.assertIn("judgement", row["explanation"])
+
+    def test_the_raters_note_is_nowhere_in_the_finding(self) -> None:
+        """A note is free text a person typed. This response is metadata."""
+
+        self.seed_three("wf-a")
+        self.rate("wf-a-0", "bad", note="SECRET HUMAN WORDS")
+        self.rate("wf-a-1", "bad", note="ANOTHER SECRET")
+        text = self.get("/insights?workflow_id=wf-a").text
+        self.assertNotIn("SECRET", text)
+        self.assertNotIn("HUMAN WORDS", text)
+
+    def test_one_bad_rating_is_suppressed_below_the_affected_floor(self) -> None:
+        self.seed_three("wf-a")
+        self.rate("wf-a-2", "bad")
+        rules = {
+            row["rule_id"]
+            for row in self.ok("/insights?workflow_id=wf-a")["findings"]
+        }
+        self.assertNotIn("rated_bad", rules)
+
+    def test_two_bad_ratings_under_the_run_floor_are_suppressed(self) -> None:
+        for number in range(2):
+            self.seed_run(f"tiny-{number}", workflow_id="tiny")
+            self.rate(f"tiny-{number}", "bad")
+        body = self.ok("/insights?workflow_id=tiny")
+        self.assertEqual(body["findings"], [])
+        self.assertEqual(body["labels"]["bad"], 2)
+
+    def test_good_and_unsure_and_cleared_never_fire_the_rule(self) -> None:
+        """Only `bad` is a complaint. `unsure` is a person declining to say."""
+
+        self.seed_three("wf-a")
+        self.rate("wf-a-0", "good")
+        self.rate("wf-a-1", "unsure")
+        self.rate("wf-a-2", "bad")
+        self.rate("wf-a-2", None)
+        rules = {
+            row["rule_id"]
+            for row in self.ok("/insights?workflow_id=wf-a")["findings"]
+        }
+        self.assertNotIn("rated_bad", rules)
+
+    def test_a_bad_run_is_still_counted_by_the_other_rules(self) -> None:
+        """Two facts about one run, not one: somebody disliked it AND it
+        failed, and collapsing those would lose the half that names a node."""
+
+        self.seed_three("wf-a")  # wf-a-0 and wf-a-1 are `failed`
+        self.rate("wf-a-0", "bad")
+        self.rate("wf-a-1", "bad")
+        findings = {
+            row["rule_id"]: row
+            for row in self.ok("/insights?workflow_id=wf-a")["findings"]
+        }
+        self.assertEqual(findings["failed_run"]["affected_runs"], 2)
+        self.assertEqual(findings["rated_bad"]["affected_runs"], 2)
+
+    def test_a_judgement_outranks_a_retry_and_yields_to_a_crash(self) -> None:
+        self.seed_three("wf-a")
+        self.rate("wf-a-0", "bad")
+        self.rate("wf-a-1", "bad")
+        for run_id in ("wf-a-0", "wf-a-1"):
+            self.seed_frame(
+                run_id,
+                seq=7,
+                kind="guardrail",
+                node_id="writer",
+                details={"stage": "after", "retry_count": 1},
+            )
+        order = [row["rule_id"] for row in self.ok("/insights?workflow_id=wf-a")["findings"]]
+        self.assertEqual(
+            order.index("failed_run") < order.index("rated_bad") < order.index("guardrail_retry"),
+            True,
+            order,
+        )
+
     def test_non_admin_gets_the_unknown_route_shape(self) -> None:
         response = self.client.get("/api/admin/insights", headers=self.as_alice())
         unknown = self.client.get("/api/admin/not-a-route", headers=self.as_alice())

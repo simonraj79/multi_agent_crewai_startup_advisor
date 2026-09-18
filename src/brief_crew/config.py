@@ -3185,11 +3185,24 @@ def websocket_origin_allowed(
 # rejected in the same commit.
 CORS_ALLOW_CREDENTIALS = False
 
-# The verbs and request headers the client actually sends
-# (frontend/src/services/studioApi.ts): GET for graph, run, frames and logs;
-# POST for run creation, gate replies and cancel; Accept and Content-Type on
-# those. OPTIONS is the preflight itself. Nothing else is granted.
-CORS_ALLOW_METHODS = ("GET", "POST", "OPTIONS")
+# The verbs and request headers the client actually sends: GET for graph, run,
+# frames and logs; POST for run creation, gate replies and cancel; PUT for a
+# builder save, an attachment edit and a run rating; DELETE for a builder
+# document, a credential and an attachment; Accept and Content-Type on those.
+# OPTIONS is the preflight itself. Nothing else is granted.
+#
+# PUT and DELETE were MISSING until 2026-09-18, and had been since the first
+# PUT route shipped with the flow builder (2026-09-02). The studio is a separate
+# origin from this API in production, so a browser preflights every PUT and
+# DELETE, the middleware answered 400, and the real request was never sent: a
+# second save of a workflow, a delete, an attachment edit and the new run rating
+# all read "Failed to fetch" on the deployed site and nowhere else. Every local
+# and E2E run reaches this service through a same-origin Vite proxy, where CORS
+# does not apply, so no suite could see it - it was found by pressing a button
+# on production. `tests/service/test_cors.py::EveryRouteMethodIsGrantedTests`
+# now walks the app's own routes and fails when one declares a verb this tuple
+# omits, so the list cannot fall behind the routes a third time.
+CORS_ALLOW_METHODS = ("GET", "POST", "PUT", "DELETE", "OPTIONS")
 # Authorization joined the list when Better Auth landed, and it is load-bearing
 # rather than tidy: `Authorization` is NOT on the CORS safelist, so a browser
 # preflights every authenticated call and drops the real request unless this

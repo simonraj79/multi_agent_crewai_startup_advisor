@@ -29,6 +29,12 @@
 # that allow-list existed this sentence was a hope; the difference is a test
 # that goes red when the list is removed.
 #
+# NODE NAMES ARE THE ONE PIECE OF A PERSON'S TEXT THAT IS CARRIED, and rule
+# 4 below says so to the model. A review that cannot name a node is useless,
+# so the label travels - bounded at MAX_PROMPT_LABEL_CHARS and passed through
+# the same `scrub_text` the eval-set export uses, because it is the author's
+# words and an author can type anything into a node name, including a key.
+#
 # NESTED UNDER ONE TASK KEY, and the nesting is not cosmetic. Every top-level
 # key of a `crews/*/config/tasks.yaml` is read as a TASK KEY by
 # `tests/observability/test_no_flow_identifiers.py`, the test that stops the
@@ -56,7 +62,9 @@ improve_digest:
     4. You are seeing structural facts only - names, kinds, statuses, counts,
        durations, error classes and a bounded error message. Anything a person
        or a model typed has been withheld before this prompt was built, so do
-       not ask for it and do not guess at it.
+       not ask for it and do not guess at it. The one exception is a NODE
+       NAME: those are the author's own words, shortened and scrubbed, so
+       quote them as labels and do not read meaning into them.
     5. A small sample is a hint, not a finding. If a count rests on fewer than
        five runs, say so in the same sentence.
 

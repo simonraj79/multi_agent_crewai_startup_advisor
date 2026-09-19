@@ -229,6 +229,23 @@ def compare() -> ImproveCompareModel:
                 "median_duration_ms": 58110.0,
                 "cost_per_run_usd": 0.0588,
             },
+            {
+                # D9: an arm the caller ASKED for that this window has no runs
+                # of. SHOWN and FLAGGED rather than omitted - `arms: []` with
+                # no sentence lets a reader conclude the comparison could not
+                # be made at all.
+                "key": "5",
+                "n": 0,
+                "underpowered": True,
+                "missing": True,
+                "status_mix": {},
+                "verdict_mix": {},
+                "mean_confidence": None,
+                "rating_mix": {"good": 0, "bad": 0, "unsure": 0, "unrated": 0},
+                "gate_revise_rate": None,
+                "median_duration_ms": None,
+                "cost_per_run_usd": 0.0,
+            },
         ],
         truncated=False,
     )
@@ -250,6 +267,10 @@ def digest_row() -> ImproveDigestModel:
         # R5: the MEASURED cost against the cap in force when it ran,
         # decided once and stored.
         over_cap=False,
+        # NULL on a review that worked. A failed ATTEMPT carries the reason
+        # and no body, because a model call that raised may still have been
+        # billed and the per-day brake counts attempts.
+        error=None,
         body=(
             "## What went well\n\nThe scope gate is being approved first time "
             "in 4 of 8 runs.\n\n## What is failing\n\n**Market research** "
@@ -272,6 +293,11 @@ def digests() -> ImproveDigestsModel:
         # disagree the moment a workflow passes the cap and the panel would
         # report the page as the total.
         total_count=3,
+        # What is left of today's allowance, across the DEPLOYMENT, and what
+        # the allowance is. On the READ so the panel can say it before the
+        # press: a button that refuses after the click has already made
+        # somebody think the product is broken.
+        remaining_today=7,
         rows=[digest_row()],
     )
 
@@ -379,10 +405,40 @@ def payload() -> dict[str, Any]:
             ),
             "model": config.CHEAP_MODEL,
             "max_cost_usd": config.DIGEST_MAX_COST_USD,
+            "max_per_day": config.DIGEST_MAX_PER_DAY,
+            "min_interval_seconds": config.DIGEST_MIN_INTERVAL_SECONDS,
             "max_sample_runs": config.DIGEST_MAX_SAMPLE_RUNS,
             "max_sample_frames": config.DIGEST_MAX_SAMPLE_FRAMES,
             "max_input_chars": config.DIGEST_MAX_INPUT_CHARS,
             "max_output_tokens": config.DIGEST_MAX_OUTPUT_TOKENS,
+        },
+        "_digest_refusals": {
+            "_comment": (
+                "The three 429 sentences the money brakes answer with. All "
+                "server-side: the knob is a deployment switch, not a rate "
+                "limit, and twenty POSTs were measured producing twenty model "
+                "calls before these existed."
+            ),
+            "in_flight": (
+                "a review is already running on this deployment; wait for it "
+                "to finish and try again"
+            ),
+            "per_day": (
+                "this deployment has asked for 10 reviews in the last 24 "
+                "hours, the limit is 10; try again after "
+                "2026-09-19T12:00:00Z"
+            ),
+            "min_interval": (
+                "a review of this workflow ran less than 30 seconds ago; try "
+                "again in 12 seconds"
+            ),
+            "model_failed": {
+                "status": 502,
+                "detail": (
+                    "the model did not answer; the attempt was recorded "
+                    "because it may still have been billed"
+                ),
+            },
         },
         "_digest_disabled_refusal": {
             "_comment": (

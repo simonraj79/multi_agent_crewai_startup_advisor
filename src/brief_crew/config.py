@@ -1760,6 +1760,14 @@ DIGEST_MAX_OUTPUT_TOKENS = 1_200
 #: the check fires and the feature turns itself off.
 DIGEST_MAX_COST_USD = 0.05
 
+#: How much of a node's own label reaches a model prompt, after scrubbing.
+#:
+#: A node label is the one string in that prompt a PERSON typed, so it is the
+#: one place a credential can arrive under an innocent name. It is carried
+#: because a review that cannot name a node is useless, and it is bounded and
+#: scrubbed because it is the author's words rather than this program's.
+MAX_PROMPT_LABEL_CHARS = 40
+
 #: The most runs one eval-set export will stream. `MAX_EXPORT_FRAMES` bounds
 #: the per-run half and is reused rather than restated.
 EVALSET_MAX_RUNS = 2000
@@ -1768,6 +1776,30 @@ EVALSET_MAX_RUNS = 2000
 #: whole body has a 64 KiB home in `runs.result`; an eval set wants the
 #: conclusion, and 2,000 characters is what one costs.
 EVALSET_MAX_RESULT_CHARS = 2000
+
+#: How many runs' `inputs` and `result` the export loads at a time.
+#:
+#: MEASURED defect: the export read every selected run's payload before the
+#: first byte - up to `EVALSET_MAX_RUNS` (2,000) rows each carrying a 64 KiB
+#: `result`, about **128 MB resident**, on a response that called itself
+#: streamed. The byte cap below bounded the WIRE and nothing in memory, and
+#: a cap that stops at 8 MiB after loading 128 MB is a label rather than a
+#: bound.
+#:
+#: Fifty is small enough that a page is never a large read and large enough
+#: that a 2,000-run export is forty queries rather than two thousand.
+EVALSET_PAGE_RUNS = 50
+
+#: The most stored versions `resolve_document_version` will walk for one
+#: document, per request.
+#:
+#: It exists because that lookup recomputes a CONTENT HASH per stored version,
+#: which loads and re-derives a descriptor each time - so an unbounded walk is
+#: an unbounded amount of work triggered by a run whose lineage happens to be
+#: unresolvable. The index is built once per request and an unmatched hash
+#: then costs nothing; this bounds the one build. Past it the answer stays
+#: `unknown`, which is the honest word for "I could not prove it".
+IMPROVE_MAX_VERSION_SCAN = 200
 
 #: The export's own byte ceiling, counted as the NDJSON is streamed (plan 21
 #: R3). `EVALSET_MAX_RUNS` bounds the row count and says nothing about the
@@ -1778,6 +1810,34 @@ EVALSET_MAX_RESULT_CHARS = 2000
 #: than a browser that gives up halfway - which is the same call
 #: `/api/runs/{id}/logs` made for frames.
 EVALSET_MAX_BYTES = 8 * 1024 * 1024
+
+#: **The money brakes on the one route that spends.** Three of them, and each
+#: bounds a different way of turning one admin click into many.
+#:
+#: The route was measured at **20 POSTs -> 20 model calls with no refusal**:
+#: `IMPROVE_DIGEST_ENABLED` is a deployment switch, not a rate limit, and a
+#: held-down button, a retrying client or a second admin is not a thing a
+#: switch can see. `RUN_RATE_LIMIT_MAX_RUNS` does not cover it either - that
+#: limiter is on `POST /api/sessions/{id}/runs` and nothing else.
+#:
+#: The arithmetic these bound: `DIGEST_MAX_PER_DAY` x `DIGEST_MAX_COST_USD` is
+#: **$0.50**, which is what a worst day costs if every attempt hits the
+#: ceiling. Ten is a working figure rather than a measured one - a person
+#: reviewing a handful of workflows will not reach it, and somebody who does
+#: has a reason to wait rather than a reason to be refused silently.
+DIGEST_MAX_PER_DAY = 10
+
+#: The window the count above is taken over, from now backwards. A ROLLING
+#: window rather than a calendar day: a calendar reset hands anybody who
+#: waits for midnight a second full allowance, and the thing being bounded is
+#: spend per unit time, not spend per date.
+DIGEST_DAY_SECONDS = 24 * 60 * 60
+
+#: And the floor between two reviews OF THE SAME WORKFLOW. A second review of
+#: one workflow thirty seconds after the first reads almost the same runs and
+#: says almost the same thing, so this costs a reader nothing and stops a
+#: double-click being two bills.
+DIGEST_MIN_INTERVAL_SECONDS = 30
 
 #: How many of a `TaskOutput.tool_failures` records reach the task frame.
 #: Eight, because the list is a POINTER at which tools went wrong rather than

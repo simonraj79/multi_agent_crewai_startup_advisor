@@ -60,6 +60,7 @@ DIGEST_COLUMNS = {
     "completion_tokens",
     "cost_usd",
     "over_cap",
+    "error",
     "body",
     "created_at",
 }
@@ -171,13 +172,27 @@ class DocumentVersionOnPostgres(unittest.TestCase):
         self.assertIn("improve_digests", self.tables())
         self.assertEqual(DIGEST_COLUMNS, set(self.columns("improve_digests")))
 
-    def test_the_new_table_is_not_in_the_additive_column_list(self) -> None:
-        """A new table takes `create_all()`'s route and must not take the
-        other one: an `ALTER TABLE` against a table that does not exist yet
-        would fail the boot it is supposed to survive."""
+    def test_the_new_table_takes_create_all_and_its_LATER_column_an_alter(
+        self,
+    ) -> None:
+        """Both routes, and the pair is the point.
 
-        tables = {table for table, _column, _type in self.upgrade()._ADDITIVE_COLUMNS}
-        self.assertNotIn("improve_digests", tables)
+        The TABLE is made by `create_all()` - an `ALTER TABLE` against a table
+        that does not exist yet would fail the boot it is supposed to survive.
+        Its `error` column is a different case: it landed after the table did,
+        so a database created in between has the table WITHOUT the column and
+        `create_all()` does nothing to a table that already exists. That is
+        exactly what `_ADDITIVE_COLUMNS` is for, and the assertion below
+        changed from "not in the list" to "only this column is" when the money
+        brakes landed.
+        """
+
+        rows = {
+            (table, column)
+            for table, column, _type in self.upgrade()._ADDITIVE_COLUMNS
+        }
+        improve = {column for table, column in rows if table == "improve_digests"}
+        self.assertEqual({"error"}, improve)
 
     def test_the_new_table_carries_its_index(self) -> None:
         from sqlalchemy import inspect
@@ -216,6 +231,7 @@ class DocumentVersionOnPostgres(unittest.TestCase):
                 "completion_tokens": 300,
                 "cost_usd": 0.004321,
                 "over_cap": False,
+                "error": None,
                 "body": "## What went well\n\nNothing yet.",
                 "created_at": moment,
             }

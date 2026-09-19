@@ -826,6 +826,11 @@ class DocumentVersionColumnTests(unittest.TestCase):
                 "completion_tokens",
                 "cost_usd",
                 "over_cap",
+                # A failed ATTEMPT's reason. It reaches a database made
+                # between the table landing and the money brakes landing
+                # through `_ADDITIVE_COLUMNS`, because `create_all()` does
+                # nothing to a table that already exists.
+                "error",
                 "body",
                 "created_at",
             },
@@ -858,6 +863,7 @@ class DocumentVersionColumnTests(unittest.TestCase):
                 "completion_tokens": 5,
                 "cost_usd": 0.004,
                 "over_cap": False,
+                "error": None,
                 "body": "## What went well",
                 "created_at": moment,
             }

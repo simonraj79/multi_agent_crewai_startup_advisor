@@ -24,10 +24,22 @@
     "_comment": "Shown beside the review button BEFORE the click, with the model. max_cost_usd is checked at import from PRICES; a breach DISABLES the feature rather than raising (R9).",
     "model": "openrouter/google/gemini-3.5-flash-lite:nitro",
     "max_cost_usd": 0.05,
+    "max_per_day": 10,
+    "min_interval_seconds": 30,
     "max_sample_runs": 12,
     "max_sample_frames": 400,
     "max_input_chars": 40000,
     "max_output_tokens": 1200
+  },
+  "_digest_refusals": {
+    "_comment": "The three 429 sentences the money brakes answer with. All server-side: the knob is a deployment switch, not a rate limit, and twenty POSTs were measured producing twenty model calls before these existed.",
+    "in_flight": "a review is already running on this deployment; wait for it to finish and try again",
+    "per_day": "this deployment has asked for 10 reviews in the last 24 hours, the limit is 10; try again after 2026-09-19T12:00:00Z",
+    "min_interval": "a review of this workflow ran less than 30 seconds ago; try again in 12 seconds",
+    "model_failed": {
+      "status": 502,
+      "detail": "the model did not answer; the attempt was recorded because it may still have been billed"
+    }
   },
   "_digest_disabled_refusal": {
     "_comment": "POST /improve/digests with IMPROVE_DIGEST_ENABLED off. 422, and no LLM is constructed.",
@@ -212,6 +224,7 @@
         "key": "3",
         "n": 6,
         "underpowered": false,
+        "missing": false,
         "status_mix": {
           "completed": 5,
           "failed": 1
@@ -235,6 +248,7 @@
         "key": "4",
         "n": 3,
         "underpowered": true,
+        "missing": false,
         "status_mix": {
           "completed": 3
         },
@@ -252,6 +266,24 @@
         "gate_revise_rate": 0.0,
         "median_duration_ms": 58110.0,
         "cost_per_run_usd": 0.0588
+      },
+      {
+        "key": "5",
+        "n": 0,
+        "underpowered": true,
+        "missing": true,
+        "status_mix": {},
+        "verdict_mix": {},
+        "mean_confidence": null,
+        "rating_mix": {
+          "good": 0,
+          "bad": 0,
+          "unsure": 0,
+          "unrated": 0
+        },
+        "gate_revise_rate": null,
+        "median_duration_ms": null,
+        "cost_per_run_usd": 0.0
       }
     ],
     "estimate": true,
@@ -268,6 +300,8 @@
     "max_sample_frames": 400,
     "max_input_chars": 40000,
     "max_output_tokens": 1200,
+    "remaining_today": 7,
+    "max_per_day": 10,
     "total_count": 3,
     "rows": [
       {
@@ -287,6 +321,7 @@
         "completion_tokens": 734,
         "cost_usd": 0.0043,
         "max_cost_usd": 0.05,
+        "error": null,
         "over_cap": false,
         "body": "## What went well\n\nThe scope gate is being approved first time in 4 of 8 runs.\n\n## What is failing\n\n**Market research** returns nothing half the time.\n",
         "created_at": "2026-09-08T12:41:07Z"
@@ -310,6 +345,7 @@
     "completion_tokens": 734,
     "cost_usd": 0.0043,
     "max_cost_usd": 0.05,
+    "error": null,
     "over_cap": false,
     "body": "## What went well\n\nThe scope gate is being approved first time in 4 of 8 runs.\n\n## What is failing\n\n**Market research** returns nothing half the time.\n",
     "created_at": "2026-09-08T12:41:07Z"

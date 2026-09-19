@@ -48,7 +48,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from threading import RLock
 
-from brief_crew.config import ADMIN_UNOWNED_KEY, MAX_RATING_NOTE_CHARS
+from brief_crew.config import (
+    ADMIN_UNOWNED_KEY,
+    MAX_NODE_ERROR_CHARS,
+    MAX_RATING_NOTE_CHARS,
+)
 from brief_crew.events import FrameData
 from brief_crew.events.redaction import (
     REDACTED,
@@ -622,6 +626,15 @@ improve_digests = Table(
     Column("completion_tokens", Integer, nullable=False, default=0),
     Column("cost_usd", Numeric(12, 6)),
     Column("over_cap", Integer, nullable=False, default=0),
+    # A FAILED attempt's reason, and NULL for a review that worked.
+    #
+    # It exists so the per-day money brake counts attempts rather than
+    # successes. A model call that raised may still have been billed - the
+    # provider charges for tokens it generated before it gave up - so a
+    # limiter that only counted rows it liked would let a failing loop
+    # spend all day. A durable row is also the only thing a restart cannot
+    # forget, which an in-memory attempt counter would.
+    Column("error", Text),
     Column("body", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
@@ -944,6 +957,13 @@ class PostgresFlowPersistence(FlowPersistence):
         # which is exactly what a hand-written flow's run reads too, and
         # `resolve_document_version` is what answers for the older ones.
         ("runs", "document_version", "INTEGER"),
+        # `improve_digests` is a NEW table, so `create_all()` makes it
+        # whole - but it was created WITHOUT `error` on any database made
+        # between the table landing and the money brakes landing, and
+        # `create_all` does nothing to a table that already exists. One
+        # row here covers that window; TEXT is spelled the same on both
+        # dialects.
+        ("improve_digests", "error", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:
@@ -2867,6 +2887,13 @@ class PostgresFlowPersistence(FlowPersistence):
             # Bounded at the durable layer's own per-string ceiling. The model
             # was given `max_tokens`, so this is a second bound on a bounded
             # value rather than the only one.
+            # A failed attempt's reason, bounded like every other string
+            # that reaches a column here. NULL when the review worked.
+            "error": (
+                None
+                if row.get("error") in (None, "")
+                else str(row["error"])[:MAX_NODE_ERROR_CHARS]
+            ),
             "body": str(row.get("body") or "")[:MAX_STRING_LENGTH],
             "created_at": _as_utc(row.get("created_at")) or _utcnow(),
         }
@@ -2891,12 +2918,21 @@ class PostgresFlowPersistence(FlowPersistence):
             ).mappings().all()
         return [self._digest_dict(row) for row in rows]
 
-    def digest_count(self, workflow_id: str | None = None) -> int:
+    def digest_count(
+        self,
+        workflow_id: str | None = None,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> int:
         """How many reviews exist, whatever a page of them returned.
 
         A `COUNT` rather than `len(list_digests(...))`, because that list
         is `?limit=`ed: the moment a workflow passes the cap the two would
         disagree and the panel would report the page as the total.
+
+        `workflow_id=None` counts the whole deployment, which is what the
+        per-day money brake asks.
         """
 
         statement = select(func.count()).select_from(improve_digests)
@@ -2905,8 +2941,39 @@ class PostgresFlowPersistence(FlowPersistence):
                 improve_digests.c.workflow_id
                 == _identifier(workflow_id, label="workflow_id")
             )
+        # Counted over `created_at`, so the caller can ask the money brake's
+        # question - "how many in the last 24 hours" - with no second method.
+        # Every row counts, including a failed attempt, because a failed call
+        # may still have been billed.
+        statement = self._window(statement, improve_digests.c.created_at, start, end)
         with self._connect() as connection:
             return int(connection.execute(statement).scalar() or 0)
+
+    def list_digests_in_window(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Every attempt on the DEPLOYMENT in a window, oldest first.
+
+        One caller: the per-day money brake, which needs the OLDEST
+        attempt still inside the rolling window so its refusal can say
+        when the allowance clears. Oldest first and bounded, because that
+        is the one row it reads and a `LIMIT` on the far end would return
+        the wrong one.
+        """
+
+        statement = self._window(
+            select(improve_digests), improve_digests.c.created_at, start, end
+        )
+        statement = statement.order_by(improve_digests.c.created_at.asc()).limit(
+            max(1, limit)
+        )
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [self._digest_dict(row) for row in rows]
 
     def digest_cost_total(
         self,
@@ -2953,6 +3020,7 @@ class PostgresFlowPersistence(FlowPersistence):
                 float(row["cost_usd"]) if row["cost_usd"] is not None else None
             ),
             "over_cap": bool(row["over_cap"]),
+            "error": row["error"],
             "body": row["body"],
             "created_at": _as_utc(row["created_at"]),
         }

@@ -339,5 +339,130 @@ class RedactionTests(EvalsetCase):
         self.assertIsNone(notes["good-2"])
 
 
+class PagingTests(EvalsetCase):
+    """D5: the payloads are read as the lines are yielded, not all at once.
+
+    It used to take a `payloads` mapping the route had already built for every
+    selected run - up to `EVALSET_MAX_RUNS` (2,000) rows each carrying a
+    64 KiB `result`, about **128 MB resident** - before the first byte of a
+    response that called itself streamed. The byte cap bounded the wire and
+    nothing in memory, which makes it a label rather than a bound.
+    """
+
+    def seed_many(self, count: int) -> None:
+        for index in range(count):
+            self.seed_rated(f"page-{index:04d}", rating="good", note=None)
+
+    def spy(self) -> list[int]:
+        """How many runs each `improve_run_payloads` call asked for."""
+
+        sizes: list[int] = []
+        original = self.store.improve_run_payloads
+
+        def counted(run_ids):  # type: ignore[no-untyped-def]
+            sizes.append(len(list(run_ids)))
+            return original(run_ids)
+
+        patcher = patch.object(
+            type(self.store), "improve_run_payloads", lambda _self, ids: counted(ids)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return sizes
+
+    def test_the_payloads_are_read_one_page_at_a_time(self) -> None:
+        self.seed_many(120)
+        sizes = self.spy()
+        with patch.object(config, "EVALSET_PAGE_RUNS", 50):
+            lines = self.export("&rating=good")
+        self.assertGreater(len(lines), 100)
+        self.assertTrue(sizes, "the payloads were never read")
+        self.assertLessEqual(max(sizes), 50, sizes)
+
+    def test_a_byte_capped_export_stops_paging_early(self) -> None:
+        """The cap stops the READS as well as the output.
+
+        Without this the generator would page through all 124 runs and throw
+        the tail away, which is the same work the defect did in one go.
+        """
+
+        self.seed_many(120)
+        sizes = self.spy()
+        with patch.object(config, "EVALSET_PAGE_RUNS", 10), patch.object(
+            config, "EVALSET_MAX_BYTES", 4000
+        ):
+            lines = self.export("&rating=good")
+        self.assertTrue(lines[-1]["_truncated"])
+        needed = -(-((len(lines) - 2)) // 10) + 1
+        self.assertLessEqual(len(sizes), needed, sizes)
+        self.assertLess(len(sizes), 12, "every page was read despite the cap")
+
+    def test_the_rows_are_all_there_when_nothing_is_capped(self) -> None:
+        """The control: paging must not lose a run."""
+
+        self.seed_many(30)
+        with patch.object(config, "EVALSET_PAGE_RUNS", 7):
+            rows = self.export("&rating=good")[1:]
+        self.assertEqual(32, len(rows))
+        self.assertEqual(len(rows), len({row["run_id"] for row in rows}))
+
+
+class FilenameTests(EvalsetCase):
+    """D7: `Content-Disposition` was an f-string over a caller-supplied id.
+
+    A quote injects a second `filename=`, a CR or LF reaches the header
+    itself, and a non-latin-1 character is a 500 from the ASGI layer rather
+    than a refusal. A slug is the fix rather than an escape: a filename is a
+    label, and there is nothing in an id worth preserving byte for byte.
+    """
+
+    def disposition(self, workflow_id: str) -> str:
+        response = self.get(
+            "/export/evalset", params={"workflow_id": workflow_id, "rating": "any"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.headers["content-disposition"]
+
+    def test_a_quote_cannot_open_a_second_filename(self) -> None:
+        header = self.disposition('ug_a";filename="owned.sh')
+        self.assertEqual(1, header.count("filename="))
+        self.assertNotIn("owned.sh", header.replace("-owned.sh", ""))
+        self.assertEqual(2, header.count('"'))
+
+    def test_a_newline_never_reaches_the_header(self) -> None:
+        """CR and LF are built by hand, so this file cannot smuggle one
+        into its own source and read as a syntax error instead."""
+
+        hostile = "ug_a" + chr(13) + chr(10) + "X-Injected: 1"
+        response = self.get(
+            "/export/evalset", params={"workflow_id": hostile, "rating": "any"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        header = response.headers["content-disposition"]
+        self.assertNotIn(chr(13), header)
+        self.assertNotIn(chr(10), header)
+        # The bytes that would have ENDED the header are gone; what is left of
+        # the text is inert inside a filename, which is the point of slugging
+        # rather than escaping.
+        self.assertNotIn("x-injected", {key.lower() for key in response.headers})
+        self.assertEqual(1, header.count("filename="))
+
+    def test_a_non_latin_1_id_is_a_file_rather_than_a_500(self) -> None:
+        """An ASGI server encodes a header as latin-1, so a CJK id was a
+        500 from the transport rather than a refusal from the route."""
+
+        header = self.disposition("ug_" + "中文テ")
+        self.assertIn("evalset-", header)
+        header.encode("latin-1")
+
+    def test_an_id_with_nothing_usable_in_it_falls_back(self) -> None:
+        self.assertIn('filename="evalset-workflow-any.ndjson"', self.disposition("!!!"))
+
+    def test_the_ordinary_id_still_names_itself(self) -> None:
+        """The control: a slug that ate everything would pass the four above."""
+
+        self.assertIn(WORKFLOW, self.disposition(WORKFLOW))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

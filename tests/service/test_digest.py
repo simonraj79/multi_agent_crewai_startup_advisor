@@ -31,7 +31,10 @@ forgotten patch is an `AssertionError` rather than a bill.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import pathlib
+import threading
+import time
 from typing import Any
 import unittest
 from unittest.mock import patch
@@ -54,6 +57,47 @@ class FakeLLM:
     def call(self, messages: list[dict[str, str]]) -> str:
         self.calls.append(messages)
         return self.body
+
+
+def _emit(*, prompt: int, completion: int) -> None:
+    """One REAL `LLMCallCompletedEvent` on the REAL process-wide bus."""
+
+    from crewai.events import LLMCallCompletedEvent, crewai_event_bus
+
+    crewai_event_bus.emit(
+        None,
+        LLMCallCompletedEvent.model_construct(
+            type="llm_call_completed",
+            messages=[],
+            response="ok",
+            call_type="llm",
+            usage={"prompt_tokens": prompt, "completion_tokens": completion},
+        ),
+    )
+
+
+def _handler_count() -> int:
+    """How many handlers the bus holds for the event the meter listens on."""
+
+    from crewai.events import LLMCallCompletedEvent, crewai_event_bus
+
+    return len(
+        crewai_event_bus._sync_handlers.get(LLMCallCompletedEvent, ())
+    ) + len(crewai_event_bus._async_handlers.get(LLMCallCompletedEvent, ()))
+
+
+class EmittingLLM(FakeLLM):
+    """A fake that raises the event a real one raises, on this thread."""
+
+    def __init__(self, *, prompt: int = 0, completion: int = 0) -> None:
+        super().__init__()
+        self.prompt = prompt
+        self.completion = completion
+
+    def call(self, messages: list[dict[str, str]]) -> str:
+        body = super().call(messages)
+        _emit(prompt=self.prompt, completion=self.completion)
+        return body
 
 
 class PromptTests(unittest.TestCase):
@@ -188,6 +232,84 @@ class RenderTests(unittest.TestCase):
         self.assertIsInstance(json.loads(remaining), list)
 
 
+class PromptCeilingTests(unittest.TestCase):
+    """D4: the rendered prompt NEVER exceeds `DIGEST_MAX_INPUT_CHARS`.
+
+    It was measured at **51,533 characters against a 40,000 ceiling, with
+    `truncated=False`** - because only `sample` was shrinking. The figure is
+    not cosmetic: `worst_case_digest_cost()` prices exactly that ceiling, so a
+    prompt over it is a bill over the cap checked at import.
+    """
+
+    def big_hotspots(self) -> dict[str, Any]:
+        return {
+            "workflow_id": "ug_big00001",
+            "agents": [
+                {
+                    "agent_role": f"role number {index}",
+                    "node_id": f"node_{index}",
+                    "node_label": f"A node called {index}",
+                    "runs": index,
+                    "executions": index,
+                    "llm_calls": index * 3,
+                    "cost_usd": 0.01 * index,
+                    "error_classes": [f"ErrorClass{index}"] * 6,
+                }
+                for index in range(400)
+            ],
+            "tools": [
+                {"tool": f"tool_{index}", "node_id": f"node_{index}", "calls": index}
+                for index in range(400)
+            ],
+        }
+
+    def render(self, **overrides: Any) -> tuple[str, str, bool]:
+        return digest_module.render_prompt(
+            digest_module.load_prompt(),
+            workflow_name="a workflow",
+            window="a window",
+            hotspots=overrides.pop("hotspots", self.big_hotspots()),
+            lessons=[],
+            sample=overrides.pop("sample", []),
+            **overrides,
+        )
+
+    def test_a_large_payload_is_cut_to_the_ceiling(self) -> None:
+        system, user, truncated = self.render()
+        self.assertLessEqual(len(system) + len(user), config.DIGEST_MAX_INPUT_CHARS)
+        self.assertTrue(truncated)
+
+    def test_the_control_a_small_payload_is_untouched(self) -> None:
+        """Without this the assertion above would pass on a renderer that
+        always clipped, and every review would be made over a stub."""
+
+        system, user, truncated = self.render(hotspots={"agents": [{"runs": 1}]})
+        self.assertFalse(truncated)
+        self.assertIn("MINED COUNTS", user)
+
+    def test_the_sample_goes_before_the_counts_do(self) -> None:
+        """The order is a judgement: the counts are what the review reads
+        across, and raw frames are the cheapest thing to lose."""
+
+        sample = [
+            {"run_id": f"r-{index}", "frames": [{"kind": "agent"}] * 900}
+            for index in range(12)
+        ]
+        _system, user, truncated = self.render(
+            hotspots={"agents": [{"node_id": "n1", "runs": 1}]}, sample=sample
+        )
+        self.assertTrue(truncated)
+        self.assertIn('"node_id":"n1"', user)
+
+    def test_it_holds_even_against_a_ceiling_smaller_than_the_template(self) -> None:
+        """The last-resort clip. A clipped prompt is worth more than a
+        refusal at the moment somebody clicks."""
+
+        system, user, truncated = self.render(max_chars=200)
+        self.assertLessEqual(len(system) + len(user), 200)
+        self.assertTrue(truncated)
+
+
 class BuildSampleTests(unittest.TestCase):
     def rows(self, count: int) -> list[dict[str, Any]]:
         return [
@@ -284,18 +406,66 @@ class RunDigestTests(unittest.TestCase):
         self.assertIn("What is failing", result.body)
 
     def test_the_cost_is_priced_from_a_captured_token_event(self) -> None:
-        """The event the frame pipeline reads, through the function it uses."""
+        """A REAL event on the REAL bus, raised from inside the call.
 
-        llm = FakeLLM()
-        meter = digest_module._TokenMeter(config.CHEAP_MODEL)
-        meter.absorb({"prompt_tokens": 4000, "completion_tokens": 600})
-        with patch.object(digest_module, "_TokenMeter", lambda _model: meter):
-            result = self.run_it(llm)
+        Not `meter.absorb(...)` from the outside: the meter is now inert
+        outside its own block, and a test that poked it directly would pass
+        over a meter that never registered a handler at all.
+        """
+
+        result = self.run_it(EmittingLLM(prompt=4000, completion=600))
         self.assertEqual(4000, result.prompt_tokens)
         self.assertEqual(600, result.completion_tokens)
         self.assertEqual(
             config.compute_cost_usd(config.CHEAP_MODEL, 4000, 600), result.cost_usd
         )
+
+    def test_the_bus_is_left_exactly_as_it_was_found(self) -> None:
+        """D1, and it was MEASURED wrong: 1 -> 2 -> 3 -> 4 over three reviews.
+
+        The bus is a process-wide singleton, so a listener left behind is not
+        a slow leak - it is a permanent one, and every later review paid a
+        little more of somebody else's usage.
+        """
+
+        before = _handler_count()
+        for _ in range(3):
+            self.run_it(EmittingLLM(prompt=10, completion=5))
+        self.assertEqual(before, _handler_count())
+
+    def test_an_event_after_the_block_is_not_counted(self) -> None:
+        """The exited meter absorbed one, measured. Now it is inert."""
+
+        llm = EmittingLLM(prompt=10, completion=5)
+        result = self.run_it(llm)
+        self.assertEqual(10, result.prompt_tokens)
+        _emit(prompt=999, completion=999)
+        self.assertEqual(10, result.prompt_tokens)
+
+    def test_another_threads_completion_is_not_counted(self) -> None:
+        """A paid run in a registry worker must not be billed to a review.
+
+        The event is delivered on the thread that emitted it, so the
+        discriminator is the thread identity taken at `__enter__`. Without it
+        a concurrent run inflated `cost_usd` and could set a false
+        `over_cap` - a money figure made wrong by something the review had
+        nothing to do with.
+        """
+
+        import threading
+
+        class ConcurrentLLM(EmittingLLM):
+            def call(self, messages: list[dict[str, str]]) -> str:
+                worker = threading.Thread(
+                    target=_emit, kwargs={"prompt": 50_000, "completion": 50_000}
+                )
+                worker.start()
+                worker.join()
+                return super().call(messages)
+
+        result = self.run_it(ConcurrentLLM(prompt=10, completion=5))
+        self.assertEqual(10, result.prompt_tokens)
+        self.assertEqual(5, result.completion_tokens)
 
     def test_a_call_that_raised_no_event_costs_zero_tokens_not_a_guess(self) -> None:
         result = self.run_it(FakeLLM())
@@ -692,6 +862,58 @@ class NoContentReachesThePromptTests(unittest.TestCase):
         self.assertNotIn(self.PLANTED_ERROR_SECRET, message)
         self.assertIn("the provider refused", message)
 
+    def test_a_key_planted_in_a_node_label_is_scrubbed(self) -> None:
+        """D8: a label is the ONE string here a person typed.
+
+        Every other key on these payloads is a name this program chose, a code
+        or a number. A label is carried because a review that cannot name a
+        node is useless, so it is bounded and scrubbed rather than dropped.
+        """
+
+        secret = "sk-or-v1-0123456789abcdef-IN-A-NODE-LABEL"
+        rendered = self.prompt(
+            hotspots={
+                "agents": [
+                    {"node_id": "n1", "node_label": f"Market ({secret})", "runs": 1}
+                ],
+                "node_models": [
+                    {"node_id": "n1", "label": f"Market ({secret})", "models": ["m"]}
+                ],
+            }
+        )
+        self.assertNotIn(secret, rendered)
+        self.assertIn("Market", rendered)
+
+    def test_a_node_label_is_bounded_before_it_is_scrubbed(self) -> None:
+        """Bounded first so the scrub runs over a short string; scrubbed after
+        so a key inside the first forty characters is still found."""
+
+        long_label = "L" * (config.MAX_PROMPT_LABEL_CHARS + 60)
+        cleaned = digest_module.structural_hotspots(
+            {"agents": [{"node_label": long_label}]}, ()
+        )
+        self.assertEqual(
+            config.MAX_PROMPT_LABEL_CHARS,
+            len(cleaned["agents"][0]["node_label"]),
+        )
+
+    def test_a_key_planted_in_a_sampled_frames_label_is_scrubbed(self) -> None:
+        """The other door: `node_label` is in the frame allow-list too."""
+
+        secret = "sk-or-v1-0123456789abcdef-IN-A-FRAME-LABEL"
+        runs = [{"run_id": "r-0", "status": "completed", "rating": None}]
+        frames = [
+            {
+                "run_id": "r-0",
+                "kind": "agent",
+                "node_id": "n1",
+                "message": "m",
+                "details": {"stage": "before", "task": "t", "node_label": secret},
+            }
+        ]
+        sample, _truncated = digest_module.build_sample(runs, frames)
+        self.assertNotIn(secret, repr(sample))
+
     def test_it_fails_when_the_allow_list_is_removed(self) -> None:
         """The assertion that makes the six above mean something.
 
@@ -705,6 +927,316 @@ class NoContentReachesThePromptTests(unittest.TestCase):
         )
         with patch.object(digest_module, "SAMPLE_DETAIL_KEYS", everything):
             self.assertIn(self.PLANTED_ARG, self.prompt())
+
+
+class SlowLLM(FakeLLM):
+    """A fake that takes a second, the way a real generation does."""
+
+    def __init__(self, seconds: float, started: "threading.Event") -> None:
+        super().__init__()
+        self.seconds = seconds
+        self.started = started
+
+    def call(self, messages: list[dict[str, str]]) -> str:
+        self.started.set()
+        time.sleep(self.seconds)
+        return super().call(messages)
+
+
+class TheLoopIsNotParkedTests(AdminCase):
+    """D2: every Improve handler is `def`, so FastAPI threadpools it.
+
+    Measured elsewhere in this repository at **2.012 s against 0.112 s** for a
+    concurrent `GET /healthz` when a blocking handler was spelled `async def`.
+    The POST is the worst of the four: it makes a network call to a model, so
+    on the loop it parks every other request in the process for the length of
+    somebody else's generation.
+
+    A `TestClient` used as a CONTEXT MANAGER runs one event loop for its
+    lifetime - which is the whole question here. Used per request it spins a
+    fresh portal each time and two separate loops could not show this either
+    way.
+    """
+
+    SLEEP_SECONDS = 1.0
+    #: Well under the sleep, and far above what an in-process GET costs.
+    RESPONSIVE_SECONDS = 0.5
+
+    WORKFLOW = "ug_loop00001"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.seed_run("loop-run-1", user_id=ALICE.id, workflow_id=self.WORKFLOW)
+
+    def test_a_concurrent_request_is_served_while_a_review_is_running(self) -> None:
+        from fastapi.testclient import TestClient
+
+        started = threading.Event()
+        llm = SlowLLM(self.SLEEP_SECONDS, started)
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True), patch.object(
+            digest_module, "_default_llm", lambda _model: llm
+        ):
+            with TestClient(self.app) as client:
+                outcome: list[object] = []
+
+                def review() -> None:
+                    outcome.append(
+                        client.post(
+                            f"/api/admin/improve/digests?workflow_id={self.WORKFLOW}",
+                            headers=self.as_admin(),
+                        )
+                    )
+
+                worker = threading.Thread(target=review, daemon=True)
+                worker.start()
+                self.assertTrue(
+                    started.wait(timeout=10), "the model was never called"
+                )
+                began = time.monotonic()
+                health = client.get("/healthz")
+                elapsed = time.monotonic() - began
+                worker.join(timeout=30)
+
+        self.assertEqual(200, health.status_code, health.text)
+        self.assertLess(
+            elapsed,
+            self.RESPONSIVE_SECONDS,
+            f"the loop was parked: GET /healthz took {elapsed:.2f}s while one "
+            f"review held the model for {self.SLEEP_SECONDS}s",
+        )
+        self.assertEqual(200, outcome[0].status_code, outcome[0].text)
+
+    def test_every_improve_handler_is_a_sync_def(self) -> None:
+        """The property, read off the app rather than off the source.
+
+        A route added later as `async def` would pass the timing test above
+        whenever its own work happened to be fast, and fail production the
+        first time it was not.
+        """
+
+        import inspect
+
+        def walk(routes: object) -> list[object]:
+            found: list[object] = []
+            for route in routes:  # type: ignore[union-attr]
+                # An included router is a node, not a leaf: FastAPI wraps it
+                # in an `_IncludedRouter` whose own `routes` is EMPTY and
+                # whose `original_router` holds them, so a flat scan of
+                # `app.routes` finds none of these paths and the assertion
+                # would pass on zero - which the `checked` count below is the
+                # guard against.
+                nested = getattr(
+                    getattr(route, "original_router", None), "routes", None
+                ) or getattr(route, "routes", None)
+                if nested:
+                    found.extend(walk(nested))
+                if hasattr(route, "endpoint"):
+                    found.append(route)
+            return found
+
+        checked = 0
+        for route in walk(self.app.routes):
+            path = getattr(route, "path", "")
+            if "/improve/" not in path and not path.endswith("/export/evalset"):
+                continue
+            checked += 1
+            with self.subTest(path=path, method=sorted(route.methods)):
+                self.assertFalse(
+                    inspect.iscoroutinefunction(route.endpoint),
+                    f"{path} is async and does blocking work",
+                )
+        self.assertEqual(5, checked)
+
+
+class MoneyBrakeTests(AdminCase):
+    """D3: three server-side brakes on the one route that spends.
+
+    MEASURED without them: **twenty POSTs produced twenty model calls and no
+    refusal.** `IMPROVE_DIGEST_ENABLED` is a deployment switch, not a rate
+    limit, and `RUN_RATE_LIMIT_MAX_RUNS` is on a different endpoint.
+    """
+
+    WORKFLOW = "ug_brake00001"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.seed_run("brake-run-1", user_id=ALICE.id, workflow_id=self.WORKFLOW)
+
+    def post(self, workflow_id: str | None = None) -> Any:
+        return self.client.post(
+            f"/api/admin/improve/digests?workflow_id={workflow_id or self.WORKFLOW}",
+            headers=self.as_admin(),
+        )
+
+    def review(self, workflow_id: str | None = None) -> Any:
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True), patch.object(
+            digest_module, "_default_llm", lambda _model: FakeLLM()
+        ):
+            with self.assertLogs("brief_crew.service.improve_api", level="WARNING"):
+                return self.post(workflow_id)
+
+    def seed_attempts(self, count: int, *, workflow_id: str = "ug_other00001") -> None:
+        """Rows straight into the table - the brake counts rows, not calls."""
+
+        moment = datetime.now(timezone.utc) - timedelta(minutes=1)
+        for index in range(count):
+            self.store.save_digest(
+                {
+                    "id": f"dg_seed{index:04d}",
+                    "workflow_id": workflow_id,
+                    "created_by": "user_admin",
+                    "window_from": moment,
+                    "window_to": moment,
+                    "model": config.CHEAP_MODEL,
+                    "cost_usd": 0.004,
+                    "over_cap": False,
+                    "error": None,
+                    "body": "a review",
+                    "created_at": moment,
+                }
+            )
+
+    # -- (a) one at a time --------------------------------------------------
+
+    def test_a_second_review_while_one_runs_is_429(self) -> None:
+        from brief_crew.service import improve_api
+
+        improve_api._DIGEST_IN_FLIGHT.acquire()
+        self.addCleanup(improve_api._DIGEST_IN_FLIGHT.release)
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True):
+            response = self.post()
+        self.assertEqual(429, response.status_code, response.text)
+        self.assertIn("a review is already running", response.json()["detail"])
+
+    def test_the_lock_is_released_when_the_review_finishes(self) -> None:
+        """A brake that never lets go is an outage, not a brake."""
+
+        from brief_crew.service import improve_api
+
+        self.assertEqual(200, self.review().status_code)
+        self.assertTrue(improve_api._DIGEST_IN_FLIGHT.acquire(blocking=False))
+        improve_api._DIGEST_IN_FLIGHT.release()
+
+    # -- (b) the day's allowance -------------------------------------------
+
+    def test_the_day_limit_refuses_with_a_count_and_a_time(self) -> None:
+        self.seed_attempts(config.DIGEST_MAX_PER_DAY)
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True):
+            response = self.post()
+        self.assertEqual(429, response.status_code, response.text)
+        detail = response.json()["detail"]
+        self.assertIn(f"{config.DIGEST_MAX_PER_DAY} reviews in the last 24 hours", detail)
+        self.assertIn(f"the limit is {config.DIGEST_MAX_PER_DAY}", detail)
+        self.assertIn("try again after", detail)
+
+    def test_the_day_limit_counts_the_whole_deployment(self) -> None:
+        """A per-workflow count would multiply the bill by the library."""
+
+        self.seed_attempts(config.DIGEST_MAX_PER_DAY, workflow_id="ug_somebody_else")
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True):
+            self.assertEqual(429, self.post().status_code)
+
+    def test_a_failed_attempt_counts_toward_the_day(self) -> None:
+        """A model call that raised may still have been billed."""
+
+        moment = datetime.now(timezone.utc)
+        for index in range(config.DIGEST_MAX_PER_DAY):
+            self.store.save_digest(
+                {
+                    "id": f"dg_fail{index:04d}",
+                    "workflow_id": "ug_other00001",
+                    "created_by": None,
+                    "window_from": moment,
+                    "window_to": moment,
+                    "model": config.CHEAP_MODEL,
+                    "cost_usd": None,
+                    "over_cap": False,
+                    "error": "TimeoutError: it did not answer",
+                    "body": "",
+                    "created_at": moment,
+                }
+            )
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True):
+            self.assertEqual(429, self.post().status_code)
+
+    def test_a_failing_model_call_writes_an_attempt_and_answers_502(self) -> None:
+        class Exploding:
+            def call(self, _messages: list[dict[str, str]]) -> str:
+                raise RuntimeError("the provider hung up")
+
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True), patch.object(
+            digest_module, "_default_llm", lambda _model: Exploding()
+        ):
+            with self.assertLogs("brief_crew.service.improve_api", level="WARNING"):
+                response = self.post()
+        self.assertEqual(502, response.status_code, response.text)
+        rows = self.store.list_digests(self.WORKFLOW)
+        self.assertEqual(1, len(rows))
+        self.assertIn("the provider hung up", rows[0]["error"])
+        self.assertIsNone(rows[0]["cost_usd"])
+
+    def test_the_knob_being_off_costs_nobody_an_attempt(self) -> None:
+        """It raises before an `LLM` is constructed, so nothing was billed."""
+
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", False):
+            self.assertEqual(422, self.post().status_code)
+        self.assertEqual([], self.store.list_digests(self.WORKFLOW))
+
+    def test_the_page_says_what_is_left_before_the_press(self) -> None:
+        body = self.ok(f"/improve/digests?workflow_id={self.WORKFLOW}")
+        self.assertEqual(config.DIGEST_MAX_PER_DAY, body["max_per_day"])
+        self.assertEqual(config.DIGEST_MAX_PER_DAY, body["remaining_today"])
+        self.seed_attempts(4)
+        body = self.ok(f"/improve/digests?workflow_id={self.WORKFLOW}")
+        self.assertEqual(config.DIGEST_MAX_PER_DAY - 4, body["remaining_today"])
+
+    def test_remaining_today_never_goes_negative(self) -> None:
+        self.seed_attempts(config.DIGEST_MAX_PER_DAY + 3)
+        body = self.ok(f"/improve/digests?workflow_id={self.WORKFLOW}")
+        self.assertEqual(0, body["remaining_today"])
+
+    # -- (c) the interval ---------------------------------------------------
+
+    def test_a_second_review_of_one_workflow_too_soon_is_429(self) -> None:
+        self.assertEqual(200, self.review().status_code)
+        with patch.object(config, "IMPROVE_DIGEST_ENABLED", True):
+            response = self.post()
+        self.assertEqual(429, response.status_code, response.text)
+        detail = response.json()["detail"]
+        self.assertIn(
+            f"less than {config.DIGEST_MIN_INTERVAL_SECONDS} seconds ago", detail
+        )
+        self.assertIn("try again in", detail)
+
+    def test_the_interval_is_per_workflow(self) -> None:
+        """Two DIFFERENT workflows back to back is a normal thing to do."""
+
+        self.seed_run("brake-run-2", user_id=ALICE.id, workflow_id="ug_second00001")
+        self.assertEqual(200, self.review().status_code)
+        self.assertEqual(200, self.review("ug_second00001").status_code)
+
+    def test_the_interval_expires(self) -> None:
+        """The control: a brake that never clears is an outage."""
+
+        self.assertEqual(200, self.review().status_code)
+        old = datetime.now(timezone.utc) - timedelta(
+            seconds=config.DIGEST_MIN_INTERVAL_SECONDS + 5
+        )
+        with patch.object(
+            digest_module, "utcnow", lambda: old
+        ):  # the NEXT row is irrelevant; the stored one is what is read
+            pass
+        from brief_crew.service import improve_api
+
+        self.assertEqual(
+            0,
+            improve_api._seconds_until_next(
+                self.store,
+                self.WORKFLOW,
+                now=datetime.now(timezone.utc)
+                + timedelta(seconds=config.DIGEST_MIN_INTERVAL_SECONDS + 1),
+            ),
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

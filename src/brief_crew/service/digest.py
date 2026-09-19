@@ -66,6 +66,7 @@ through the escape-first `markdown.ts`, and never re-fed to anything.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import contextvars
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
@@ -91,6 +92,7 @@ __all__ = [
     "render_prompt",
     "run_digest",
     "structural_hotspots",
+    "LABEL_KEYS",
 ]
 
 logger = logging.getLogger(__name__)
@@ -288,36 +290,144 @@ def render_prompt(
     sample: Any,
     max_chars: int | None = None,
 ) -> tuple[str, str, bool]:
-    """`(system, user, truncated)`, with the SAMPLE cut first if it must be.
+    """`(system, user, truncated)`, and it NEVER exceeds the ceiling.
 
-    The sample is what gets shorter, in that order, and the order is a
-    judgement: the mined counts are what the review is being asked to read
-    across, and dropping half of them to fit more raw frames would make the
-    answer worse in exactly the way the bounds exist to prevent. Sample runs
-    are dropped whole, newest kept, so the model never sees half a run.
+    MEASURED defect: this shrank `sample` and nothing else, so a large mined
+    payload rendered a **51,533-character** prompt against a 40,000 ceiling
+    and reported `truncated=False`. That figure is not cosmetic -
+    `worst_case_digest_cost()` prices exactly `DIGEST_MAX_INPUT_CHARS`, so a
+    prompt over it is a bill over the cap that was checked at import.
+
+    Three steps, in this order, and the order is a judgement:
+
+    1. **Drop sample runs, newest kept.** The mined counts are what the review
+       is being asked to read across; raw frames are the cheapest thing to
+       lose, and runs go whole so the model never sees half of one.
+    2. **Trim the mined lists to fewer rows each.** They are RANKED, so the
+       first rows are the ones a review would cite anyway.
+    3. **Clip, as a last resort.** Only reachable when the template plus the
+       two fixed values already exceed the ceiling, and a clipped prompt is
+       worth more than a refusal at the moment somebody clicks.
+
+    `truncated` is True if ANY of the three fired, because the caller stores
+    it and a reader of a stored review needs to know it was made over part of
+    the evidence.
     """
 
     ceiling = config.DIGEST_MAX_INPUT_CHARS if max_chars is None else int(max_chars)
-    values = {
-        "workflow_name": str(workflow_name),
-        "window": str(window),
-        "hotspots_json": _compact(structural_hotspots(hotspots)),
-        "lessons_json": _compact(lessons),
-        "sample_json": "",
-    }
+    scrubbed = structural_hotspots(hotspots)
     rows = list(sample) if isinstance(sample, Sequence) else []
     truncated = False
+
+    def render(hotspot_payload: Any, sample_rows: list[Any]) -> tuple[str, str]:
+        values = {
+            "workflow_name": str(workflow_name),
+            "window": str(window),
+            "hotspots_json": _compact(hotspot_payload),
+            "lessons_json": _compact(lessons),
+            "sample_json": _compact(sample_rows),
+        }
+        return (
+            template["system"].format_map(_MissingKeys(values)),
+            template["user"].format_map(_MissingKeys(values)),
+        )
+
+    # 1 - the sample.
     while True:
-        values["sample_json"] = _compact(rows)
-        system = template["system"].format_map(_MissingKeys(values))
-        user = template["user"].format_map(_MissingKeys(values))
+        system, user = render(scrubbed, rows)
         if len(system) + len(user) <= ceiling or not rows:
-            return system, user, truncated
+            break
         rows = rows[:-1]
         truncated = True
 
+    # 2 - the mined lists, halved until they fit or there is one row each.
+    limit = _longest_list(scrubbed)
+    while len(system) + len(user) > ceiling and limit > 1:
+        limit = max(1, limit // 2)
+        trimmed = _capped_lists(scrubbed, limit)
+        system, user = render(trimmed, rows)
+        truncated = True
+        scrubbed = trimmed
 
-def structural_hotspots(payload: Any) -> Any:
+    # 3 - the clip. `user` first, because `system` is the instructions and a
+    # review missing half its rules is worse than one missing half its data.
+    total = len(system) + len(user)
+    if total > ceiling:
+        truncated = True
+        room = max(0, ceiling - len(system))
+        user = user[:room]
+        if len(system) + len(user) > ceiling:
+            system = system[: max(0, ceiling - len(user))]
+    return system, user, truncated
+
+
+def _longest_list(payload: Any) -> int:
+    """The longest list anywhere in the mined counts - step 2's starting cap."""
+
+    longest = 0
+    if isinstance(payload, Mapping):
+        for value in payload.values():
+            longest = max(longest, _longest_list(value))
+    elif isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
+        longest = max(len(payload), *(0,))
+        for item in payload:
+            longest = max(longest, _longest_list(item))
+    return longest
+
+
+def _capped_lists(payload: Any, limit: int) -> Any:
+    """The same payload with every list cut to `limit` rows, deepest included.
+
+    The lists are RANKED by the miner, so the rows that survive are the ones a
+    review would have cited: this loses the tail rather than a random slice.
+    """
+
+    if isinstance(payload, Mapping):
+        return {key: _capped_lists(value, limit) for key, value in payload.items()}
+    if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
+        return [_capped_lists(item, limit) for item in payload[:limit]]
+    return payload
+
+
+#: Which meter, if any, the CURRENT context belongs to.
+#:
+#: A `ContextVar` rather than a thread id, and the difference was measured:
+#: `crewai_event_bus` delivers a sync handler on an EXECUTOR thread, not on
+#: the thread that emitted, so `threading.get_ident()` inside a handler names
+#: a worker and never the caller. What the bus does carry across is the
+#: emitter's CONTEXT - `copy_context()` at submit - so a token set around the
+#: one `llm.call` is present in that handler and absent in a handler serving a
+#: paid run emitted from a registry worker.
+#:
+#: That is the whole of the attribution: an unrelated completion arriving mid
+#: review is not counted, so a concurrent run can no longer inflate a review's
+#: `cost_usd` or set a false `over_cap`.
+_ACTIVE_METER: contextvars.ContextVar[object | None] = contextvars.ContextVar(
+    "brief_crew_digest_meter", default=None
+)
+
+
+#: How long `__exit__` waits for the bus to deliver what it already accepted.
+#:
+#: Five seconds rather than the SDK's 30 s default: the only handler this
+#: review's own event has to reach is the meter, and everything else on that
+#: bus belongs to somebody whose slowness must not park a request thread.
+#: Giving up leaves the figure short, which `cost_usd` then reports honestly;
+#: hanging would leave the service short, which nothing reports at all.
+_METER_FLUSH_SECONDS = 5.0
+
+
+#: The keys whose value is a NODE LABEL - a string the author typed.
+#:
+#: They are the one unscrubbed free text that was reaching the prompt: every
+#: other key on these payloads is a name this program chose, a code or a
+#: number. A label is carried because a review that cannot name a node is
+#: useless, and it is bounded at `MAX_PROMPT_LABEL_CHARS` and passed through
+#: `scrub_text` because it is the author's words.
+LABEL_KEYS: frozenset[str] = frozenset({"node_label", "label"})
+
+
+def structural_hotspots(payload: Any, secrets: Sequence[str] | None = None) -> Any:
     """The mined counts with the one non-structural key removed (R2).
 
     A hotspots payload is counts, names and rates - all of it structural -
@@ -327,19 +437,48 @@ def structural_hotspots(payload: Any) -> Any:
     their own workflow's queries is not the same act as sending them to a
     third-party inference provider.
 
+    `node_models` is deliberately NOT dropped: a node id, its author's label
+    and a list of model slugs are names and counts, which the ruling admits,
+    and a review that cannot see which tier a node ran on cannot say anything
+    useful about cost. Its LABEL is scrubbed like every other, below.
+
     Total: anything that is not a mapping or a list comes back unchanged, so a
     caller that hands this a string gets a string.
     """
 
+    if secrets is None:
+        from brief_crew.observability.content import credential_values_in_environment
+
+        secrets = credential_values_in_environment()
     if isinstance(payload, Mapping):
         return {
-            key: structural_hotspots(value)
+            key: (
+                _clean_label(value, secrets)
+                if key in LABEL_KEYS
+                else structural_hotspots(value, secrets)
+            )
             for key, value in payload.items()
             if key not in NON_STRUCTURAL_HOTSPOT_KEYS
         }
     if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
-        return [structural_hotspots(item) for item in payload]
+        return [structural_hotspots(item, secrets) for item in payload]
     return payload
+
+
+def _clean_label(value: Any, secrets: Sequence[str]) -> Any:
+    """One node label on its way to a model: bounded, then scrubbed.
+
+    Bounded FIRST so the scrub runs over a short string, and scrubbed after so
+    a key that sat inside the first forty characters is still found. A
+    non-string comes back unchanged rather than being coerced - a label that
+    is not text is a shape this function has no opinion about.
+    """
+
+    if not isinstance(value, str):
+        return value
+    from brief_crew.observability.content import scrub_text
+
+    return scrub_text(value[: config.MAX_PROMPT_LABEL_CHARS], secrets)
 
 
 def _structural_details(details: Any, secrets: Sequence[str]) -> dict[str, Any]:
@@ -364,7 +503,11 @@ def _structural_details(details: Any, secrets: Sequence[str]) -> dict[str, Any]:
             # hole in the list: `usage` is a count, `usage.messages` would not
             # be, and the list cannot vet a shape it has not seen.
             if value is None or isinstance(value, (str, int, float, bool)):
-                kept[name] = value
+                # A node label is the author's own words - bounded and
+                # scrubbed like the ones on the mined payload.
+                kept[name] = (
+                    _clean_label(value, secrets) if name in LABEL_KEYS else value
+                )
         elif name == SAMPLE_ERROR_KEY and isinstance(value, str):
             kept[name] = scrub_text(value[:SAMPLE_ERROR_CHARS], secrets)
     return kept
@@ -510,16 +653,32 @@ def _default_llm(model: str) -> Any:
 
 @dataclass
 class _TokenMeter:
-    """A scoped `LLMCallCompletedEvent` handler: what this one call used.
+    """What THIS call used, and nothing else. Scoped, unregistered, attributed.
 
-    The event bus is process-wide and every other consumer of it is per-run,
-    so this counts only while it is inside its own `with`. It is a CONTEXT
-    MANAGER rather than a permanent listener for that reason: a review must
-    not appear in a run's token totals and a run must not appear in a
-    review's.
+    Three properties, and the first two were absent and MEASURED absent: the
+    handler count on the process-wide bus went 1 -> 2 -> 3 -> 4 over three
+    reviews, and an exited meter absorbed an unrelated event's tokens.
 
-    Total, like every other listener in this repository: an event that cannot
-    be read adds nothing rather than raising inside the bus.
+    * **It unregisters.** `__exit__` calls `crewai_event_bus.off(...)` with the
+      handle `__enter__` kept. The bus is a process-wide singleton, so a
+      listener left behind is not a slow leak - it is a permanent one, and
+      every later review paid a little more of somebody else's usage.
+    * **It is inert outside its own block.** `_active` is cleared before the
+      handler is removed, because `off()` and an in-flight emit race and the
+      flag is what makes the race harmless.
+    * **It counts only THIS call**, through `_ACTIVE_METER`. Without it a
+      concurrent run inflated the review's `cost_usd` and could set a false
+      `over_cap` - a money figure made wrong by something the review had
+      nothing to do with.
+
+    `agent_id` is NOT the discriminator, though the event carries one: a
+    review is an agentless `LLM.call` and so is any other bare call in this
+    process, so "no agent" is a class and not an identity. Nor is the thread:
+    the bus delivers on an executor thread, measured, so a thread check
+    inside a handler names a worker and never the caller.
+
+    Total, like every other listener here: an event that cannot be read adds
+    nothing rather than raising inside the bus.
     """
 
     model: str
@@ -527,6 +686,10 @@ class _TokenMeter:
     completion_tokens: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _handle: Any = None
+    _event_type: Any = None
+    _token: Any = None
+    _reset: Any = None
+    _active: bool = False
 
     def __enter__(self) -> "_TokenMeter":
         try:
@@ -535,20 +698,69 @@ class _TokenMeter:
             return self
 
         meter = self
+        # A fresh object as the token, so two meters are never equal by
+        # value. Set BEFORE the handler is registered: a handler that could
+        # fire before the context is marked would count nothing anyway, but
+        # the order is what makes that statement true rather than likely.
+        self._token = object()
+        self._reset = _ACTIVE_METER.set(self._token)
+        self._active = True
 
-        @crewai_event_bus.on(LLMCallCompletedEvent)
-        def _absorb(_source: Any, event: Any) -> None:  # pragma: no cover
+        def _absorb(_source: Any, event: Any) -> None:
             meter.absorb(getattr(event, "usage", None))
 
+        crewai_event_bus.register_handler(LLMCallCompletedEvent, _absorb)
         self._handle = _absorb
+        self._event_type = LLMCallCompletedEvent
         return self
 
     def __exit__(self, *_exc: Any) -> None:
+        # FLUSH FIRST, and this was measured: `emit` returns a future and the
+        # bus runs sync handlers on an executor, so `totals()` read straight
+        # after the call raced the delivery and reported 0 tokens about half
+        # the time - a review priced at nothing, which is the same shape as
+        # the defect that once priced 128,069 real tokens at $0.00.
+        #
+        # Bounded, because an unbounded wait here would park a request thread
+        # on somebody else's slow handler: a short timeout that gives up is a
+        # missing figure, and a hang is a missing service.
+        try:
+            from crewai.events import crewai_event_bus
+
+            crewai_event_bus.flush(timeout=_METER_FLUSH_SECONDS)
+        except Exception:  # noqa: BLE001 - a bus that cannot flush is not a
+            # reason to fail a review that has already been paid for.
+            pass
+        # Flag next, handler last: `off()` and an in-flight emit can race,
+        # and a handler that has already been entered must add nothing.
+        self._active = False
+        if self._reset is not None:
+            try:
+                _ACTIVE_METER.reset(self._reset)
+            except ValueError:  # pragma: no cover - a context that moved
+                _ACTIVE_METER.set(None)
+            self._reset = None
+        if self._handle is None or self._event_type is None:
+            return None
+        try:
+            from crewai.events import crewai_event_bus
+
+            crewai_event_bus.off(self._event_type, self._handle)
+        except Exception:  # noqa: BLE001 - a bus that cannot unregister is
+            # not a reason to fail a review that has already been paid for.
+            pass
+        finally:
+            self._handle = None
+            self._event_type = None
         return None
 
     def absorb(self, usage: Any) -> None:
         """One usage mapping into the running totals. Never raises."""
 
+        if not self._active:
+            return
+        if self._token is not None and _ACTIVE_METER.get() is not self._token:
+            return
         if not isinstance(usage, Mapping):
             return
         with self._lock:

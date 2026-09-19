@@ -180,13 +180,48 @@ class ResolveDocumentVersionTests(ImproveBuilderCase):
             ),
         )
 
-    def test_a_resolved_answer_is_written_into_the_cache(self) -> None:
+    def test_the_whole_index_is_written_into_the_cache_at_once(self) -> None:
+        """D10: one walk per document, not one per distinct hash.
+
+        It used to re-list and re-load every stored version for each
+        UNMATCHED hash, so a window holding ten unresolvable runs walked the
+        history ten times, loading and re-deriving a descriptor each time.
+        """
+
         cache: dict[str, int | None] = {}
-        digest = self.hash_of(2)
         resolve_document_version(
-            self.store_, self.document_id, digest, user_id=ADA.id, cache=cache
+            self.store_, self.document_id, self.hash_of(2), user_id=ADA.id, cache=cache
         )
-        self.assertEqual({digest: 2}, cache)
+        self.assertEqual({self.hash_of(1): 1, self.hash_of(2): 2}, {
+            key: value for key, value in cache.items() if not key.startswith("__")
+        })
+
+    def test_an_unmatched_hash_does_not_walk_the_store_again(self) -> None:
+        """The defect measured: the SECOND unknown hash cost a second walk."""
+
+        calls: list[str] = []
+        real = self.store_
+
+        class Counting:
+            """A thin shim, because the store itself refuses attribute
+            assignment - and a shim is what the resolver actually takes."""
+
+            def versions(self, document_id: str, **kwargs: object) -> list[int]:
+                calls.append(document_id)
+                return real.versions(document_id, **kwargs)
+
+            def load(self, *args: object, **kwargs: object) -> object:
+                return real.load(*args, **kwargs)
+
+        store = Counting()
+        cache: dict[str, int | None] = {}
+        for digest in ("0" * 16, "1" * 16, "2" * 16):
+            self.assertIsNone(
+                resolve_document_version(
+                    store, self.document_id, digest, user_id=ADA.id, cache=cache
+                )
+            )
+        self.assertEqual([self.document_id], calls)
 
 
 class CompareArmsTests(ImproveBuilderCase):
@@ -446,6 +481,32 @@ class CompareArmsTests(ImproveBuilderCase):
                 call_count=1,
             )
         self.assertEqual(1.05, self.arms()["3"]["cost_per_run_usd"])
+
+    def test_a_requested_arm_with_no_runs_is_shown_and_flagged(self) -> None:
+        """D9. `arms: []` with no sentence lets a reader conclude the
+        comparison could not be made; `n: 0, missing: true` is a fact."""
+
+        arms = self.arms("&a=3&b=99")
+        self.assertEqual({"3", "99"}, set(arms))
+        self.assertEqual(0, arms["99"]["n"])
+        self.assertTrue(arms["99"]["missing"])
+        self.assertTrue(arms["99"]["underpowered"])
+
+    def test_an_arm_that_has_runs_is_not_flagged_missing(self) -> None:
+        """The control: a flag that is always true says nothing."""
+
+        self.assertFalse(self.arms("&a=3&b=99")["3"]["missing"])
+
+    def test_both_sides_missing_still_answers_two_arms(self) -> None:
+        arms = self.arms("&a=98&b=99")
+        self.assertEqual({"98", "99"}, set(arms))
+        self.assertTrue(all(arm["missing"] for arm in arms.values()))
+
+    def test_an_unrequested_arm_is_never_invented(self) -> None:
+        """Only what the caller ASKED for: an empty arm nobody named would be
+        a row about nothing."""
+
+        self.assertNotIn("99", self.arms())
 
     def test_an_unknown_axis_is_422(self) -> None:
         response = self.admin_get(

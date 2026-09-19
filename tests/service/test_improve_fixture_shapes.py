@@ -185,8 +185,12 @@ class HandlerShapesTests(AdminCase):
                 "completion_tokens": 734,
                 "cost_usd": 0.0043,
                 "over_cap": False,
+                "error": None,
                 "body": "## What went well - the scope gate.",
-                "created_at": NOW,
+                # OLD on purpose: the per-workflow interval brake refuses a
+                # second review within `DIGEST_MIN_INTERVAL_SECONDS`, and this
+                # module's POST has to get through to be compared.
+                "created_at": NOW - timedelta(hours=2),
             }
         )
 

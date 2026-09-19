@@ -76,10 +76,12 @@ because FastAPI is an optional dependency of this package.
 """
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import json
 import logging
+import re
+import threading
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -113,6 +115,30 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+#: **One review at a time, per process.** The first of three money brakes.
+#:
+#: MEASURED without it: twenty POSTs produced twenty model calls and no
+#: refusal. `IMPROVE_DIGEST_ENABLED` is a deployment switch, not a rate limit,
+#: and a held-down button, a retrying client or a second admin is not a thing
+#: a switch can see.
+#:
+#: Acquired NON-BLOCKING, so a second request is refused in milliseconds
+#: rather than queued behind a model call: a queue here would hold a request
+#: thread for the length of somebody else's generation and then spend anyway.
+#: Module level and not per-app, because the thing being protected is the
+#: money, and one process's money is one budget however many apps it builds.
+_DIGEST_IN_FLIGHT = threading.Lock()
+
+#: What a filename may contain. Everything else becomes `-`.
+#:
+#: `Content-Disposition` was an f-string over a caller-supplied id: a quote
+#: injects a second `filename=`, a CR or LF reaches the header, and a
+#: non-latin-1 character is a 500 from the ASGI layer rather than a refusal.
+#: A slug is the fix rather than an escape, because a filename is a label and
+#: there is nothing in an id worth preserving byte for byte.
+_FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+_FILENAME_MAX = 64
 
 #: Under the admin prefix, so `require_admin`'s 404, the CORS middleware, the
 #: body limit and the client's own `authedFetch` all reach it unchanged.
@@ -405,6 +431,14 @@ class CompareArm(ImproveModel):
     key: str
     n: int = 0
     underpowered: bool = True
+    #: The caller ASKED for this arm and the window holds no runs of it.
+    #:
+    #: Returned rather than omitted, for the same reason `underpowered` is
+    #: shown rather than hidden: `arms: []` with no sentence lets a reader
+    #: conclude the comparison could not be made, when what happened is that
+    #: one side has no evidence in this window. An arm that says `n: 0,
+    #: missing: true` is a fact somebody can act on.
+    missing: bool = False
     status_mix: dict[str, int] = Field(default_factory=dict)
     verdict_mix: dict[str, int] = Field(default_factory=dict)
     mean_confidence: float | None = None
@@ -453,6 +487,10 @@ class ImproveDigestModel(ImproveModel):
     #: the model was not in the price table, never 0.0.
     cost_usd: float | None = None
     max_cost_usd: float = config.DIGEST_MAX_COST_USD
+    #: Why a stored attempt produced no review. `None` for one that worked.
+    #: An attempt is stored because a failed model call may still have been
+    #: billed, and the per-day brake counts what may have been spent.
+    error: str | None = None
     #: R5. Decided ONCE, from the measured cost against the cap in force at
     #: the moment it was charged, and stored - so a row read back after
     #: somebody lowered the cap still says what was true when it ran.
@@ -485,6 +523,12 @@ class ImproveDigestsModel(ImproveModel):
     #: click may spend before anybody presses it.
     max_input_chars: int = config.DIGEST_MAX_INPUT_CHARS
     max_output_tokens: int = config.DIGEST_MAX_OUTPUT_TOKENS
+    #: How many of today's allowance is left, across the DEPLOYMENT, and what
+    #: the allowance is. On the read so the panel can say it BEFORE the press:
+    #: a button that refuses after the click has already made somebody think
+    #: the product is broken.
+    remaining_today: int = config.DIGEST_MAX_PER_DAY
+    max_per_day: int = config.DIGEST_MAX_PER_DAY
     #: How many reviews exist for this workflow, whatever `?limit=` returned.
     #: `len(rows)` is the PAGE and would silently become the answer to "how
     #: many reviews have been run" the first time somebody hits the cap -
@@ -1233,6 +1277,13 @@ def resolve_document_version(
     written from now on carries the integer; this is the ONLY way an older one
     gets an answer.
 
+    **The whole index is built once**, and that is the D10 fix: this used to
+    re-list and re-load every stored version for each distinct UNMATCHED
+    hash, so a window holding ten unresolvable runs walked the version history
+    ten times, loading and re-deriving a descriptor each time. Now the first
+    call builds `{hash: version}` for the document, `cache` carries it for the
+    life of the request, and an unmatched hash costs a dictionary lookup.
+
     The hash is recomputed with the IMPORTED `_descriptor_version`, never a
     second implementation of the same digest: two derivations of one id are
     two answers to "which version is this", and they would disagree the first
@@ -1240,8 +1291,9 @@ def resolve_document_version(
 
     An unmatched hash returns `None` - grouped `"unknown"` by the caller,
     never merged into an arm it might not belong to. So does a document that
-    no longer parses, or a store that cannot answer: a version this function
-    cannot prove is not a version it should guess.
+    no longer parses, a store that cannot answer, and a version history longer
+    than `IMPROVE_MAX_VERSION_SCAN`: a version this function cannot prove is
+    not a version it should guess.
 
     `user_id` is the DOCUMENT'S OWN owner, and it is not optional in practice
     for an owned document: `BuilderDocumentStore.versions` and `.load` refuse a
@@ -1253,32 +1305,58 @@ def resolve_document_version(
     also queried for its own authority would be two responsibilities.
     """
 
-    if cache is not None and graph_version in cache:
-        return cache[graph_version]
-    answer: int | None = None
+    if cache is None:
+        cache = {}
+    if _INDEX_BUILT not in cache:
+        cache.update(_version_index(store, document_id, user_id=user_id))
+        cache[_INDEX_BUILT] = None
+    return cache.get(graph_version)
+
+
+#: The key that says "this cache holds a whole document's hashes".
+#:
+#: A sentinel rather than "is the cache non-empty", because a document with no
+#: resolvable versions indexes to `{}` and must not be walked again on the
+#: next run. It is not a hex digest, so it can never collide with one.
+_INDEX_BUILT = "__index_built__"
+
+
+def _version_index(
+    store: Any, document_id: str, *, user_id: str | None = None
+) -> dict[str, int | None]:
+    """`{content hash: version}` for one document, bounded and total.
+
+    Bounded by `IMPROVE_MAX_VERSION_SCAN` because each entry costs a load and
+    a descriptor derivation, so an unbounded history is an unbounded amount of
+    work triggered by one unresolvable run. Total because a document that no
+    longer parses is a comparison that answers `unknown`, not a 500 on a panel
+    about something else.
+    """
+
+    index: dict[str, int | None] = {}
     try:
         from brief_crew.builder.descriptor import (
             _descriptor_version,
             builder_graph_descriptor,
         )
 
-        for version in store.versions(document_id, user_id=user_id):
-            stored = store.load(document_id, version=version, user_id=user_id)
-            descriptor = builder_graph_descriptor(stored.document)
-            recomputed = _descriptor_version(
-                stored.document,
-                list(descriptor.nodes),
-                list(descriptor.edges),
-                list(descriptor.start_nodes),
-            )
-            if recomputed == graph_version:
-                answer = int(version)
-                break
-    except Exception:  # noqa: BLE001 - an unresolvable version is `unknown`
-        answer = None
-    if cache is not None:
-        cache[graph_version] = answer
-    return answer
+        versions = list(store.versions(document_id, user_id=user_id))
+        for version in versions[: config.IMPROVE_MAX_VERSION_SCAN]:
+            try:
+                stored = store.load(document_id, version=version, user_id=user_id)
+                descriptor = builder_graph_descriptor(stored.document)
+                digest = _descriptor_version(
+                    stored.document,
+                    list(descriptor.nodes),
+                    list(descriptor.edges),
+                    list(descriptor.start_nodes),
+                )
+            except Exception:  # noqa: BLE001 - one bad version, not the set
+                continue
+            index[digest] = int(version)
+    except Exception:  # noqa: BLE001 - no store, or no access: `unknown`
+        return index
+    return index
 
 
 def build_hotspots(
@@ -1362,6 +1440,19 @@ def create_improve_router(
     # path segments would be two places to keep `require_admin` in step.
     router = APIRouter(prefix=ADMIN_API_PREFIX, tags=["improve"])
 
+    # EVERY handler below is `def`, not `async def`, and that is deliberate:
+    # each one makes blocking database scans and the `POST` makes a blocking
+    # network call to a model. FastAPI runs a sync handler on a worker thread
+    # and an `async def` one ON THE EVENT LOOP, so the async spelling parks
+    # every other request in the process for the length of a generation -
+    # measured elsewhere in this repository at 2.012 s against 0.112 s for a
+    # concurrent `/healthz`. `admin_api.py::insights` is sync for exactly this
+    # reason, and audit H5 is where the rule was written down.
+    #
+    # The export's generator is sync too: Starlette iterates a sync iterator
+    # given to `StreamingResponse` through `iterate_in_threadpool`, so the
+    # paging reads below never touch the loop either.
+
     def admin(user: Any = Depends(resolve_user)) -> Any:
         return require_admin(user)
 
@@ -1383,7 +1474,7 @@ def create_improve_router(
     # -- Where runs go wrong ------------------------------------------------
 
     @router.get("/improve/hotspots", response_model=ImproveHotspotsModel)
-    async def hotspots(
+    def hotspots(
         workflow_id: str = Query(...),
         document_version: int | None = Query(default=None),
         since: str | None = Query(default=None, alias="from"),
@@ -1411,7 +1502,7 @@ def create_improve_router(
     # -- Compare two versions ------------------------------------------------
 
     @router.get("/improve/compare", response_model=ImproveCompareModel)
-    async def compare(
+    def compare(
         workflow_id: str = Query(...),
         axis: str = Query(default="version"),
         a: str | None = Query(default=None),
@@ -1479,6 +1570,12 @@ def create_improve_router(
         wanted = [value for value in (a, b) if value]
         if wanted:
             groups = {key: value for key, value in groups.items() if key in wanted}
+            # An arm somebody ASKED for and the window has no runs of comes
+            # back empty and FLAGGED rather than omitted. `arms: []` with no
+            # sentence lets a reader conclude the comparison could not be
+            # made; `n: 0, missing: true` is a fact they can act on.
+            for key in wanted:
+                groups.setdefault(key, [])
 
         arms = [
             _arm(
@@ -1504,7 +1601,7 @@ def create_improve_router(
     # -- Ask a model to review ----------------------------------------------
 
     @router.get("/improve/digests", response_model=ImproveDigestsModel)
-    async def list_digests(
+    def list_digests(
         workflow_id: str = Query(...),
         limit: int = Query(default=20, ge=1, le=100),
         _: Any = Depends(admin),
@@ -1525,11 +1622,12 @@ def create_improve_router(
             enabled=config.digest_enabled(),
             total_cost_usd=_money(persistence.digest_cost_total(workflow_id)),
             total_count=persistence.digest_count(workflow_id),
+            remaining_today=_remaining_today(persistence),
             rows=[_digest_model(row) for row in rows],
         )
 
     @router.post("/improve/digests", response_model=ImproveDigestModel)
-    async def create_digest(
+    def create_digest(
         workflow_id: str = Query(...),
         since: str | None = Query(default=None, alias="from"),
         until: str | None = Query(default=None, alias="to"),
@@ -1553,85 +1651,70 @@ def create_improve_router(
 
         start, end = window(since, until)
         persistence = store()
-        payload = build_hotspots(
-            persistence, workflow_id=workflow_id, start=start, end=end
-        )
-        rows, _truncated = persistence.improve_runs(
-            workflow_id=workflow_id,
-            start=start,
-            end=end,
-            limit=config.DIGEST_MAX_SAMPLE_RUNS,
-        )
-        frames, _frames_truncated = persistence.admin_frames_by_kind(
-            list(digest_module.SAMPLE_FRAME_KINDS),
-            run_ids=[row["run_id"] for row in rows],
-            limit=config.ADMIN_MAX_SCAN_ROWS,
-        )
-        sample, sample_truncated = digest_module.build_sample(rows, frames)
-        try:
-            result = digest_module.run_digest(
-                workflow_name=_workflow_name(workflow_id),
-                window=f"{_iso(start)} to {_iso(end)}",
-                hotspots=payload.model_dump(mode="json"),
-                # Plan 21 drops the deterministic rules, so there is nothing
-                # to hand across. An EMPTY list rather than the key removed,
-                # because the prompt names the slot and a missing key would
-                # leave a `{lessons_json}` brace in the rendered text.
-                lessons=[],
-                sample=sample,
-                sample_truncated=sample_truncated,
-                sample_frames=sum(len(row["frames"]) for row in sample),
-            )
-        except digest_module.DigestUnavailable as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        over_cap = (
-            result.cost_usd is not None
-            and result.cost_usd > config.DIGEST_MAX_COST_USD
-        )
-        if over_cap:
-            logger.warning(
-                "a model review of %s cost $%.6f, over the $%.2f cap "
-                "(DIGEST_MAX_COST_USD); %s prompt / %s completion tokens on %s",
-                workflow_id,
-                result.cost_usd,
-                config.DIGEST_MAX_COST_USD,
-                result.prompt_tokens,
-                result.completion_tokens,
-                result.model,
+        # --- brake 2: the deployment's own allowance for the day ----------
+        #
+        # BEFORE the lock, because a refusal that costs nothing should not
+        # have to wait for one, and before any scan, because a request that
+        # cannot spend should not read the database either.
+        spent_today = _spent_today(persistence)
+        if spent_today >= config.DIGEST_MAX_PER_DAY:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"this deployment has asked for {spent_today} reviews in "
+                    f"the last 24 hours, the limit is "
+                    f"{config.DIGEST_MAX_PER_DAY}; try again after "
+                    f"{_day_limit_clears(persistence)}"
+                ),
             )
-        stored = persistence.save_digest(
-            {
-                "id": digest_module.new_digest_id(),
-                "workflow_id": workflow_id,
-                "created_by": getattr(user, "id", None),
-                "window_from": start,
-                "window_to": end,
-                "sample_runs": result.sample_runs,
-                "sample_frames": result.sample_frames,
-                "truncated_sample": result.truncated_sample,
-                "model": result.model,
-                "prompt_tokens": result.prompt_tokens,
-                "completion_tokens": result.completion_tokens,
-                "cost_usd": result.cost_usd,
-                "over_cap": over_cap,
-                "body": result.body,
-                "created_at": digest_module.utcnow(),
-            }
-        )
-        logger.warning(
-            "admin %s generated a model review for %s (%s prompt / %s completion tokens)",
-            getattr(user, "email", None) or getattr(user, "id", None),
-            workflow_id,
-            result.prompt_tokens,
-            result.completion_tokens,
-        )
-        return _digest_model(stored)
+
+        # --- brake 3: two reviews of one workflow, back to back -----------
+        #
+        # A second review thirty seconds after the first reads almost the
+        # same runs and says almost the same thing, so this costs a reader
+        # nothing and stops a double-click being two bills.
+        wait = _seconds_until_next(persistence, workflow_id)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"a review of this workflow ran less than "
+                    f"{config.DIGEST_MIN_INTERVAL_SECONDS} seconds ago; try "
+                    f"again in {wait} seconds"
+                ),
+            )
+
+        # --- brake 1: one at a time, whatever else is true ----------------
+        #
+        # Non-blocking, so a second request is refused in milliseconds rather
+        # than queued behind a model call. Held across the whole body, so the
+        # two counting brakes above cannot both pass in two threads at once
+        # and then both spend.
+        if not _DIGEST_IN_FLIGHT.acquire(blocking=False):
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "a review is already running on this deployment; wait for "
+                    "it to finish and try again"
+                ),
+            )
+        try:
+            return _generate_digest(
+                persistence,
+                digest_module,
+                workflow_id=workflow_id,
+                start=start,
+                end=end,
+                user=user,
+            )
+        finally:
+            _DIGEST_IN_FLIGHT.release()
 
     # -- Export rated runs ---------------------------------------------------
 
     @router.get("/export/evalset")
-    async def export_evalset(
+    def export_evalset(
         workflow_id: str = Query(...),
         rating: str = Query(default="good"),
         since: str | None = Query(default=None, alias="from"),
@@ -1686,12 +1769,17 @@ def create_improve_router(
             costs[metric["run_id"]] = costs.get(
                 metric["run_id"], Decimal("0")
             ) + Decimal(str(metric["cost_usd"] or 0))
+        # PAGED, and the generator is not started here: `improve_run_payloads`
+        # is the one read that carries `result` (64 KiB a row), so loading it
+        # for every selected run before the first byte was up to ~128 MB
+        # resident on a response that called itself streamed. The byte cap
+        # bounded the wire and nothing in memory.
         lines = evalset_lines(
             workflow_id=workflow_id,
             rating=rating,
             window=_window_model(start, end),
             runs=rows,
-            payloads=persistence.improve_run_payloads(run_ids),
+            payload_pages=lambda ids: persistence.improve_run_payloads(ids),
             gates=gates,
             verdicts=verdicts,
             costs=costs,
@@ -1702,12 +1790,233 @@ def create_improve_router(
             media_type="application/x-ndjson",
             headers={
                 "Content-Disposition": (
-                    f'attachment; filename="evalset-{workflow_id}-{rating}.ndjson"'
+                    "attachment; filename="
+                    f'"evalset-{_filename_slug(workflow_id)}-{rating}.ndjson"'
                 )
             },
         )
 
     return router
+
+
+def _day_window(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """The rolling 24 hours the per-day brake counts over.
+
+    ROLLING rather than a calendar day: a midnight reset hands anybody who
+    waits for it a second full allowance, and the thing being bounded is
+    spend per unit time rather than spend per date.
+    """
+
+    end = now or datetime.now(timezone.utc)
+    return end - timedelta(seconds=config.DIGEST_DAY_SECONDS), end
+
+
+def _spent_today(persistence: Any, now: datetime | None = None) -> int:
+    """Attempts across the DEPLOYMENT in the rolling day. Never raises.
+
+    Attempts, not successes: a model call that raised may still have been
+    billed for the tokens it generated before it gave up, so a limiter that
+    counted only rows it liked would let a failing loop spend all day. A store
+    that cannot answer reports 0 rather than refusing the request - a brake
+    that fails closed would make a database hiccup look like a spent budget.
+    """
+
+    start, end = _day_window(now)
+    try:
+        return int(persistence.digest_count(start=start, end=end))
+    except Exception:  # noqa: BLE001
+        logger.warning("the review day-count could not be read", exc_info=True)
+        return 0
+
+
+def _remaining_today(persistence: Any, now: datetime | None = None) -> int:
+    """What the panel prints BEFORE the press. Never negative."""
+
+    return max(0, config.DIGEST_MAX_PER_DAY - _spent_today(persistence, now))
+
+
+def _day_limit_clears(persistence: Any, now: datetime | None = None) -> str:
+    """When the OLDEST attempt in the window falls out of it.
+
+    A time rather than "later": a refusal a person cannot plan around is a
+    refusal they retry. It degrades to the end of a full window when the rows
+    cannot be read, which is the latest it could possibly be and therefore
+    the safe thing to promise.
+    """
+
+    moment = now or datetime.now(timezone.utc)
+    start, end = _day_window(moment)
+    oldest: datetime | None = None
+    try:
+        for row in persistence.list_digests_in_window(start=start, end=end):
+            stamp = row.get("created_at")
+            if stamp is not None and (oldest is None or stamp < oldest):
+                oldest = stamp
+    except Exception:  # noqa: BLE001
+        oldest = None
+    clears = (oldest or moment) + timedelta(seconds=config.DIGEST_DAY_SECONDS)
+    return _iso(clears) or "tomorrow"
+
+
+def _seconds_until_next(
+    persistence: Any, workflow_id: str, now: datetime | None = None
+) -> int:
+    """How long this workflow still has to wait, or 0. Never raises."""
+
+    moment = now or datetime.now(timezone.utc)
+    try:
+        rows = persistence.list_digests(workflow_id, limit=1)
+    except Exception:  # noqa: BLE001
+        return 0
+    if not rows:
+        return 0
+    last = rows[0].get("created_at")
+    if last is None:
+        return 0
+    elapsed = (moment - last).total_seconds()
+    return max(0, int(round(config.DIGEST_MIN_INTERVAL_SECONDS - elapsed)))
+
+
+def _filename_slug(value: str) -> str:
+    """A `Content-Disposition` filename part that cannot be anything else.
+
+    A quote injects a second `filename=`, a CR or an LF reaches the header
+    itself, and a non-latin-1 character is a 500 from the ASGI layer rather
+    than a refusal - all three from an id a caller chose. A slug rather than
+    an escape, because a filename is a label and there is nothing in an id
+    worth preserving byte for byte.
+    """
+
+    slug = _FILENAME_SAFE.sub("-", str(value or "")).strip("-")[:_FILENAME_MAX]
+    return slug or "workflow"
+
+
+def _generate_digest(
+    persistence: Any,
+    digest_module: Any,
+    *,
+    workflow_id: str,
+    start: datetime,
+    end: datetime,
+    user: Any,
+) -> "ImproveDigestModel":
+    """The call itself, once all three brakes have let it past.
+
+    A free function so the route reads as its guards: everything above it in
+    `create_digest` refuses, and this is the only part that spends.
+
+    A FAILED call still writes a row. The provider charges for tokens it
+    generated before it gave up, so an attempt that raised may have cost
+    money - and the per-day brake counts rows. Storing it is also the only
+    record a restart cannot forget.
+    """
+
+    payload = build_hotspots(
+        persistence, workflow_id=workflow_id, start=start, end=end
+    )
+    rows, _truncated = persistence.improve_runs(
+        workflow_id=workflow_id,
+        start=start,
+        end=end,
+        limit=config.DIGEST_MAX_SAMPLE_RUNS,
+    )
+    frames, _frames_truncated = persistence.admin_frames_by_kind(
+        list(digest_module.SAMPLE_FRAME_KINDS),
+        run_ids=[row["run_id"] for row in rows],
+        limit=config.ADMIN_MAX_SCAN_ROWS,
+    )
+    sample, sample_truncated = digest_module.build_sample(rows, frames)
+    from fastapi import HTTPException
+
+    try:
+        result = digest_module.run_digest(
+            workflow_name=_workflow_name(workflow_id),
+            window=f"{_iso(start)} to {_iso(end)}",
+            hotspots=payload.model_dump(mode="json"),
+            # Plan 21 drops the deterministic rules, so there is nothing to
+            # hand across. An EMPTY list rather than the key removed, because
+            # the prompt names the slot and a missing key would leave a
+            # `{lessons_json}` brace in the rendered text.
+            lessons=[],
+            sample=sample,
+            sample_truncated=sample_truncated,
+            sample_frames=sum(len(row["frames"]) for row in sample),
+        )
+    except digest_module.DigestUnavailable as exc:
+        # NOT billable: this is raised before an `LLM` is constructed, so it
+        # writes no row and costs nobody an attempt.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - possibly billable, so recorded
+        persistence.save_digest(
+            {
+                "id": digest_module.new_digest_id(),
+                "workflow_id": workflow_id,
+                "created_by": getattr(user, "id", None),
+                "window_from": start,
+                "window_to": end,
+                "model": config.CHEAP_MODEL,
+                "cost_usd": None,
+                "over_cap": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "body": "",
+                "created_at": digest_module.utcnow(),
+            }
+        )
+        logger.warning(
+            "a model review of %s failed and was recorded as an attempt: %s",
+            workflow_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "the model did not answer; the attempt was recorded because "
+                "it may still have been billed"
+            ),
+        ) from exc
+
+    over_cap = (
+        result.cost_usd is not None and result.cost_usd > config.DIGEST_MAX_COST_USD
+    )
+    if over_cap:
+        logger.warning(
+            "a model review of %s cost $%.6f, over the $%.2f cap "
+            "(DIGEST_MAX_COST_USD); %s prompt / %s completion tokens on %s",
+            workflow_id,
+            result.cost_usd,
+            config.DIGEST_MAX_COST_USD,
+            result.prompt_tokens,
+            result.completion_tokens,
+            result.model,
+        )
+    stored = persistence.save_digest(
+        {
+            "id": digest_module.new_digest_id(),
+            "workflow_id": workflow_id,
+            "created_by": getattr(user, "id", None),
+            "window_from": start,
+            "window_to": end,
+            "sample_runs": result.sample_runs,
+            "sample_frames": result.sample_frames,
+            "truncated_sample": result.truncated_sample,
+            "model": result.model,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "cost_usd": result.cost_usd,
+            "over_cap": over_cap,
+            "error": None,
+            "body": result.body,
+            "created_at": digest_module.utcnow(),
+        }
+    )
+    logger.warning(
+        "admin %s generated a model review for %s (%s prompt / %s completion tokens)",
+        getattr(user, "email", None) or getattr(user, "id", None),
+        workflow_id,
+        result.prompt_tokens,
+        result.completion_tokens,
+    )
+    return _digest_model(stored)
 
 
 def _document_store(store_factory: Callable[[], Any]) -> Any:
@@ -1888,6 +2197,7 @@ def _arm(
         key=key,
         n=len(rows),
         underpowered=len(rows) < config.IMPROVE_MIN_COMPARE_RUNS,
+        missing=not rows,
         status_mix=status_mix,
         verdict_mix=verdict_mix,
         mean_confidence=(
@@ -1906,13 +2216,25 @@ def evalset_lines(
     rating: str,
     window: "ImproveWindow",
     runs: Sequence[Mapping[str, Any]],
-    payloads: Mapping[str, Mapping[str, Any]],
+    payload_pages: Callable[[Sequence[str]], Mapping[str, Mapping[str, Any]]],
     gates: Sequence[Mapping[str, Any]],
     verdicts: Mapping[str, Mapping[str, Any]],
     costs: Mapping[str, Decimal],
     truncated: bool = False,
-) -> "list[dict[str, Any]]":
+    page_size: int | None = None,
+) -> "Iterator[dict[str, Any]]":
     """The NDJSON body, line by line - R3 implemented rather than cited.
+
+    A GENERATOR, and that is the whole of the D5 fix. It used to take a
+    `payloads` mapping the route had already built for every selected run,
+    which meant up to `EVALSET_MAX_RUNS` (2,000) rows each carrying a 64 KiB
+    `result` - about **128 MB resident** - assembled before the first byte of
+    a response that called itself streamed. The byte cap bounded the wire and
+    nothing in memory.
+
+    Now `payload_pages` is asked for `EVALSET_PAGE_RUNS` runs at a time, as
+    the lines are yielded, so the consumer's byte cap stops the PAGING as well
+    as the output: an export cut off at 8 MiB never reads the rest.
 
     THREE OF THE FOUR CONDITIONS ARE HERE (the fourth, the byte cap, is in
     `evalset_ndjson`, because it is a property of the bytes on the wire and
@@ -1952,18 +2274,17 @@ def evalset_lines(
             return [clean(item) for item in value]
         return value
 
-    lines: list[dict[str, Any]] = [
-        {
-            "_header": True,
-            "note": EVALSET_HEADER_NOTE,
-            "workflow_id": workflow_id,
-            "rating": rating,
-            "window": window.model_dump(mode="json"),
-            "max_runs": config.EVALSET_MAX_RUNS,
-            "max_bytes": config.EVALSET_MAX_BYTES,
-            "generated_at": _iso(datetime.now(timezone.utc)),
-        }
-    ]
+    yield {
+        "_header": True,
+        "note": EVALSET_HEADER_NOTE,
+        "workflow_id": workflow_id,
+        "rating": rating,
+        "window": window.model_dump(mode="json"),
+        "max_runs": config.EVALSET_MAX_RUNS,
+        "max_bytes": config.EVALSET_MAX_BYTES,
+        "generated_at": _iso(datetime.now(timezone.utc)),
+    }
+
     gates_by_run: dict[str, list[dict[str, Any]]] = {}
     for gate in gates:
         if gate.get("answered_at") is None:
@@ -1978,18 +2299,23 @@ def evalset_lines(
                 ],
             }
         )
-    for row in runs:
-        run_id = row["run_id"]
-        payload = payloads.get(run_id) or {}
-        verdict = verdicts.get(run_id) or {}
-        result = payload.get("result")
-        summary = ""
-        if isinstance(result, Mapping):
-            body = result.get("markdown_body")
-            if isinstance(body, str):
-                summary = body[: config.EVALSET_MAX_RESULT_CHARS]
-        lines.append(
-            {
+
+    size = config.EVALSET_PAGE_RUNS if page_size is None else max(1, int(page_size))
+    rows = list(runs)
+    for offset in range(0, len(rows), size):
+        page = rows[offset : offset + size]
+        payloads = payload_pages([row["run_id"] for row in page]) or {}
+        for row in page:
+            run_id = row["run_id"]
+            payload = payloads.get(run_id) or {}
+            verdict = verdicts.get(run_id) or {}
+            result = payload.get("result")
+            summary = ""
+            if isinstance(result, Mapping):
+                body = result.get("markdown_body")
+                if isinstance(body, str):
+                    summary = body[: config.EVALSET_MAX_RESULT_CHARS]
+            yield {
                 "run_id": run_id,
                 "workflow_id": row["workflow_id"],
                 "document_version": row.get("document_version"),
@@ -2009,18 +2335,14 @@ def evalset_lines(
                 "rating_note": clean(row.get("rating_note")),
                 "rated_at": _iso(row.get("rated_at")),
             }
-        )
     if truncated:
-        lines.append(
-            {
-                "_truncated": True,
-                "reason": (
-                    f"the export stopped at {config.EVALSET_MAX_RUNS} runs; "
-                    "narrow the window to see the rest"
-                ),
-            }
-        )
-    return lines
+        yield {
+            "_truncated": True,
+            "reason": (
+                f"the export stopped at {config.EVALSET_MAX_RUNS} runs; "
+                "narrow the window to see the rest"
+            ),
+        }
 
 
 def evalset_ndjson(

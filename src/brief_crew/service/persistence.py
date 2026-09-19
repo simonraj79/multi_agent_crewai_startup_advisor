@@ -48,7 +48,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from threading import RLock
 
-from brief_crew.config import ADMIN_UNOWNED_KEY, MAX_RATING_NOTE_CHARS
+from brief_crew.config import (
+    ADMIN_UNOWNED_KEY,
+    MAX_NODE_ERROR_CHARS,
+    MAX_RATING_NOTE_CHARS,
+)
 from brief_crew.events import FrameData
 from brief_crew.events.redaction import (
     REDACTED,
@@ -273,6 +277,18 @@ runs = Table(
     Column("rating_note", String(512)),
     Column("rated_by", String(128)),
     Column("rated_at", DateTime(timezone=True)),
+    # The document version this run executed, for Compare (plan 21 R8).
+    #
+    # `workflow_id` IS the document id and `graph_version` is a 16-hex CONTENT
+    # hash, so "v3 versus v4" was a hash join with no integer on either side.
+    # This is the integer, written at admission from the runtime that already
+    # holds it - one column, one assignment. NULL for the two hand-written
+    # flows, which have no document and no version to record, and NULL for
+    # every run written before it shipped: `improve_api.resolve_document_version`
+    # recomputes the hash for those rather than inventing one, and an
+    # unmatched hash is grouped `"unknown"` and never merged into an arm it
+    # might not belong to.
+    Column("document_version", Integer),
     Column("inputs", _json_type(), nullable=False),
     Column("usage", _json_type(), nullable=False),
     Column("result", _json_type()),
@@ -568,6 +584,64 @@ platform_tool_usage = Table(
     Column("utc_day", String(10), primary_key=True),
     Column("used", Integer, nullable=False, default=0),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+
+# One stored model review - the only row in this repository whose body is
+# model output (plan 21, "Ask a model to review").
+#
+# A NEW table, so `metadata.create_all()` creates it whole and the
+# `_ADDITIVE_COLUMNS` rule below does not apply to it - the same route
+# `platform_tool_usage` took above.
+#
+# `body` is TEXT and untrusted by construction. It is stored, listed and
+# rendered through the escape-first `markdown.ts`, and it is never read by any
+# decision this service makes: a review is for a person, not an input to
+# anything. `cost_usd` is `NUMERIC(12, 6)` for `run_node_metrics.cost_usd`'s
+# reason - money is compared, not approximated - and is NULLABLE, because
+# `compute_cost_usd` answers `None` for a model with no price on file and
+# storing 0.0 for that would be the defect that once priced a 128,069-token
+# run at $0.00.
+#
+# `over_cap` is plan 21 R5: the MEASURED cost against the cap, decided once at
+# write time and stored, so a row read back after somebody lowered
+# `DIGEST_MAX_COST_USD` still says what was true when it was charged.
+#
+# The window is stored so a stored row can say what it was a review OF. A
+# review read back six weeks later with no window is a paragraph about an
+# unknown period.
+improve_digests = Table(
+    "improve_digests",
+    metadata,
+    Column("id", String(64), primary_key=True),
+    Column("workflow_id", String(128), nullable=False),
+    Column("created_by", String(128)),
+    Column("window_from", DateTime(timezone=True), nullable=False),
+    Column("window_to", DateTime(timezone=True), nullable=False),
+    Column("sample_runs", Integer, nullable=False, default=0),
+    Column("sample_frames", Integer, nullable=False, default=0),
+    Column("truncated_sample", Integer, nullable=False, default=0),
+    Column("model", String(255), nullable=False),
+    Column("prompt_tokens", Integer, nullable=False, default=0),
+    Column("completion_tokens", Integer, nullable=False, default=0),
+    Column("cost_usd", Numeric(12, 6)),
+    Column("over_cap", Integer, nullable=False, default=0),
+    # A FAILED attempt's reason, and NULL for a review that worked.
+    #
+    # It exists so the per-day money brake counts attempts rather than
+    # successes. A model call that raised may still have been billed - the
+    # provider charges for tokens it generated before it gave up - so a
+    # limiter that only counted rows it liked would let a failing loop
+    # spend all day. A durable row is also the only thing a restart cannot
+    # forget, which an in-memory attempt counter would.
+    Column("error", Text),
+    Column("body", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+Index(
+    "ix_improve_digests_workflow",
+    improve_digests.c.workflow_id,
+    improve_digests.c.created_at,
 )
 
 
@@ -877,6 +951,19 @@ class PostgresFlowPersistence(FlowPersistence):
         ("runs", "rating_note", "VARCHAR(512)"),
         ("runs", "rated_by", "VARCHAR(128)"),
         ("runs", "rated_at", "TIMESTAMP WITH TIME ZONE"),
+        # Plan 21 R8: the lineage column, so Compare can group by "v3 versus
+        # v4" without recomputing a content hash for every run. Nullable,
+        # nothing backfilled - a run written before this shipped reads NULL,
+        # which is exactly what a hand-written flow's run reads too, and
+        # `resolve_document_version` is what answers for the older ones.
+        ("runs", "document_version", "INTEGER"),
+        # `improve_digests` is a NEW table, so `create_all()` makes it
+        # whole - but it was created WITHOUT `error` on any database made
+        # between the table landing and the money brakes landing, and
+        # `create_all` does nothing to a table that already exists. One
+        # row here covers that window; TEXT is spelled the same on both
+        # dialects.
+        ("improve_digests", "error", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:
@@ -1110,6 +1197,7 @@ class PostgresFlowPersistence(FlowPersistence):
         max_cost_usd: float | Decimal | None = None,
         ceiling_kind: str | None = None,
         account_cap_usd: float | Decimal | None = None,
+        document_version: int | None = None,
     ) -> dict[str, Any]:
         run_id = _identifier(run_id or uuid.uuid4(), label="run_id")
         session_id = _identifier(session_id, label="session_id")
@@ -1151,6 +1239,13 @@ class PostgresFlowPersistence(FlowPersistence):
             else _identifier(ceiling_kind, label="ceiling_kind", limit=16)
         )
         cap_value = None if account_cap_usd is None else Decimal(str(account_cap_usd))
+        # Plan 21 R8. The builder runtime holds it; the two hand-written flows
+        # have no document, so they write NULL - which is what a row from
+        # before this column existed already means, and is why
+        # `improve_api.resolve_document_version` exists for the older ones.
+        document_version_value = (
+            None if document_version is None else int(document_version)
+        )
 
         with self._begin() as connection:
             connection.execute(
@@ -1166,6 +1261,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     max_cost_usd=ceiling_value,
                     ceiling_kind=kind_value,
                     account_cap_usd=cap_value,
+                    document_version=document_version_value,
                     inputs=safe_inputs,
                     usage={},
                     captured_frames=0,
@@ -2385,6 +2481,13 @@ class PostgresFlowPersistence(FlowPersistence):
                 run_gates.c.gate_id,
                 run_gates.c.node_id,
                 run_gates.c.status,
+                # Plan 21: the gate's own REQUEST, beside the reply it drew.
+                # `GatePrompt.fields` is what the system PROPOSED and
+                # `response.fields` is what a person left there; the PAIR is
+                # what says a field was changed, and a reply alone shows only
+                # what was accepted. Additive, and the existing call sites read
+                # the mapping they already read.
+                run_gates.c.request,
                 run_gates.c.response,
                 run_gates.c.opened_at,
                 run_gates.c.expires_at,
@@ -2409,6 +2512,7 @@ class PostgresFlowPersistence(FlowPersistence):
                     "gate_id": row["gate_id"],
                     "node_id": row["node_id"],
                     "status": row["status"],
+                    "request": dict(row["request"]) if row["request"] is not None else None,
                     "response": dict(row["response"]) if row["response"] is not None else None,
                     "opened_at": _as_utc(row["opened_at"]),
                     "expires_at": _as_utc(row["expires_at"]),
@@ -2424,6 +2528,8 @@ class PostgresFlowPersistence(FlowPersistence):
         kinds: Sequence[str],
         *,
         run_ids: Sequence[str] | None = None,
+        workflow_ids: Sequence[str] | None = None,
+        statuses: Sequence[str] | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = 5000,
@@ -2460,13 +2566,38 @@ class PostgresFlowPersistence(FlowPersistence):
             if not wanted:
                 return [], False
             statement = statement.where(run_frames.c.run_id.in_(wanted))
-        if start is not None or end is not None:
-            statement = self._window(
-                statement.join(runs, runs.c.id == run_frames.c.run_id),
-                runs.c.created_at,
-                start,
-                end,
-            )
+        # EXTENDED, not duplicated. `workflow_ids` and `statuses` are optional
+        # and every call site that predates them passes neither, so nothing
+        # about `/verdicts`, `/runs`, `/runs/{id}/decisions` or the governance
+        # insights changes. They join `runs` for the same reason the window
+        # does - the fact being filtered on lives there - and the join is taken
+        # ONCE however many of the three are asked for.
+        wanted_workflows = (
+            [_identifier(value, label="workflow_id") for value in workflow_ids]
+            if workflow_ids is not None
+            else None
+        )
+        if wanted_workflows is not None and not wanted_workflows:
+            return [], False
+        wanted_statuses = (
+            [_identifier(value, label="status", limit=32) for value in statuses]
+            if statuses is not None
+            else None
+        )
+        if wanted_statuses is not None and not wanted_statuses:
+            return [], False
+        if (
+            start is not None
+            or end is not None
+            or wanted_workflows is not None
+            or wanted_statuses is not None
+        ):
+            statement = statement.join(runs, runs.c.id == run_frames.c.run_id)
+            statement = self._window(statement, runs.c.created_at, start, end)
+            if wanted_workflows is not None:
+                statement = statement.where(runs.c.workflow_id.in_(wanted_workflows))
+            if wanted_statuses is not None:
+                statement = statement.where(runs.c.status.in_(wanted_statuses))
         statement = statement.order_by(
             run_frames.c.run_id, run_frames.c.seq
         ).limit(limit)
@@ -2501,6 +2632,398 @@ class PostgresFlowPersistence(FlowPersistence):
         ).group_by(run_frames.c.run_id)
         with self._connect() as connection:
             return {str(row[0]) for row in connection.execute(statement).all()}
+
+    # ----------------------------------------------------------------- mine
+    #
+    # Plan 21. Five reads, and every one of them obeys the rule the `admin_*`
+    # block opens with: **no JSON path is ever written in SQL.** `details`,
+    # `inputs`, `result`, a gate's `request` and its `response` all come back
+    # as whole columns and are read in Python, because `->>` and
+    # `json_extract` are different spellings and this repository runs both
+    # dialects.
+
+    def improve_runs(
+        self,
+        *,
+        workflow_id: str | None = None,
+        workflow_ids: Sequence[str] | None = None,
+        statuses: Sequence[str] | None = None,
+        ratings: Sequence[str] | None = None,
+        rated_only: bool = False,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """The runs a mining pass reads, with their labels and their lineage.
+
+        `admin_list_runs` is the console's paginated list and answers a
+        different question: it is keyset-paged, ordered newest first for a
+        human, and selects no document version. This selects one, takes the
+        whole window in one statement bounded by `ADMIN_MAX_SCAN_ROWS`, and
+        reports `truncated` the way every other aggregate here does.
+
+        Deliberately does NOT select `inputs` or `result`: a 2,000-run window
+        would then carry up to 64 KiB of report Markdown per row to count
+        verdicts. `improve_run_payloads` is the export's separate read.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        statement = select(
+            runs.c.id,
+            runs.c.user_id,
+            runs.c.workflow_id,
+            runs.c.graph_version,
+            runs.c.document_version,
+            runs.c.status,
+            runs.c.mode,
+            runs.c.error,
+            runs.c.rating,
+            runs.c.rating_note,
+            runs.c.rated_by,
+            runs.c.rated_at,
+            runs.c.created_at,
+            runs.c.started_at,
+            runs.c.completed_at,
+            # The integrity counters, on the SAME row: they are plain columns
+            # on `runs` and belong in the statement that already selects the
+            # row rather than in a `get_run` per run, which is an N+1 over a
+            # window that may hold `ADMIN_MAX_SCAN_ROWS` of them.
+            runs.c.captured_frames,
+            runs.c.dropped_frames,
+            runs.c.frame_gaps,
+            runs.c.emit_errors,
+        )
+        statement = self._window(statement, runs.c.created_at, start, end)
+        wanted_workflows = [
+            _identifier(value, label="workflow_id")
+            for value in ([workflow_id] if workflow_id else list(workflow_ids or ()))
+        ]
+        if wanted_workflows:
+            statement = statement.where(runs.c.workflow_id.in_(wanted_workflows))
+        if statuses:
+            statement = statement.where(
+                runs.c.status.in_(
+                    [
+                        _identifier(value, label="status", limit=32)
+                        for value in statuses
+                    ]
+                )
+            )
+        if ratings:
+            statement = statement.where(
+                runs.c.rating.in_(
+                    [
+                        _identifier(value, label="rating", limit=16)
+                        for value in ratings
+                    ]
+                )
+            )
+        elif rated_only:
+            statement = statement.where(runs.c.rating.is_not(None))
+        statement = statement.order_by(
+            runs.c.created_at.desc(), runs.c.id.desc()
+        ).limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return (
+            [
+                {
+                    "run_id": row["id"],
+                    "user_id": row["user_id"],
+                    "workflow_id": row["workflow_id"],
+                    "graph_version": row["graph_version"],
+                    "document_version": (
+                        int(row["document_version"])
+                        if row["document_version"] is not None
+                        else None
+                    ),
+                    "status": row["status"],
+                    "mode": run_mode(row["mode"]),
+                    "error": row["error"],
+                    "rating": row["rating"],
+                    "rating_note": row["rating_note"],
+                    "rated_by": row["rated_by"],
+                    "rated_at": _as_utc(row["rated_at"]),
+                    "created_at": _as_utc(row["created_at"]),
+                    "started_at": _as_utc(row["started_at"]),
+                    "completed_at": _as_utc(row["completed_at"]),
+                    "captured_frames": int(row["captured_frames"] or 0),
+                    "dropped_frames": int(row["dropped_frames"] or 0),
+                    "frame_gaps": int(row["frame_gaps"] or 0),
+                    "emit_errors": int(row["emit_errors"] or 0),
+                }
+                for row in rows
+            ],
+            len(rows) == limit,
+        )
+
+    def improve_run_payloads(
+        self, run_ids: Sequence[str]
+    ) -> dict[str, dict[str, Any]]:
+        """`inputs` and `result` for the eval-set export, and nowhere else.
+
+        Split from `improve_runs` because these two columns are the large
+        ones: `result` is bounded at `MAX_RUN_RESULT_BODY_CHARS` (64 KiB) and
+        a mining pass that only counts verdicts must never pay for it.
+        """
+
+        wanted = [_identifier(run_id, label="run_id") for run_id in run_ids]
+        if not wanted:
+            return {}
+        with self._connect() as connection:
+            rows = connection.execute(
+                select(runs.c.id, runs.c.inputs, runs.c.result).where(
+                    runs.c.id.in_(wanted)
+                )
+            ).mappings().all()
+        return {
+            row["id"]: {
+                "inputs": dict(row["inputs"] or {}),
+                "result": row["result"],
+            }
+            for row in rows
+        }
+
+    def improve_frame_kind_counts(self, run_ids: Sequence[str]) -> dict[str, int]:
+        """`{kind: count}` over these runs' frames.
+
+        `GROUP BY run_frames.kind` in SQL, which is a plain column and not a
+        JSON path, so the rule holds and the whole frame table is never read
+        into Python to count it.
+        """
+
+        wanted = [_identifier(run_id, label="run_id") for run_id in run_ids]
+        if not wanted:
+            return {}
+        with self._connect() as connection:
+            rows = connection.execute(
+                select(run_frames.c.kind, func.count().label("count"))
+                .where(run_frames.c.run_id.in_(wanted))
+                .group_by(run_frames.c.kind)
+            ).mappings().all()
+        return {row["kind"]: int(row["count"]) for row in rows}
+
+    def improve_node_costs(self, run_ids: Sequence[str]) -> list[dict[str, Any]]:
+        """Per-run, per-node, per-model metrics - the only source of a dollar.
+
+        `run_node_metrics.cost_usd` is a `Numeric` column, so cost is summed
+        as money rather than parsed out of the `usage` JSON. That is the same
+        call `admin_run_costs` makes; this one keeps the node and the model,
+        which is what a node-scoped model comparison needs.
+        """
+
+        wanted = [_identifier(run_id, label="run_id") for run_id in run_ids]
+        if not wanted:
+            return []
+        with self._connect() as connection:
+            rows = connection.execute(
+                select(
+                    run_node_metrics.c.run_id,
+                    run_node_metrics.c.node_id,
+                    run_node_metrics.c.model,
+                    run_node_metrics.c.cost_usd,
+                    run_node_metrics.c.call_count,
+                    run_node_metrics.c.elapsed_ms,
+                    run_node_metrics.c.total_tokens,
+                    # The split, for the cheap-tier counterfactual: pricing a
+                    # node's work at another model needs the two halves,
+                    # because in every OpenRouter price the completion rate is
+                    # several times the prompt rate and a total-token estimate
+                    # would be wrong by whatever the mix happened to be.
+                    run_node_metrics.c.prompt_tokens,
+                    run_node_metrics.c.completion_tokens,
+                ).where(run_node_metrics.c.run_id.in_(wanted))
+            ).mappings().all()
+        return [
+            {
+                "run_id": row["run_id"],
+                "node_id": row["node_id"],
+                "model": row["model"] or "",
+                "cost_usd": row["cost_usd"] or Decimal("0"),
+                "call_count": int(row["call_count"] or 0),
+                "elapsed_ms": int(row["elapsed_ms"] or 0),
+                "total_tokens": int(row["total_tokens"] or 0),
+                "prompt_tokens": int(row["prompt_tokens"] or 0),
+                "completion_tokens": int(row["completion_tokens"] or 0),
+            }
+            for row in rows
+        ]
+
+    def save_digest(self, row: Mapping[str, Any]) -> dict[str, Any]:
+        """Store one model review. Insert only - a review is never edited.
+
+        There is no update path and no compare-and-set, because there is
+        nothing to race: every row is a new review of a window, and two admins
+        clicking at once should get two reviews rather than one 409.
+        """
+
+        values = {
+            "id": _identifier(row["id"], label="digest id", limit=64),
+            "workflow_id": _identifier(row["workflow_id"], label="workflow_id"),
+            "created_by": (
+                _identifier(row["created_by"], label="created_by")
+                if row.get("created_by")
+                else None
+            ),
+            "window_from": _as_utc(row["window_from"]),
+            "window_to": _as_utc(row["window_to"]),
+            "sample_runs": int(row.get("sample_runs") or 0),
+            "sample_frames": int(row.get("sample_frames") or 0),
+            "truncated_sample": 1 if row.get("truncated_sample") else 0,
+            "model": str(row.get("model") or "")[:255],
+            "prompt_tokens": int(row.get("prompt_tokens") or 0),
+            "completion_tokens": int(row.get("completion_tokens") or 0),
+            # None stays None. `compute_cost_usd` answers None for a model
+            # with no price on file, and storing 0.0 for that would report a
+            # free call for an unpriced one.
+            "cost_usd": (
+                None
+                if row.get("cost_usd") is None
+                else Decimal(str(row["cost_usd"]))
+            ),
+            # Decided once, at write time, against the cap in force then.
+            "over_cap": 1 if row.get("over_cap") else 0,
+            # Bounded at the durable layer's own per-string ceiling. The model
+            # was given `max_tokens`, so this is a second bound on a bounded
+            # value rather than the only one.
+            # A failed attempt's reason, bounded like every other string
+            # that reaches a column here. NULL when the review worked.
+            "error": (
+                None
+                if row.get("error") in (None, "")
+                else str(row["error"])[:MAX_NODE_ERROR_CHARS]
+            ),
+            "body": str(row.get("body") or "")[:MAX_STRING_LENGTH],
+            "created_at": _as_utc(row.get("created_at")) or _utcnow(),
+        }
+        with self._begin() as connection:
+            connection.execute(insert(improve_digests).values(**values))
+        return self._digest_dict(values)
+
+    def list_digests(
+        self, workflow_id: str, *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """One workflow's stored reviews, newest first."""
+
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        workflow_id = _identifier(workflow_id, label="workflow_id")
+        with self._connect() as connection:
+            rows = connection.execute(
+                select(improve_digests)
+                .where(improve_digests.c.workflow_id == workflow_id)
+                .order_by(improve_digests.c.created_at.desc())
+                .limit(limit)
+            ).mappings().all()
+        return [self._digest_dict(row) for row in rows]
+
+    def digest_count(
+        self,
+        workflow_id: str | None = None,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> int:
+        """How many reviews exist, whatever a page of them returned.
+
+        A `COUNT` rather than `len(list_digests(...))`, because that list
+        is `?limit=`ed: the moment a workflow passes the cap the two would
+        disagree and the panel would report the page as the total.
+
+        `workflow_id=None` counts the whole deployment, which is what the
+        per-day money brake asks.
+        """
+
+        statement = select(func.count()).select_from(improve_digests)
+        if workflow_id:
+            statement = statement.where(
+                improve_digests.c.workflow_id
+                == _identifier(workflow_id, label="workflow_id")
+            )
+        # Counted over `created_at`, so the caller can ask the money brake's
+        # question - "how many in the last 24 hours" - with no second method.
+        # Every row counts, including a failed attempt, because a failed call
+        # may still have been billed.
+        statement = self._window(statement, improve_digests.c.created_at, start, end)
+        with self._connect() as connection:
+            return int(connection.execute(statement).scalar() or 0)
+
+    def list_digests_in_window(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Every attempt on the DEPLOYMENT in a window, oldest first.
+
+        One caller: the per-day money brake, which needs the OLDEST
+        attempt still inside the rolling window so its refusal can say
+        when the allowance clears. Oldest first and bounded, because that
+        is the one row it reads and a `LIMIT` on the far end would return
+        the wrong one.
+        """
+
+        statement = self._window(
+            select(improve_digests), improve_digests.c.created_at, start, end
+        )
+        statement = statement.order_by(improve_digests.c.created_at.asc()).limit(
+            max(1, limit)
+        )
+        with self._connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [self._digest_dict(row) for row in rows]
+
+    def digest_cost_total(
+        self,
+        workflow_id: str | None = None,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Decimal:
+        """What the reviews have cost, summed as money in the column.
+
+        A SEPARATE figure from run spend and never added to it: a review has
+        no `run_id`, so it appears in no `run_node_metrics` row and every
+        money read plan 17 built is blind to it. Merging the two would make
+        `spend_usd_estimate` mean two things at once - what the product spent
+        running people's workflows, and what an admin spent reading about
+        them - and the first of those is the number a budget is set against.
+        """
+
+        statement = select(func.coalesce(func.sum(improve_digests.c.cost_usd), 0))
+        if workflow_id:
+            statement = statement.where(
+                improve_digests.c.workflow_id
+                == _identifier(workflow_id, label="workflow_id")
+            )
+        statement = self._window(statement, improve_digests.c.created_at, start, end)
+        with self._connect() as connection:
+            return Decimal(str(connection.execute(statement).scalar() or 0))
+
+    @staticmethod
+    def _digest_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "workflow_id": row["workflow_id"],
+            "created_by": row["created_by"],
+            "window_from": _as_utc(row["window_from"]),
+            "window_to": _as_utc(row["window_to"]),
+            "sample_runs": int(row["sample_runs"] or 0),
+            "sample_frames": int(row["sample_frames"] or 0),
+            "truncated_sample": bool(row["truncated_sample"]),
+            "model": row["model"],
+            "prompt_tokens": int(row["prompt_tokens"] or 0),
+            "completion_tokens": int(row["completion_tokens"] or 0),
+            "cost_usd": (
+                float(row["cost_usd"]) if row["cost_usd"] is not None else None
+            ),
+            "over_cap": bool(row["over_cap"]),
+            "error": row["error"],
+            "body": row["body"],
+            "created_at": _as_utc(row["created_at"]),
+        }
 
     def admin_gates_for_user(self, user_id: str) -> list[dict[str, Any]]:
         """Every gate on one account's runs - the gate stats of `/users/{id}`.
@@ -3109,6 +3632,15 @@ class PostgresFlowPersistence(FlowPersistence):
             "max_cost_usd": run_ceiling_usd(row["max_cost_usd"]),
             "ceiling_kind": run_ceiling_kind(row["ceiling_kind"]),
             "account_cap_usd": run_ceiling_usd(row["account_cap_usd"]),
+            # Plan 21's lineage column. It reads as its own absence - a run
+            # whose document version was never recorded and a hand-written
+            # flow's run are indistinguishable - which is the property that
+            # makes an additive column honest (`mode`'s rule, applied again).
+            "document_version": (
+                int(row["document_version"])
+                if row["document_version"] is not None
+                else None
+            ),
         }
 
     @staticmethod
@@ -3153,6 +3685,7 @@ __all__ = [
     "PersistenceValueError",
     "PostgresFlowPersistence",
     "flow_states",
+    "improve_digests",
     "metadata",
     "pending_feedback",
     "run_frames",

@@ -78,6 +78,8 @@ from crewai.events.types.flow_events import (
     MethodExecutionStartedEvent,
 )
 from crewai.events.types.logging_events import AgentLogsExecutionEvent
+from crewai.tasks.task_output import TaskOutput, ToolFailureRecord
+from crewai.tools.tool_failure import ToolFailure
 
 from brief_crew.events import FrameBuffer, NodeRegistry, StreamSinkAdapter
 
@@ -330,12 +332,39 @@ def events() -> list[Any]:
             timestamp=ts(20),
             **identity,
         ),
-        # Same reason as the agent pair above: `TaskCompletedEvent.output` is a
-        # `TaskOutput` and `CrewKickoffCompletedEvent.output` a `CrewOutput`,
-        # neither of which the ladder reads - the two branches emit
-        # `{"stage": "after"}` and `{"stage": "after", "total_tokens": ...}`.
+        # `TaskCompletedEvent.output` is a REAL `TaskOutput` here, and until
+        # plan 21 it was a bare string because the ladder read nothing off it.
+        # The branch now lifts the tool-failure pair, so the fixture has to
+        # carry an object they can be read from - a string would regenerate a
+        # frame reading `tool_failure_count: 0` and prove nothing. It carries
+        # `raw` and `expected_output` too, which the branch deliberately does
+        # NOT lift (R6): the regenerated frame is the proof that the answer
+        # reaches no frame. `CrewKickoffCompletedEvent.output` is still a
+        # string, because its branch still reads only `total_tokens`.
         TaskCompletedEvent.model_construct(
-            output="Three of five claims are supported; two are not.",
+            output=TaskOutput(
+                description="Verify each claim against a primary source.",
+                name=TASK,
+                expected_output=(
+                    "A list of claims, each marked supported or unsupported, "
+                    "with the URL of the primary source beside every "
+                    "supported one."
+                ),
+                raw="Three of five claims are supported; two are not.",
+                json_dict={"supported": 3, "unsupported": 2},
+                agent=ROLE,
+                tool_failures=[
+                    ToolFailureRecord(
+                        tool_name="primary_source_lookup",
+                        failure=ToolFailure(
+                            message="the registry returned no filing for that year",
+                            code="filing_not_found",
+                        ),
+                        agent_role=ROLE,
+                        task_name=TASK,
+                    )
+                ],
+            ),
             task=task,
             timestamp=ts(21),
             **identity,

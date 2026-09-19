@@ -1,6 +1,8 @@
 import { ref } from 'vue'
 import { authedFetch, fetchJson } from './httpCore'
+import { readErrorDetail } from '../data/serverLimits'
 import { ratingToSend, readRunRating } from '../data/runRating'
+import { saveBlob } from '../utils/saveBlob'
 import type { RunRating, RunRatingValue, RunRatingWire } from '../types/studio'
 
 /**
@@ -695,5 +697,481 @@ export const adminApi: AdminApiLike = {
       body: JSON.stringify({ rating: ratingToSend(rating), note: note || null }),
     })
     return readRunRating(body, runId)
+  },
+}
+
+/* ======================================================================== *
+ *  Improve - plan 21, `/api/admin/improve` and the rated-run export        *
+ * ======================================================================== */
+
+/**
+ * Step 4 of the loop: where runs go wrong, whether a change helped, the runs
+ * worth keeping, and one optional written review.
+ *
+ * A SEPARATE OBJECT FROM `adminApi`, mirroring the server: `improve_api.py` is
+ * its own router mounted beside the admin one precisely so no plan-17 route
+ * changes behaviour, and a second surface here keeps that property visible from
+ * the client too. `AdminApiLike` does not move, so nothing that stands in for
+ * the console has to grow five methods it never calls.
+ *
+ * EVERY SHAPE BELOW IS `.agent/plans/21-test-a-change.md` §2's, and
+ * `frontend/tests/fixtures/improveApi.json` is what holds it honest (T5):
+ * W-API generates that file from its own response models and drives every real
+ * handler against it. So these interfaces must never become a second, quieter
+ * contract - section 14 defect 2 is what happens without one.
+ *
+ * OPTIONAL MEANS ABRIDGED, NOT UNRELIABLE. The plan prints abbreviated
+ * examples, so a key it does not spell is optional here and every consumer
+ * supplies its own floor. Two fields are deliberately loose - `error_classes`
+ * and a gate's `edited_fields` - because the server sends them as counts in one
+ * place and as names in another; `describeCounts` reads either without
+ * inventing a third.
+ *
+ * NOT HERE, AND DELIBERATELY: there is no rating WRITE on this object. Plan
+ * 20's `adminApi.rateRun` and `data/runRating.ts` are the only rating code in
+ * this repository (R1), and a second spelling of a write is how two doors onto
+ * one column start disagreeing.
+ */
+
+/** The router prefix. `ADMIN_API_PREFIX + "/improve"`. */
+export const IMPROVE_API_PREFIX = `${ADMIN_API_PREFIX}/improve`
+
+/** A count-or-name bag: `{"TimeoutError": 3}` or `["TimeoutError"]`. */
+export type CountBag = Record<string, number> | string[] | null | undefined
+
+/**
+ * A count bag as `name x3, other` - one reading for both spellings.
+ *
+ * The alternative was to pick one and let the other render as `[object
+ * Object]`, which is the shape of thing a dashboard shows for a week before
+ * anybody notices. An empty bag answers `''` and the caller prints nothing.
+ */
+export function describeCounts(bag: CountBag, limit = 3): string {
+  if (!bag) return ''
+  const entries = Array.isArray(bag)
+    ? bag.map((name) => [String(name), 0] as const)
+    : Object.entries(bag).map(([name, value]) => [name, Number(value) || 0] as const)
+  return entries
+    .slice(0, limit)
+    .map(([name, value]) => (value > 1 ? `${name} x${value}` : name))
+    .join(', ')
+}
+
+/**
+ * The window every improve read echoes back, in the SERVER's own spelling.
+ *
+ * `{start, end, days}` and not the `{from, to}` the request carries: the query
+ * is what a client asks for and this is what the server decided, and the two
+ * are different objects even when they agree.
+ */
+export interface ImproveWindow {
+  start?: string | null
+  end?: string | null
+  days?: number | null
+}
+
+export interface ImproveRatingCounts {
+  good: number
+  bad: number
+  unsure: number
+  unrated: number
+}
+
+export interface ImproveAgentRow {
+  agent_role?: string | null
+  node_id: string
+  node_label?: string | null
+  runs: number
+  executions: number
+  failures: number
+  error_classes?: CountBag
+  guardrail_retries: number
+  llm_calls: number
+  calls_per_execution: number
+  mean_ms?: number | null
+  cost_usd: number
+  cost_share?: number | null
+  /**
+   * What this node would cost if every one of its calls had run on the cheap
+   * tier - `null` when the node already runs there, or its tokens are unknown.
+   * Only ever a suggestion: Compare, axis Model, is the one thing that
+   * measures it.
+   */
+  cheap_tier_cost_usd?: number | null
+  truncated_outputs: number
+}
+
+export interface ImproveToolRow {
+  tool: string
+  agent_role?: string | null
+  node_id?: string | null
+  calls: number
+  empty: number
+  empty_rate: number
+  failed: number
+  failed_rate: number
+  from_cache?: number
+  queries_sample?: string[]
+}
+
+export interface ImproveErrorRow {
+  error_class: string
+  count: number
+  nodes?: string[]
+  agent_roles?: string[]
+}
+
+export interface ImproveGateRow {
+  gate_id: string
+  node_id?: string | null
+  opened: number
+  answered: number
+  revise: number
+  revise_rate: number
+  expired: number
+  median_seconds?: number | null
+  edited_fields?: CountBag
+}
+
+export interface ImproveRouteRow {
+  node_id: string
+  node_label?: string | null
+  decisions: number
+  routes?: CountBag
+  unique_routes: number
+}
+
+/**
+ * One task's completions, and how many of them swallowed a tool failure.
+ *
+ * The one row in this payload that CANNOT be answered for a run recorded
+ * before the serializer change: `completions` counts the task-completed frames
+ * that carry the new keys, so a window of historic runs reads zero. That is
+ * why the panel's empty state says "no run recorded after the update", and
+ * never "no tool failed".
+ *
+ * `truncated_outputs` is declared because the server sends it and this type is
+ * the fixture's shape; it is deliberately NOT rendered on its own. It counts
+ * this repository's own frame preview bound rather than a model stopping
+ * short, so a sentence built on it would be advice about the wrong thing.
+ */
+export interface ImproveTaskRow {
+  task_name: string
+  node_id: string
+  node_label?: string | null
+  completions: number
+  tool_failures: number
+  truncated_outputs?: number
+}
+
+/**
+ * One step of the workflow, and every model it has actually run on.
+ *
+ * THE ONLY HONEST SOURCE FOR THE MODEL AXIS's three pickers. The first version
+ * of this panel filled its two model boxes from `spend(group_by=model)`, which
+ * answers "what billed anywhere in this window" - so it offered a model that
+ * had never touched the chosen step, and a comparison of two arms that cannot
+ * both exist is a question with no answer rather than a finding.
+ *
+ * A step with fewer than two models here has nothing to compare, and the panel
+ * says so rather than offering it.
+ */
+export interface ImproveNodeModels {
+  node_id: string
+  label?: string | null
+  models: string[]
+  runs?: number
+}
+
+export interface ImproveOutcomes {
+  by_verdict?: Array<{
+    verdict: string
+    runs: number
+    mean_confidence?: number | null
+    cost_usd?: number
+    cost_per_run?: number
+  }>
+  by_rating?: Array<{ rating: string; runs: number; cost_usd?: number }>
+  by_status?: Record<string, number>
+}
+
+/** Five ranked lists plus the outcomes, every row carrying its own counts. */
+export interface ImproveHotspots {
+  window?: ImproveWindow | null
+  runs: number
+  truncated?: boolean
+  workflow_id?: string
+  document_version?: number | null
+  /** Every dollar here is the app's own estimate, and the band says by how much. */
+  estimate?: boolean
+  error_note?: string | null
+  /**
+   * The run floor under which every rate here is one or two events wearing a
+   * percentage, when the server names one.
+   *
+   * OPTIONAL because no plan-21 response is documented to carry it: on the
+   * branch this figure rode on the lessons payload, which R1 drops. Absent, the
+   * panel simply prints no small-sample line rather than inventing a floor - a
+   * client constant would be a second answer to a server question, which is the
+   * drift `data/serverLimits.ts` exists to turn into a failing test.
+   */
+  min_runs?: number | null
+  agents: ImproveAgentRow[]
+  tools: ImproveToolRow[]
+  errors: ImproveErrorRow[]
+  gates: ImproveGateRow[]
+  routes: ImproveRouteRow[]
+  /**
+   * Which models each step has run on, for the model axis's pickers.
+   *
+   * OPTIONAL because an API deployed before this key existed sends none, and
+   * both Render services carry `autoDeploy: yes` - so this bundle can be a
+   * minute ahead of the API. Absent, the panel offers no step and says why,
+   * which is honest; it never falls back to a list of models from somewhere
+   * else, because that is the defect this key exists to close.
+   */
+  node_models?: ImproveNodeModels[]
+  outcomes?: ImproveOutcomes | null
+  tasks?: ImproveTaskRow[]
+  /** The sum over `tasks`. Zero for a window of runs older than the change. */
+  task_completions?: number
+  task_tool_failures?: number
+  rated?: number
+  rating_mix?: ImproveRatingCounts
+  verdicts?: number
+  low_confidence?: number
+  mean_confidence?: number | null
+  /**
+   * A few run ids from this window, so "read the bad ones" has a starting
+   * point. Plain ids: there is no `#/run/<run_id>` route to link them to.
+   */
+  sample_run_ids?: string[]
+}
+
+export type ImproveCompareAxis = 'version' | 'model'
+
+/**
+ * One arm of a comparison, with the six measures and its own `n`.
+ *
+ * THERE IS NO `label`. The branch declared one, nothing ever sent it, and the
+ * table fell back to `key` on every row it has ever drawn - so the field was a
+ * second name for a column that only ever had one (R4 removes it).
+ */
+export interface ImproveCompareArm {
+  key: string
+  n: number
+  /** Under `IMPROVE_MIN_COMPARE_RUNS`. A difference over three runs is noise. */
+  underpowered?: boolean
+  /**
+   * The version or model asked for has NO runs in this window.
+   *
+   * Shown with `n = 0` rather than dropped, and that is the whole point: an
+   * arm quietly missing from a two-column table leaves one column and the
+   * reader concludes the other side lost. "Nobody ran this" is a different
+   * answer from "this did worse", and only one of them is true here.
+   */
+  missing?: boolean
+  status_mix?: Record<string, number>
+  verdict_mix?: Record<string, number>
+  mean_confidence?: number | null
+  rating_mix?: Record<string, number>
+  gate_revise_rate?: number | null
+  median_duration_ms?: number | null
+  cost_per_run_usd?: number | null
+}
+
+export interface ImproveCompare {
+  workflow_id: string
+  axis: ImproveCompareAxis
+  node_id?: string | null
+  arms: ImproveCompareArm[]
+  min_runs?: number | null
+  window?: ImproveWindow | null
+  estimate?: boolean
+  error_note?: string | null
+  truncated?: boolean
+}
+
+export interface ImproveDigestRow {
+  id: string
+  workflow_id: string
+  created_by?: string | null
+  window?: ImproveWindow | null
+  sample_runs: number
+  sample_frames?: number | null
+  /** The sample was clipped to fit the input bound, and says so. */
+  truncated_sample?: boolean
+  model: string
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  cost_usd?: number | null
+  /** The ceiling this call was made under, as it stood at the time. */
+  max_cost_usd?: number | null
+  /** R5: the measured cost came out ABOVE the cap. Shown, never hidden. */
+  over_cap?: boolean
+  /**
+   * The model did not answer, and the attempt was stored anyway.
+   *
+   * A failed attempt is a ROW because it may still have been billed - the
+   * tokens can be spent before the response falls over - so it is recorded
+   * where somebody watching money will see it. Such a row has no review text
+   * and no cost, and the panel renders neither rather than printing `$0.00`,
+   * which would read as "this one was free".
+   */
+  error?: string | null
+  /** Model output. Rendered as TEXT, never as markup - see the panel. */
+  body: string
+  created_at: string
+}
+
+/**
+ * The stored reviews, AND the bounds the button has to print before the click.
+ *
+ * The cap, the model and the sample bounds ride on this GET rather than being
+ * spelled here, for the reason `AdminWindow` gives about the default window: a
+ * ceiling written in the client is a second answer to "what does this cost",
+ * and the copy is always the half that goes stale. When the server sends none,
+ * the panel says so rather than filling one in.
+ */
+export interface ImproveDigestPage {
+  rows: ImproveDigestRow[]
+  enabled: boolean
+  workflow_id?: string
+  model?: string | null
+  max_cost_usd?: number | null
+  max_sample_runs?: number | null
+  max_sample_frames?: number | null
+  /** R5: the two bounds the server gained so the button could print them. */
+  max_input_chars?: number | null
+  max_output_tokens?: number | null
+  /**
+   * How many reviews this deployment may still ask for today, and out of how
+   * many.
+   *
+   * A SERVER brake, not a client one. The knob is a deployment switch rather
+   * than a rate limit, and twenty presses were measured producing twenty model
+   * calls before these existed - so the count is printed before the press and
+   * the button goes off at zero, and the server refuses anyway if a second
+   * browser gets there first.
+   */
+  remaining_today?: number | null
+  max_per_day?: number | null
+  /** Every stored row's `cost_usd` for this workflow, summed by the server. */
+  total_cost_usd?: number | null
+  /**
+   * How many reviews exist, when the server counts them - `rows` is a page.
+   *
+   * Optional, and the panel falls back to `rows.length` with no ceremony: an
+   * API that does not count them yet reports the page it sent, which is a
+   * floor rather than a wrong number.
+   */
+  total_count?: number | null
+}
+
+/** Which rated runs the export should carry. `any` sends no rating filter. */
+export type EvalsetRating = 'good' | 'bad' | 'unsure' | 'any'
+
+export interface ImproveApiLike {
+  hotspots(workflowId: string, window?: AdminWindow): Promise<ImproveHotspots>
+  compare(
+    workflowId: string,
+    axis: ImproveCompareAxis,
+    a: string,
+    b: string,
+    window?: AdminWindow,
+    nodeId?: string,
+  ): Promise<ImproveCompare>
+  digests(workflowId: string, limit?: number): Promise<ImproveDigestPage>
+  runDigest(workflowId: string, window?: AdminWindow): Promise<ImproveDigestRow>
+  downloadEvalset(workflowId: string, rating: EvalsetRating, window?: AdminWindow): Promise<void>
+}
+
+const improvePath = (rest: string) => `${IMPROVE_API_PREFIX}${rest}`
+
+/** A workflow id in a filename, with anything a file system argues about gone. */
+function fileSafe(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'workflow'
+}
+
+export const improveApi: ImproveApiLike = {
+  hotspots: (workflowId, window) =>
+    fetchJson<ImproveHotspots>(
+      improvePath(`/hotspots${windowQuery(window, { workflow_id: workflowId })}`),
+    ),
+
+  /**
+   * Two arms, on an explicit press only.
+   *
+   * `node_id` is sent on the MODEL axis and omitted on the version axis, which
+   * is R4's rule from the client side: the server answers 422 without it, the
+   * arms are only disjoint once a node is named, and `cost_per_run_usd` then
+   * means that node's cost rather than the whole run's. The panel will not let
+   * the press happen without one; this is the second half of the same rule, so
+   * a caller that skipped the panel still cannot ask a question the server
+   * would have to refuse.
+   */
+  compare: (workflowId, axis, a, b, window, nodeId = '') =>
+    fetchJson<ImproveCompare>(
+      improvePath(
+        `/compare${windowQuery(window, {
+          workflow_id: workflowId,
+          axis,
+          a,
+          b,
+          node_id: axis === 'model' ? nodeId : '',
+        })}`,
+      ),
+    ),
+
+  digests: (workflowId, limit = 10) =>
+    fetchJson<ImproveDigestPage>(
+      improvePath(
+        `/digests${windowQuery(undefined, { workflow_id: workflowId, limit: String(limit) })}`,
+      ),
+    ),
+
+  /**
+   * The one model call on this screen, and it happens ONLY here.
+   *
+   * `POST`, never a `GET`, never on mount, never on a timer. A 422 with the
+   * knob off is the expected answer and reaches the panel as the server's own
+   * sentence rather than as a crash.
+   */
+  runDigest: (workflowId, window) =>
+    /*
+     * QUERY PARAMETERS AND NO BODY, which is what the route declares. The
+     * first version of this call sent `{workflow_id, from, to}` as JSON, and
+     * against a handler whose `workflow_id` is `Query(...)` that is a 422 for
+     * a missing parameter - a refusal that would have read, on the one control
+     * that spends money, as "the server would not write a review" rather than
+     * "the client asked wrongly".
+     */
+    fetchJson<ImproveDigestRow>(
+      improvePath(`/digests${windowQuery(window, { workflow_id: workflowId })}`),
+      { method: 'POST' },
+    ),
+
+  /**
+   * The rated runs, saved to disk.
+   *
+   * A fetch and a blob rather than an anchor, and that is not a preference: the
+   * route is behind `require_admin`, a plain `<a href>` carries no bearer
+   * token, and the refusal it would collect is a 404 - so the link would read
+   * as "there is nothing here" on a file that exists. `authedFetch` attaches
+   * the token and `saveBlob` is the same three steps `downloadLogs` already
+   * uses, imported rather than copied.
+   *
+   * The response is streamed NDJSON, and a truncated export ends in its own
+   * sentinel LINE rather than a 500 - so a short file is still a valid file and
+   * the caller is never told it failed.
+   */
+  async downloadEvalset(workflowId, rating, window) {
+    const query = windowQuery(window, { workflow_id: workflowId, rating })
+    const response = await authedFetch(`${ADMIN_API_PREFIX}/export/evalset${query}`)
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(readErrorDetail(body, response.status))
+    }
+    saveBlob(await response.blob(), `${fileSafe(workflowId)}-${rating}-runs.ndjson`)
   },
 }

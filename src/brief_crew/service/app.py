@@ -1407,6 +1407,25 @@ def create_app(
         )
     )
 
+    # `/api/admin/improve` and `/api/admin/export/evalset` (plan 21). One
+    # router, mounted BESIDE the admin router rather than inside it, so no
+    # plan-17 route changes behaviour: it IMPORTS `require_admin`, `_window`,
+    # `gate_outcome`, `median_or_none`, `_verdict_of`, `_money` and `_iso`
+    # from `admin_api` and restates none of them.
+    #
+    # `optional_user` for the same reason the admin router takes it: an
+    # anonymous caller must get the byte-identical 404 an unknown path gets,
+    # and `current_user` would raise 401 first.
+    from brief_crew.service.improve_api import create_improve_router
+
+    app.include_router(
+        create_improve_router(
+            resolve_user=optional_user,
+            persistence_factory=lambda: getattr(registry, "persistence", None),
+            store_factory=builder_store_factory,
+        )
+    )
+
     # The score hook's exporter, set beside `registry.frame_observer` above.
     # A rating arrives AFTER a trace closed, so it is addressed by trace id
     # rather than carried on a frame - `observability/scores.py` says why.

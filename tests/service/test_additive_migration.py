@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
@@ -708,6 +710,210 @@ class RunRatingColumnsTests(unittest.TestCase):
         for name in RATING_COLUMNS:
             with self.subTest(column=name):
                 self.assertIn(("runs", name), declared)
+
+
+class DocumentVersionColumnTests(unittest.TestCase):
+    """Plan 21 T1: one nullable INTEGER on a SHIPPED `runs` table, plus a table.
+
+    The same fixture every block above uses - `runs` as `ea611a9` left it, with
+    one queued row owned by `alice` - because the thing worth proving is that
+    the row SURVIVES. `create_all()` is create-if-absent per table and does
+    nothing at all to a table that already shipped, so a column added only to
+    `Table()` reaches a fresh database and no deployed one, and the failure is
+    the first INSERT naming it, in production, mid-request.
+
+    Two halves and they take different routes on purpose:
+
+    * `runs.document_version` is an ALTER through `_ADDITIVE_COLUMNS`;
+    * `improve_digests` is a NEW table, so `create_all()` makes it whole and
+      the additive list neither does nor should carry a row for it.
+    """
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.engine = create_engine(f"sqlite:///{Path(directory.name) / 'shipped.db'}")
+        self.addCleanup(self.engine.dispose)
+        with self.engine.begin() as connection:
+            connection.execute(text(SHIPPED_RUNS_DDL))
+            connection.execute(text(SHIPPED_ROW))
+
+    def columns(self, table: str = "runs") -> set[str]:
+        return {c["name"] for c in inspect(self.engine).get_columns(table)}
+
+    def upgrade(self) -> PostgresFlowPersistence:
+        store = PostgresFlowPersistence(self.engine, initialize=False)
+        store.init_db()
+        self.addCleanup(store.close)
+        return store
+
+    def test_the_fixture_really_is_the_shipped_shape(self) -> None:
+        """The control: without it every assertion below could pass on a fresh
+        table that never needed migrating."""
+
+        self.assertIn("user_id", self.columns())
+        self.assertNotIn("document_version", self.columns())
+        self.assertNotIn("improve_digests", inspect(self.engine).get_table_names())
+
+    def test_the_column_is_added_to_a_shipped_runs_table(self) -> None:
+        self.upgrade()
+        self.assertIn("document_version", self.columns())
+
+    def test_it_is_declared_in_the_additive_list_too(self) -> None:
+        declared = {
+            (table, column)
+            for table, column, _type in self.upgrade()._ADDITIVE_COLUMNS
+        }
+        self.assertIn(("runs", "document_version"), declared)
+
+    def test_the_pre_existing_row_survives_with_a_null_version(self) -> None:
+        self.upgrade()
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT id, document_version FROM runs")
+            ).one()
+        self.assertEqual(row.id, "capped-before-the-columns")
+        self.assertIsNone(row.document_version)
+
+    def test_a_null_version_reads_back_as_none_through_the_service_layer(self) -> None:
+        """NOT zero. "Version 0" is a version somebody could compare against
+        and nothing ever wrote one; `None` is the absence of an answer, which
+        is what a hand-written flow's run means too."""
+
+        store = self.upgrade()
+        record = store.get_run("capped-before-the-columns")
+        assert record is not None
+        self.assertIsNone(record["document_version"])
+
+    def test_create_run_stamps_the_version_it_is_handed(self) -> None:
+        store = self.upgrade()
+        created = store.create_run(
+            session_id="s1",
+            workflow_id="ug_doc",
+            graph_version="deadbeefdeadbeef",
+            document_version=4,
+        )
+        self.assertEqual(4, created["document_version"])
+        rows, _truncated = store.improve_runs(workflow_id="ug_doc")
+        self.assertEqual([4], [row["document_version"] for row in rows])
+
+    def test_create_run_without_one_writes_null(self) -> None:
+        """The two hand-written flows have no document and no version."""
+
+        store = self.upgrade()
+        created = store.create_run(
+            session_id="s1",
+            workflow_id="idea-validator",
+            graph_version="cafecafecafecafe",
+        )
+        self.assertIsNone(created["document_version"])
+
+    def test_the_digest_table_arrives_on_a_shipped_database(self) -> None:
+        self.upgrade()
+        self.assertIn("improve_digests", inspect(self.engine).get_table_names())
+        self.assertEqual(
+            {
+                "id",
+                "workflow_id",
+                "created_by",
+                "window_from",
+                "window_to",
+                "sample_runs",
+                "sample_frames",
+                "truncated_sample",
+                "model",
+                "prompt_tokens",
+                "completion_tokens",
+                "cost_usd",
+                "over_cap",
+                # A failed ATTEMPT's reason. It reaches a database made
+                # between the table landing and the money brakes landing
+                # through `_ADDITIVE_COLUMNS`, because `create_all()` does
+                # nothing to a table that already exists.
+                "error",
+                "body",
+                "created_at",
+            },
+            self.columns("improve_digests"),
+        )
+
+    def test_the_digest_table_carries_its_index(self) -> None:
+        self.upgrade()
+        names = {
+            index["name"] for index in inspect(self.engine).get_indexes("improve_digests")
+        }
+        self.assertIn("ix_improve_digests_workflow", names)
+
+    def test_a_digest_round_trips_and_an_unpriced_one_stays_none(self) -> None:
+        """`None` is "no price on file" and 0.0 is "this call was free"; the
+        column keeps them apart because the defect that once priced 128,069
+        real tokens at $0.00 was exactly that conflation."""
+
+        store = self.upgrade()
+        moment = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+        store.save_digest(
+            {
+                "id": "dg_00000001",
+                "workflow_id": "ug_doc",
+                "created_by": "alice",
+                "window_from": moment,
+                "window_to": moment,
+                "model": "openrouter/x/cheap",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "cost_usd": 0.004,
+                "over_cap": False,
+                "error": None,
+                "body": "## What went well",
+                "created_at": moment,
+            }
+        )
+        store.save_digest(
+            {
+                "id": "dg_00000002",
+                "workflow_id": "ug_doc",
+                "created_by": None,
+                "window_from": moment,
+                "window_to": moment,
+                "model": "openrouter/x/unpriced",
+                "cost_usd": None,
+                "over_cap": True,
+                "body": "",
+                "created_at": moment,
+            }
+        )
+        rows = store.list_digests("ug_doc")
+        self.assertEqual(2, len(rows))
+        by_id = {row["id"]: row for row in rows}
+        self.assertEqual(0.004, by_id["dg_00000001"]["cost_usd"])
+        self.assertFalse(by_id["dg_00000001"]["over_cap"])
+        self.assertIsNone(by_id["dg_00000002"]["cost_usd"])
+        self.assertTrue(by_id["dg_00000002"]["over_cap"])
+        # An unpriced row contributes NOTHING rather than a zero.
+        self.assertEqual(Decimal("0.004"), store.digest_cost_total("ug_doc"))
+        self.assertEqual(Decimal("0"), store.digest_cost_total("ug_other"))
+
+    def test_running_it_twice_changes_nothing(self) -> None:
+        self.upgrade()
+        before = self.columns()
+        self.upgrade()
+        self.assertEqual(before, self.columns())
+        with self.engine.begin() as connection:
+            self.assertEqual(
+                1, connection.execute(text("SELECT COUNT(*) FROM runs")).scalar_one()
+            )
+
+    def test_a_fresh_database_has_both_without_the_alter(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        engine = create_engine(f"sqlite:///{Path(directory.name) / 'fresh.db'}")
+        self.addCleanup(engine.dispose)
+        PostgresFlowPersistence(engine, initialize=False).init_db()
+        self.assertIn(
+            "document_version",
+            {c["name"] for c in inspect(engine).get_columns("runs")},
+        )
+        self.assertIn("improve_digests", inspect(engine).get_table_names())
 
 
 if __name__ == "__main__":

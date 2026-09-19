@@ -705,6 +705,11 @@ class WorkflowRuntime:
     node_registry: NodeRegistry
     runner: Runner
     input_field: str | None = None
+    #: The builder document version this runtime was published from, so a run
+    #: can record it (plan 21 R8). ``None`` for the two hand-written flows,
+    #: which have no document - not "version 0", which would be a version
+    #: somebody could compare against and nothing ever wrote.
+    document_version: int | None = None
 
 
 class _FlushMarker:
@@ -1852,6 +1857,10 @@ class RunRegistry:
                 max_cost_usd=record.max_cost_usd,
                 ceiling_kind=record.ceiling_kind,
                 account_cap_usd=record.account_cap_usd,
+                # Plan 21 R8: the integer, off the runtime that already holds
+                # it. NULL for the two hand-written flows, which is what a row
+                # written before the column existed already means.
+                document_version=runtime.document_version,
             )
         with self._lock:
             self._records[run_id] = record

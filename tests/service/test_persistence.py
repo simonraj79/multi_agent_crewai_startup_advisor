@@ -46,6 +46,10 @@ class PersistenceTests(unittest.TestCase):
                 # gauntlet tables, landed 2026-09-02 before Stage 1 branched.
                 "builder_test_inputs",
                 "flow_states",
+                # Plan 21: one stored model review per row. A new table, so
+                # `create_all` makes it whole and the additive-column list
+                # does not apply to it.
+                "improve_digests",
                 "mcp_servers",
                 "pending_feedback",
                 # Audit H4: the per-user, per-UTC-day meter on a PLATFORM key.

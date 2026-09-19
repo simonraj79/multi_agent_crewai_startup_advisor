@@ -75,6 +75,7 @@ from brief_crew.events.verdict import (
 from brief_crew.config import (
     MAX_FRAME_PREVIEW_CHARS,
     MAX_NODE_ERROR_CHARS,
+    MAX_TASK_TOOL_FAILURES,
     MAX_UTTERANCE_CHARS,
     compute_cost_usd,
 )
@@ -695,7 +696,17 @@ class FieldBoundedSerializer:
         if isinstance(event, TaskStartedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} started", {"stage": "before"}),)
         if isinstance(event, TaskCompletedEvent):
-            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} completed", {"stage": "after"}),)
+            # Plan 21 R6: TWO keys, and the omissions are the load-bearing
+            # half. `event.output` is a whole `TaskOutput` - the answer, its
+            # format, its length, the author's acceptance sentence and a list
+            # of tools that reported failure while producing it - and this
+            # branch emitted `{"stage": "after"}` alone. Only the tool-failure
+            # pair is lifted, because it is the only part of that object
+            # anything reads, and because `output_preview` is CONTENT: the
+            # prompt-absent policy is not reopened by a mining plan, and a
+            # frame that carried the answer would put it in an export, a
+            # sample and a prompt at once. Same `FrameKind`, same shape.
+            return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} completed", {"stage": "after", **self._task_tool_failures(getattr(event, "output", None))}),)
         if isinstance(event, TaskFailedEvent):
             return (self._draft(timestamp, FrameKind.AGENT, UIEventType.AGENT_CALL, node_id, f"{self._task_name(event)} failed", {"stage": "error", "error": self.clip(event.error), **error_class_or_type(event.error)}, FrameLevel.ERROR),)
 
@@ -804,6 +815,80 @@ class FieldBoundedSerializer:
         # never shows reasoning" from a mystery into a list.
         self.record_unhandled(event)
         return ()
+
+    def _task_tool_failures(self, output: Any) -> dict[str, Any]:
+        """`tool_failure_count`, and up to eight `{tool, error_class}` rows.
+
+        Plan 21 R6, and the two keys are chosen by having a reader rather than
+        by what the object happens to hold. `TaskOutput` also carries `raw`,
+        `output_format`, `json_dict`, `expected_output` and `pydantic`;
+        nothing in this repository reads any of them, and `raw` is the run's
+        own answer - content, which would then travel into an export, a
+        sample and a model prompt without anybody deciding that it should. A
+        frame carries a digest of a prompt and never a prompt
+        (`TRACE-CONTRACT.md` section 4), and the same judgement is applied to
+        the completion here.
+
+        A task that finished over a tool that reported failure is the one
+        thing this event knows and no other frame does: a `ToolFailure` is a
+        tool's own structured report rather than a raised error, so it fires
+        no error event and the task looks clean.
+
+        `tool_failure_count` is present on EVERY completion, including as a
+        zero, and that is deliberate: it is the marker that says this frame
+        was written by a serializer that could look. A run recorded before
+        this shipped carries no key at all, so a miner can tell "no tool
+        failed" from "this layer could not see", which is the distinction an
+        empty list would destroy.
+
+        TOTAL, and `getattr` throughout with no attribute assumption. A
+        missing output, a `None` output, or an object that is not a
+        `TaskOutput` at all yields `{}`, so the old frame is emitted and
+        nothing raises - this runs inside a capture callback, where an
+        exception is a lost frame and an emit-error counter tick.
+        """
+
+        if output is None:
+            return {}
+        failures = getattr(output, "tool_failures", None) or ()
+        try:
+            failure_list = list(failures)
+        except TypeError:  # pragma: no cover - a non-iterable is not a list
+            failure_list = []
+        details: dict[str, Any] = {"tool_failure_count": len(failure_list)}
+        if failure_list:
+            details["tool_failures"] = [
+                {
+                    "tool": str(getattr(item, "tool_name", None) or "tool")[
+                        :MAX_IDENTIFIER_LENGTH
+                    ],
+                    # `ToolFailure` names no exception class - it is a tool's
+                    # own structured report - so the discriminator is its
+                    # machine-readable `code` where the tool supplied one and
+                    # its `reason` category otherwise. Spelled `error_class`
+                    # because that is what every other frame here calls the
+                    # field a reader groups errors by, and a second name for
+                    # one idea is how two halves of a console come to
+                    # disagree.
+                    "error_class": self._tool_failure_class(item),
+                }
+                for item in failure_list[:MAX_TASK_TOOL_FAILURES]
+            ]
+        return details
+
+    @staticmethod
+    def _tool_failure_class(record: Any) -> str:
+        """A tool-failure record's discriminator: its code, else its reason."""
+
+        failure = getattr(record, "failure", None)
+        code = getattr(failure, "code", None)
+        if isinstance(code, str) and code.strip():
+            return code.strip()[:MAX_IDENTIFIER_LENGTH]
+        reason = getattr(failure, "reason", None)
+        rendered = getattr(reason, "value", reason)
+        if rendered:
+            return str(rendered)[:MAX_IDENTIFIER_LENGTH]
+        return "tool-failure"
 
     @staticmethod
     def _guardrail_name(event: Any) -> str:

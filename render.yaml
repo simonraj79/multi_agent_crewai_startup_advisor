@@ -211,6 +211,41 @@ services:
       - key: ADMIN_EMAILS
         sync: false
 
+      # Plan 21 (test a change). Decides whether the ADMIN-ONLY "Ask a model
+      # to review" button can be pressed at all: OFF, `POST
+      # /api/admin/improve/digests` answers 422 and constructs no `LLM` - the
+      # three panels beside it (where runs go wrong, compare two versions,
+      # export rated runs) keep working either way, at $0.00, because they
+      # are pure Python over data already in Postgres.
+      #
+      # ON, one click spends real money, bounded and checked rather than
+      # hoped for: CHEAP_MODEL only, 12 sampled runs, 400 sampled frames, a
+      # 40,000-character prompt, a 1,200-token answer - worst case $0.0108 at
+      # the dearest-endpoint multiplier, against a DIGEST_MAX_COST_USD
+      # ceiling of $0.05 checked at import from the live PRICES table. The
+      # MEASURED cost is compared with the cap after the call and a breach is
+      # stored on the row and logged at WARNING. It never runs unattended: no
+      # scheduler, no retry, no page-load fetch.
+      #
+      # A LITERAL, not a secret - it authenticates nothing and there is
+      # nothing here for `sync: false` to withhold. Left "0" so an
+      # already-applied Blueprint's next deploy does not start spending on
+      # its own; flip it to "1" only once an admin is ready to press the
+      # button. NOTE for the already-applied Blueprint: Render snapshots a
+      # deploy's environment when the deploy is CREATED (deployment trap 3),
+      # so - unlike a `sync: false` prompt - this value needs no dashboard
+      # entry, but it still reaches the running process only on the next
+      # deploy that applies this manifest, exactly like the LANGFUSE_*
+      # literals below.
+      #
+      # TURNED ON 2026-09-19, on the owner's instruction to ship and prove the
+      # model review. Pressing the button is what spends, never this value:
+      # admin only, at most $0.05 a press, one at a time, at most ten presses
+      # per 24 hours per deployment (DIGEST_MAX_PER_DAY), so the worst day is
+      # $0.50. Set it back to "0" to switch the button off.
+      - key: IMPROVE_DIGEST_ENABLED
+        value: "1"
+
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
 

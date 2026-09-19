@@ -25,18 +25,20 @@
  * because it is an outbound call to Langfuse on the server's own thread.
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { Activity, Coins, Gauge, HeartPulse, Lightbulb, Users } from 'lucide-vue-next'
+import { Activity, Coins, Gauge, HeartPulse, Lightbulb, Sprout, Users } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
 import BrandLockup from '../components/BrandLockup.vue'
 import AdminDrawer from '../components/admin/AdminDrawer.vue'
 import AdminHealthPanel from '../components/admin/AdminHealth.vue'
+import AdminImprove from '../components/admin/AdminImprove.vue'
+import type { ImproveWorkflowOption } from '../components/admin/AdminImprove.vue'
 import AdminInsights from '../components/admin/AdminInsights.vue'
 import AdminMoney from '../components/admin/AdminMoney.vue'
 import AdminOverview from '../components/admin/AdminOverview.vue'
 import AdminPeople from '../components/admin/AdminPeople.vue'
 import AdminRuns from '../components/admin/AdminRuns.vue'
 import { PRODUCT_NAME } from '../data/brand'
-import { adminApi } from '../services/adminApi'
+import { adminApi, improveApi } from '../services/adminApi'
 import type {
   AdminDecisions,
   AdminGateStats,
@@ -54,6 +56,11 @@ import type {
   AdminUsersPage,
   AdminVerdicts,
   AdminWindow,
+  EvalsetRating,
+  ImproveCompare,
+  ImproveCompareAxis,
+  ImproveDigestPage,
+  ImproveHotspots,
 } from '../services/adminApi'
 import type { SignedInUser } from '../composables/useAuthGate'
 
@@ -91,7 +98,7 @@ const activeWindow = computed<AdminWindow | undefined>(() => {
 
 /* ── the tabs ─────────────────────────────────────────────────────────────── */
 
-type TabId = 'overview' | 'money' | 'people' | 'runs' | 'insights' | 'health'
+type TabId = 'overview' | 'money' | 'people' | 'runs' | 'insights' | 'improve' | 'health'
 
 const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -99,6 +106,11 @@ const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: 'people', label: 'People' },
   { id: 'runs', label: 'Runs & decisions' },
   { id: 'insights', label: 'Insights' },
+  // BESIDE Insights rather than at the end, because the two are one thought:
+  // Insights says what went wrong on its own, and Improve is where somebody
+  // does something about it and measures whether it worked. Health stays last;
+  // it is the only tab that is about the service rather than about the work.
+  { id: 'improve', label: 'Improve' },
   { id: 'health', label: 'Health' },
 ]
 
@@ -139,6 +151,7 @@ const busy = ref<Record<TabId, boolean>>({
   people: false,
   runs: false,
   insights: false,
+  improve: false,
   health: false,
 })
 const problems = ref<Record<TabId, string>>({
@@ -147,6 +160,7 @@ const problems = ref<Record<TabId, string>>({
   people: '',
   runs: '',
   insights: '',
+  improve: '',
   health: '',
 })
 
@@ -261,6 +275,224 @@ async function loadInsights(): Promise<void> {
   }
 }
 
+/* ── Improve - plan 21 ─────────────────────────────────────────────────────
+ *
+ * One read on the window (which workflows ran) and two on one workflow (where
+ * it goes wrong, and the reviews already written). Compare and the review
+ * itself happen on a press and never on a load.
+ *
+ * THE WORKFLOW LIST COMES FROM `spend(group_by=workflow)` RATHER THAN FROM A
+ * NEW ENDPOINT. It is the one read that already answers "which workflows ran
+ * in this window, and how much", it is behind the same `require_admin`, and it
+ * is stored in its OWN ref so it can never fight the Money panel's `spendAxis`.
+ *
+ * THE MODEL AXIS'S PICKERS DO NOT COME FROM `spend` AT ALL, and that is worth
+ * saying where the reader will look for the missing second call: they come from
+ * `hotspots.node_models`. A `group_by=model` read answers "what billed anywhere
+ * in this window", so it would have offered a model the chosen step never ran -
+ * an arm that cannot exist, which is a question with no answer rather than a
+ * comparison.
+ *
+ * NOTHING HERE WRITES A REVIEW. The stored list is a `GET`; the only thing
+ * that spends money is a `POST`, and it is reachable from exactly one press.
+ */
+const improveWorkflows = ref<ImproveWorkflowOption[]>([])
+const improveWorkflowId = ref('')
+const improveHotspots = ref<ImproveHotspots | null>(null)
+const improveDigests = ref<ImproveDigestPage | null>(null)
+const improveCompareResult = ref<ImproveCompare | null>(null)
+
+const compareAxis = ref<ImproveCompareAxis>('version')
+const compareA = ref('')
+const compareB = ref('')
+const compareNodeId = ref('')
+const evalsetRating = ref<EvalsetRating>('good')
+
+const comparing = ref(false)
+const digesting = ref(false)
+const exporting = ref(false)
+const compareProblem = ref('')
+const digestProblem = ref('')
+const exportProblem = ref('')
+
+/**
+ * Which runs the export will carry, in a sentence rather than in a button's
+ * word.
+ *
+ * FOUND BY LOOKING: the rail's own labels are `7 days` / `default` / `90 days`,
+ * and read into the export's sentence they came out as "over default", which
+ * says nothing at all. The rail can be terse because three buttons beside each
+ * other explain themselves; a sentence cannot.
+ */
+const windowLabel = computed(() => {
+  const days = windowDays.value
+  return days === null ? 'the default window' : `the last ${days} days`
+})
+
+/** The window-wide read: the two picker lists, and nothing per workflow. */
+async function loadImprove(): Promise<void> {
+  await load(
+    'improve',
+    [
+      async () => {
+        const byWorkflow = await adminApi.spend('workflow', activeWindow.value)
+        improveWorkflows.value = byWorkflow.rows.map((row) => ({
+          id: row.key,
+          label: row.label || row.key,
+          runs: row.runs ?? null,
+        }))
+      },
+    ],
+    'the workflow list could not be read.',
+  )
+  if (improveWorkflowId.value) await loadImproveWorkflow()
+}
+
+/** The two per-workflow reads. Both are free; neither calls a model. */
+async function loadImproveWorkflow(): Promise<void> {
+  const workflowId = improveWorkflowId.value
+  if (!workflowId) {
+    improveHotspots.value = null
+    improveDigests.value = null
+    return
+  }
+  await load(
+    'improve',
+    [
+      async () => {
+        improveHotspots.value = await improveApi.hotspots(workflowId, activeWindow.value)
+      },
+      async () => {
+        improveDigests.value = await improveApi.digests(workflowId)
+      },
+    ],
+    'this workflow could not be read.',
+  )
+}
+
+function selectImproveWorkflow(id: string): void {
+  improveWorkflowId.value = id
+  // A comparison belongs to the workflow it was asked about, so switching
+  // workflows drops it rather than leaving two sides of somebody else's graph
+  // sitting under a new name. The chosen step goes with it, for the same
+  // reason: a node id is only meaningful inside one workflow.
+  improveCompareResult.value = null
+  compareNodeId.value = ''
+  compareProblem.value = ''
+  digestProblem.value = ''
+  exportProblem.value = ''
+  void loadImproveWorkflow()
+}
+
+/**
+ * Switch what is being compared, and drop the answer to the previous question.
+ *
+ * The two arms mean different things on the two axes - a version number is not
+ * a model slug - so leaving `3` in the box while the label above it changed to
+ * `Model A` would be a control that lies about what it will send.
+ */
+function selectCompareAxis(axis: ImproveCompareAxis): void {
+  if (compareAxis.value === axis) return
+  compareAxis.value = axis
+  compareA.value = ''
+  compareB.value = ''
+  compareNodeId.value = ''
+  improveCompareResult.value = null
+  compareProblem.value = ''
+}
+
+/** On an explicit press only: two arms is a question, not a page load. */
+async function runCompare(): Promise<void> {
+  if (!improveWorkflowId.value || comparing.value) return
+  // R4, from the client: the model axis has no meaning without a step, the
+  // server answers 422 without one, and a refusal a panel could have avoided
+  // is a refusal the reader has to interpret.
+  if (compareAxis.value === 'model' && !compareNodeId.value) return
+  comparing.value = true
+  compareProblem.value = ''
+  try {
+    improveCompareResult.value = await improveApi.compare(
+      improveWorkflowId.value,
+      compareAxis.value,
+      compareA.value.trim(),
+      compareB.value.trim(),
+      activeWindow.value,
+      compareNodeId.value,
+    )
+  } catch (error) {
+    improveCompareResult.value = null
+    compareProblem.value = sentence(error, 'those two sides could not be compared.')
+  } finally {
+    comparing.value = false
+  }
+}
+
+/**
+ * THE ONE PLACE THIS PRODUCT SPENDS MONEY FROM THE ADMIN CONSOLE.
+ *
+ * One `POST` per press, guarded by `digesting` so a double click cannot make
+ * two calls, and the new row is prepended to what is already on screen rather
+ * than triggering a re-read - a second `GET` here would be a request nobody
+ * asked for on the one path that has just cost something.
+ */
+async function runDigest(): Promise<void> {
+  // SET SYNCHRONOUSLY, BEFORE ANY `await`, and that placement is the whole
+  // guard: two clicks dispatched in one task both reach this function before
+  // Vue has re-rendered the button as disabled, so a flag set after the first
+  // `await` would let the second through and make two model calls from one
+  // double-click. There is no retry anywhere below either - one press is one
+  // request, whatever comes back.
+  const workflowId = improveWorkflowId.value
+  if (!workflowId || digesting.value) return
+  digesting.value = true
+  digestProblem.value = ''
+  try {
+    const row = await improveApi.runDigest(workflowId, activeWindow.value)
+    improveDigests.value = improveDigests.value
+      ? { ...improveDigests.value, rows: [row, ...improveDigests.value.rows] }
+      : { rows: [row], enabled: true }
+  } catch (error) {
+    // The SERVER's own sentence. Three of the refusals are money brakes that
+    // name a number and a time ("try again after …"), and a house phrase over
+    // them would throw away the only part a person can act on.
+    digestProblem.value = sentence(error, 'that review could not be written.')
+  }
+  /*
+   * RE-READ AFTER EVERY POST, refused or not. The allowance and the stored
+   * list both move on the server: a refusal still consumes an in-flight slot
+   * or reveals that somebody else has spent today's, and a failed attempt is
+   * stored as a row because it may have been billed. A screen that only
+   * re-read after a success would be most out of date exactly when a person
+   * is deciding whether to press again.
+   */
+  try {
+    improveDigests.value = await improveApi.digests(workflowId)
+  } catch {
+    // Quiet, and deliberately: the press has already reported its own answer,
+    // and a second sentence over a stale-but-honest list would say the review
+    // failed when it may not have.
+  } finally {
+    digesting.value = false
+  }
+}
+
+async function exportEvalset(): Promise<void> {
+  if (!improveWorkflowId.value || exporting.value) return
+  exporting.value = true
+  exportProblem.value = ''
+  try {
+    await improveApi.downloadEvalset(
+      improveWorkflowId.value,
+      evalsetRating.value,
+      activeWindow.value,
+    )
+  } catch (error) {
+    exportProblem.value = sentence(error, 'that download could not be streamed.')
+  } finally {
+    exporting.value = false
+  }
+}
+
 /** Which tabs have asked for their data, so opening one twice is free. */
 const visited = ref(new Set<TabId>(['overview', 'health']))
 
@@ -281,6 +513,7 @@ function openTab(id: TabId): void {
   if (id === 'people') void loadPeople()
   if (id === 'runs') void loadRuns()
   if (id === 'insights') void loadInsights()
+  if (id === 'improve') void loadImprove()
 }
 
 /** A new window invalidates every answer on the screen, not only the visible
@@ -307,6 +540,13 @@ watch(activeWindow, () => {
   if (tab.value === 'insights') {
     visited.value = new Set([...visited.value, 'insights'])
     void loadInsights()
+  }
+  if (tab.value === 'improve') {
+    visited.value = new Set([...visited.value, 'improve'])
+    // A comparison was measured over the old window, so it goes with it. The
+    // two arms would otherwise sit under a fortnight they were never about.
+    improveCompareResult.value = null
+    void loadImprove()
   }
 })
 
@@ -497,6 +737,7 @@ onMounted(() => {
             <Users v-else-if="entry.id === 'people'" :size="13" aria-hidden="true" />
             <Activity v-else-if="entry.id === 'runs'" :size="13" aria-hidden="true" />
             <Lightbulb v-else-if="entry.id === 'insights'" :size="13" aria-hidden="true" />
+            <Sprout v-else-if="entry.id === 'improve'" :size="13" aria-hidden="true" />
             <HeartPulse v-else :size="13" aria-hidden="true" />
             {{ entry.label }}
           </button>
@@ -584,6 +825,37 @@ onMounted(() => {
               @refresh="loadInsights"
               @select-workflow="insightWorkflow = $event"
               @open-run="openInsightRun"
+            />
+            <AdminImprove
+              v-else-if="entry.id === 'improve'"
+              :workflows="improveWorkflows"
+              :workflow-id="improveWorkflowId"
+              :hotspots="improveHotspots"
+              :compare="improveCompareResult"
+              :digests="improveDigests"
+              :compare-axis="compareAxis"
+              :compare-a="compareA"
+              :compare-b="compareB"
+              :compare-node-id="compareNodeId"
+              :evalset-rating="evalsetRating"
+              :window-label="windowLabel"
+              :loading="busy.improve"
+              :comparing="comparing"
+              :digesting="digesting"
+              :exporting="exporting"
+              :problem="problems.improve"
+              :compare-problem="compareProblem"
+              :digest-problem="digestProblem"
+              :export-problem="exportProblem"
+              @select-workflow="selectImproveWorkflow"
+              @select-axis="selectCompareAxis"
+              @update-compare-a="compareA = $event"
+              @update-compare-b="compareB = $event"
+              @select-compare-node="compareNodeId = $event"
+              @run-compare="runCompare"
+              @run-digest="runDigest"
+              @select-evalset-rating="evalsetRating = $event"
+              @export-evalset="exportEvalset"
             />
             <AdminHealthPanel
               v-else

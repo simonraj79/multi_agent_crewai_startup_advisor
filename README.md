@@ -559,10 +559,21 @@ be filtered to the runs a person thought were good. The note stays in the app
 unless `LANGFUSE_CAPTURE_CONTENT=1`, and a Langfuse that is off or unreachable
 never fails the button.
 
+**And a change can be tested against those labels.** An administrator can put
+two published versions of a workflow, or two models on one step, side by side
+on six measures with the number of runs printed on each side, and download the
+runs people rated as one redacted NDJSON eval file. There is also one optional
+model review: a single cheap-tier call over mined counts, behind an explicit
+press, capped at five cents and at ten presses a day, off unless
+`IMPROVE_DIGEST_ENABLED` is set. It reads counts, never a prompt, an answer or
+anything a person typed.
+
 The audit, the trace contract, the definition of done and the full evidence tree
 live in [`docs/observability/`](docs/observability/) — start with
-[`TRACE-CONTRACT.md`](docs/observability/TRACE-CONTRACT.md), and
-[`RUN-LABELS.md`](docs/observability/RUN-LABELS.md) for the labels.
+[`TRACE-CONTRACT.md`](docs/observability/TRACE-CONTRACT.md),
+[`RUN-LABELS.md`](docs/observability/RUN-LABELS.md) for the labels, and
+[`TEST-A-CHANGE.md`](docs/observability/TEST-A-CHANGE.md) for comparing,
+exporting and the model review.
 
 ---
 

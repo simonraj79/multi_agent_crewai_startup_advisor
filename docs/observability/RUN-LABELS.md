@@ -272,6 +272,17 @@ no Mine, no Compare, no Export, no Digest, no `document_version`, no
 `improve_digests` table, no gate `proposed` / `corrections` fields. That
 programme remains built, green and unmerged on its own branch.
 
+> **Three of those arrived on 2026-09-19, and this section is stale about
+> them.** Plan 21 (`admin/test-a-change`, PR #31) hand-ported step 4 of the
+> loop: **Compare** two versions or two models on six measures, **Export** the
+> rated runs as one redacted NDJSON eval set, a **model review** over mined
+> counts behind one admin press and a $0.05 cap, and the `document_version`
+> column and `improve_digests` table under them. It reads the rating this
+> document describes and never writes one: plan 21 dropped the branch's rating
+> code outright and calls `service/rating_api.py`. Plan 18's deterministic
+> `lessons` rules and its builder Lessons tab are still unmerged. The binding
+> document is [`TEST-A-CHANGE.md`](TEST-A-CHANGE.md).
+
 Also not built, deliberately:
 
 * **No ratings history.** Last writer wins and the previous value is gone.
@@ -279,8 +290,19 @@ Also not built, deliberately:
   lever's log line.
 * **No model reads a trace, a rating or a note.** There is no judge, no
   digest, no summary, no suggestion generated from anything a person typed.
-* **No comparison and no export.** A rated cohort cannot be diffed against
-  another or emitted as an eval set from here.
+  **Amended 2026-09-19.** Plan 21's model review reads the mined payload, which
+  carries the rating **counts** (how many good, bad, unsure, unrated) as
+  numbers. It never sees a note, a run's inputs, a model's answer or any other
+  free text: the prompt is built from a structural allow-list, and a test
+  plants a credential in three places and fails if any of them reaches it.
+  Nothing still judges a run, and nothing generated from a rating changes
+  anything. [`TEST-A-CHANGE.md`](TEST-A-CHANGE.md) section 5.
+* ~~**No comparison and no export.** A rated cohort cannot be diffed against
+  another or emitted as an eval set from here.~~ **Both landed on 2026-09-19
+  with plan 21**, on the admin console's Improve tab rather than here:
+  `GET /api/admin/improve/compare` and `GET /api/admin/export/evalset`. The
+  rating is one of the six measures a comparison prints and one of the four
+  filters an export takes. [`TEST-A-CHANGE.md`](TEST-A-CHANGE.md).
 * **No rating from Langfuse back into the app.** The app is the source of
   truth and the trace is the mirror; a score edited in the Langfuse console is
   overwritten by the next write from here and is not read back.

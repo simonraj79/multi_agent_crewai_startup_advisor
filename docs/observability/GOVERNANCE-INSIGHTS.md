@@ -83,6 +83,33 @@ and a workflow may have changed between runs. Rates cannot establish a causal
 effect or compare models or workflow versions. Supporting references include
 run IDs and, where applicable, frame sequence or gate IDs.
 
+## Insights, and "Where runs go wrong": which to use
+
+Added 2026-09-19. Plan 21 put a second mined panel on the admin console, under
+the **Improve** tab, and the two answer different questions over the same
+stored data. Neither reads the other.
+
+**Insights is a rule engine.** It runs a fixed set of deterministic rules over
+sampled terminal runs and emits a **finding**: a named signal, a severity, an
+explanation in words, a suggested investigation and links to the supporting
+runs. It applies floors (three terminal runs, two affected runs), it suppresses
+what it cannot evidence, and it can cover every workflow or one. Use it when
+the question is *is anything wrong, and what should I look at* .
+
+**"Where runs go wrong" is a set of counters.** It ranks one workflow's own
+parts: per agent, per tool, per error class, per gate and per route, with the
+outcomes those produced and each node's share of the estimated cost. It names
+no rule, raises no finding and suggests nothing; the ranking is the answer.
+`workflow_id` is required, because a hot spot is a statement about one graph
+and pooling two workflows' nodes would put a name beside a count belonging to
+something else. Use it when you already know which workflow you are improving
+and the question is *which part of it is the problem* .
+
+In practice: Insights tells you a workflow deserves attention, then the Improve
+tab tells you where inside it, and Compare tells you whether the change you
+then made helped. The binding document for the second and third is
+[`TEST-A-CHANGE.md`](TEST-A-CHANGE.md).
+
 ## Coverage and limitations
 
 All scans are bounded. The response and UI disclose truncation, retention,

@@ -243,6 +243,11 @@ services:
       # admin only, at most $0.05 a press, one at a time, at most ten presses
       # per 24 hours per deployment (DIGEST_MAX_PER_DAY), so the worst day is
       # $0.50. Set it back to "0" to switch the button off.
+      # MEASURED 2026-09-19: Render did NOT apply this value to the API service
+      # that already existed - the deploy of e6b0155 went live and the service
+      # had no such variable. It was added in the dashboard (with the owner's
+      # permission) and the service redeployed. On an already-created service
+      # the dashboard is the switch; this line only seeds a fresh Blueprint.
       - key: IMPROVE_DIGEST_ENABLED
         value: "1"
 

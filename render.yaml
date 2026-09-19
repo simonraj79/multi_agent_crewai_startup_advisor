@@ -237,8 +237,14 @@ services:
       # entry, but it still reaches the running process only on the next
       # deploy that applies this manifest, exactly like the LANGFUSE_*
       # literals below.
+      #
+      # TURNED ON 2026-09-19, on the owner's instruction to ship and prove the
+      # model review. Pressing the button is what spends, never this value:
+      # admin only, at most $0.05 a press, one at a time, at most ten presses
+      # per 24 hours per deployment (DIGEST_MAX_PER_DAY), so the worst day is
+      # $0.50. Set it back to "0" to switch the button off.
       - key: IMPROVE_DIGEST_ENABLED
-        value: "0"
+        value: "1"
 
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"

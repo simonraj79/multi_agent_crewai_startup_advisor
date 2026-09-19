@@ -153,8 +153,22 @@ const ARM_SENTENCES: Readonly<Record<string, string>> = {
   unknown: 'Runs whose version could not be worked out',
 }
 
-function armSentence(key: string): string {
-  return ARM_SENTENCES[key] ?? ''
+/**
+ * One arm's sentence: why this column is not simply a number.
+ *
+ * `missing` wins over the two keys above, and reads differently per axis
+ * because the two axes are asking different questions. A missing arm is SHOWN
+ * with `n = 0` rather than dropped: a two-column table that quietly becomes
+ * one column invites the reader to conclude the other side lost, and "nobody
+ * ran this" is a different answer from "this did worse".
+ */
+function armSentence(arm: { key: string; missing?: boolean }): string {
+  if (arm.missing) {
+    return props.axis === 'model'
+      ? 'No runs on this model at this step in the window'
+      : 'No runs of this version in the window'
+  }
+  return ARM_SENTENCES[arm.key] ?? ''
 }
 
 const ready = computed(() => {
@@ -353,10 +367,10 @@ const noVersions = computed(
                    a column headed with one of them over five measures is a
                    number nobody can read. Each gets its own sentence. -->
               <span
-                v-if="armSentence(arm.key)"
+                v-if="armSentence(arm)"
                 class="admin-sub"
                 :data-testid="`improve-arm-note-${arm.key}`"
-              >{{ armSentence(arm.key) }}</span>
+              >{{ armSentence(arm) }}</span>
               <span class="admin-sub">
                 n = {{ count(arm.n) }}
                 <template v-if="arm.underpowered">

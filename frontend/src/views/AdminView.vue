@@ -436,16 +436,41 @@ async function runCompare(): Promise<void> {
  * asked for on the one path that has just cost something.
  */
 async function runDigest(): Promise<void> {
-  if (!improveWorkflowId.value || digesting.value) return
+  // SET SYNCHRONOUSLY, BEFORE ANY `await`, and that placement is the whole
+  // guard: two clicks dispatched in one task both reach this function before
+  // Vue has re-rendered the button as disabled, so a flag set after the first
+  // `await` would let the second through and make two model calls from one
+  // double-click. There is no retry anywhere below either - one press is one
+  // request, whatever comes back.
+  const workflowId = improveWorkflowId.value
+  if (!workflowId || digesting.value) return
   digesting.value = true
   digestProblem.value = ''
   try {
-    const row = await improveApi.runDigest(improveWorkflowId.value, activeWindow.value)
+    const row = await improveApi.runDigest(workflowId, activeWindow.value)
     improveDigests.value = improveDigests.value
       ? { ...improveDigests.value, rows: [row, ...improveDigests.value.rows] }
       : { rows: [row], enabled: true }
   } catch (error) {
+    // The SERVER's own sentence. Three of the refusals are money brakes that
+    // name a number and a time ("try again after …"), and a house phrase over
+    // them would throw away the only part a person can act on.
     digestProblem.value = sentence(error, 'that review could not be written.')
+  }
+  /*
+   * RE-READ AFTER EVERY POST, refused or not. The allowance and the stored
+   * list both move on the server: a refusal still consumes an in-flight slot
+   * or reveals that somebody else has spent today's, and a failed attempt is
+   * stored as a row because it may have been billed. A screen that only
+   * re-read after a success would be most out of date exactly when a person
+   * is deciding whether to press again.
+   */
+  try {
+    improveDigests.value = await improveApi.digests(workflowId)
+  } catch {
+    // Quiet, and deliberately: the press has already reported its own answer,
+    // and a second sentence over a stale-but-honest list would say the review
+    // failed when it may not have.
   } finally {
     digesting.value = false
   }

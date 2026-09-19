@@ -285,6 +285,23 @@ const EVALSET_RATINGS = (WIRE._evalset_ratings as string[] | undefined) ?? [
   'unsure',
   'any',
 ]
+/**
+ * The refusals the POST answers with, VERBATIM from the fixture.
+ *
+ * Three 429s (a review already running, the day's allowance, the minimum gap)
+ * and one 502. Each names a number or a time - "try again after …" - and a
+ * house phrase written over them would throw away the only part of the
+ * sentence a person can act on. Read rather than typed, so the day the server
+ * rewords one this suite moves with it.
+ */
+const REFUSALS = (WIRE._digest_refusals ?? {}) as Record<string, unknown>
+const REFUSAL_SENTENCES = Object.entries(REFUSALS)
+  .filter(([key]) => !key.startsWith('_'))
+  .map(([, value]) =>
+    typeof value === 'string' ? value : String((value as { detail?: string })?.detail ?? ''),
+  )
+  .filter(Boolean)
+
 const COMPARE_AXES = Object.keys((WIRE._compare_axes ?? {}) as Record<string, unknown>).filter(
   (key) => !key.startsWith('_'),
 )
@@ -1042,8 +1059,37 @@ describe('Ask a model to review prices itself before the press', () => {
     wrapper.unmount()
   })
 
-  it('posts exactly once on the press, and puts the new review at the top', async () => {
-    serve('/api/admin/improve/digests', { ...DIGEST, enabled: true })
+  it('posts exactly once on the press, and shows what the re-read came back with', async () => {
+    /*
+     * A SERVER THAT REMEMBERS THE WRITE. The press is followed by a `GET`, so
+     * a stub whose `GET` kept answering the old page would make the new review
+     * vanish the instant it arrived - and the test would be measuring the
+     * double, not the panel. The second answer carries the stored row, which
+     * is what a real handler does.
+     */
+    let written = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = String(init?.method ?? 'GET').toUpperCase()
+        asked.push({ url, method, headers: new Headers(init?.headers) })
+        if (url.includes('/api/admin/improve/digests')) {
+          if (method === 'POST') {
+            written = true
+            return new Response(JSON.stringify(DIGEST_POST), { status: 200 })
+          }
+          const rows = written
+            ? [DIGEST_POST, ...(DIGEST.rows as unknown[])]
+            : (DIGEST.rows as unknown[])
+          return new Response(
+            JSON.stringify({ ...DIGEST, enabled: true, remaining_today: 5, rows }),
+            { status: 200 },
+          )
+        }
+        return new Response(JSON.stringify(bodyFor(url)), { status: 200 })
+      }),
+    )
     const wrapper = await openImprove()
     await chooseWorkflow(wrapper)
     const button = wrapper.get('[data-testid="improve-review-run"]')
@@ -1159,6 +1205,265 @@ describe('Ask a model to review prices itself before the press', () => {
 })
 
 /* ── T7: the words on screen ─────────────────────────────────────────────── */
+
+/* -- the refine round: the day's allowance, refusals, failures, missing arms -- */
+
+describe("the review button states the day's allowance and cannot double-fire", () => {
+  it('prints how many reviews are left today, out of how many', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const left = wrapper.get('[data-testid="improve-review-left"]').text()
+    expect(left).toContain(`${DIGEST.remaining_today} of ${DIGEST.max_per_day} reviews left today`)
+    wrapper.unmount()
+  })
+
+  it('is off at zero left, and says that is why', async () => {
+    serve('/api/admin/improve/digests', {
+      ...DIGEST,
+      enabled: true,
+      remaining_today: 0,
+      max_per_day: 10,
+    })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const button = wrapper.get('[data-testid="improve-review-run"]')
+    expect(button.attributes('disabled')).toBeDefined()
+    const blocked = wrapper.get('[data-testid="improve-review-blocked"]').text()
+    expect(blocked).toContain('No reviews left today')
+    expect(blocked).toContain('10')
+    wrapper.unmount()
+  })
+
+  it('never disables itself over an allowance the server did not report', async () => {
+    const page = { ...DIGEST, enabled: true } as Record<string, unknown>
+    delete page.remaining_today
+    delete page.max_per_day
+    serve('/api/admin/improve/digests', page)
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    expect(wrapper.get('[data-testid="improve-review-run"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="improve-review-left"]').text()).toContain(
+      'the server did not report a daily allowance',
+    )
+    wrapper.unmount()
+  })
+
+  /*
+   * THE ONE THING ON THIS SCREEN THAT SPENDS MONEY, PRESSED TWICE IN ONE TASK.
+   * Both clicks reach the handler before Vue has re-rendered the button as
+   * disabled, so the guard has to be a flag set synchronously ahead of the
+   * first `await`. Twenty presses producing twenty model calls is what these
+   * brakes were built after.
+   */
+  it('makes ONE request for two clicks dispatched in the same task', async () => {
+    serve('/api/admin/improve/digests', { ...DIGEST, enabled: true, remaining_today: 5 })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const button = wrapper.get('[data-testid="improve-review-run"]').element as HTMLButtonElement
+    button.click()
+    button.click()
+    await settle()
+    expect(asked.filter((entry) => entry.method === 'POST')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('says it is busy while the one call is in flight', async () => {
+    serve('/api/admin/improve/digests', { ...DIGEST, enabled: true, remaining_today: 5 })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const button = wrapper.get('[data-testid="improve-review-run"]')
+    expect(button.attributes('aria-busy')).toBe('false')
+    await button.trigger('click')
+    expect(wrapper.get('[data-testid="improve-review-run"]').attributes('aria-busy')).toBe('true')
+    await settle()
+    expect(wrapper.get('[data-testid="improve-review-run"]').attributes('aria-busy')).toBe('false')
+    wrapper.unmount()
+  })
+})
+
+describe('a refused review shows the server sentence and leaves the button usable', () => {
+  /** Answer the POST with one refusal, and let every GET through. */
+  function refuseWith(status: number, detail: string): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = String(init?.method ?? 'GET').toUpperCase()
+        asked.push({ url, method, headers: new Headers(init?.headers) })
+        if (method === 'POST' && url.includes('/api/admin/improve/digests')) {
+          return new Response(JSON.stringify({ detail }), {
+            status,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        if (url.includes('/api/admin/improve/digests')) {
+          return new Response(JSON.stringify({ ...DIGEST, enabled: true, remaining_today: 5 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        return new Response(JSON.stringify(bodyFor(url)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+  }
+
+  it('renders every one of the refusals the fixture declares, verbatim', async () => {
+    expect(REFUSAL_SENTENCES.length).toBeGreaterThanOrEqual(4)
+    for (const detail of REFUSAL_SENTENCES) {
+      refuseWith(detail.includes('did not answer') ? 502 : 429, detail)
+      const wrapper = await openImprove()
+      await chooseWorkflow(wrapper)
+      await wrapper.get('[data-testid="improve-review-run"]').trigger('click')
+      await settle()
+      const alert = wrapper.get('[data-testid="improve-review-problem"]')
+      expect(alert.attributes('role'), detail).toBe('alert')
+      // The server's own words, not a house phrase over them: three of these
+      // name a number and a time, which is the only actionable half.
+      expect(alert.text(), detail).toContain(detail)
+      // Still pressable: a refusal is not a dead end.
+      expect(
+        wrapper.get('[data-testid="improve-review-run"]').attributes('disabled'),
+        detail,
+      ).toBeUndefined()
+      wrapper.unmount()
+    }
+  })
+
+  it('re-reads the page after a refusal, so what is left today is current', async () => {
+    refuseWith(429, String(REFUSALS.per_day ?? 'no'))
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const before = asked.filter(
+      (entry) => entry.method === 'GET' && entry.url.includes('/improve/digests'),
+    ).length
+    await wrapper.get('[data-testid="improve-review-run"]').trigger('click')
+    await settle()
+    const after = asked.filter(
+      (entry) => entry.method === 'GET' && entry.url.includes('/improve/digests'),
+    ).length
+    expect(after).toBe(before + 1)
+    // ONE post, and no retry of it - whatever came back.
+    expect(asked.filter((entry) => entry.method === 'POST')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('re-reads the page after a success too', async () => {
+    serve('/api/admin/improve/digests', { ...DIGEST, enabled: true, remaining_today: 5 })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const before = asked.filter(
+      (entry) => entry.method === 'GET' && entry.url.includes('/improve/digests'),
+    ).length
+    await wrapper.get('[data-testid="improve-review-run"]').trigger('click')
+    await settle()
+    const after = asked.filter(
+      (entry) => entry.method === 'GET' && entry.url.includes('/improve/digests'),
+    ).length
+    expect(after).toBe(before + 1)
+    expect(asked.filter((entry) => entry.method === 'POST')).toHaveLength(1)
+    wrapper.unmount()
+  })
+})
+
+describe('a failed attempt is a row with no text and no cost', () => {
+  it('says the model did not answer, and why the attempt is here at all', async () => {
+    const first = (DIGEST.rows as Array<Record<string, unknown>>)[0] ?? {}
+    serve('/api/admin/improve/digests', {
+      ...DIGEST,
+      rows: [
+        {
+          ...first,
+          id: 'dg_failed',
+          error: 'the model did not answer',
+          cost_usd: null,
+          body: '',
+          created_at: '2026-09-19T10:00:00Z',
+        },
+      ],
+    })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const row = wrapper.get('[data-testid="improve-review-failed-dg_failed"]')
+    expect(row.attributes('role')).toBe('status')
+    expect(row.text()).toContain('The model did not answer.')
+    expect(row.text()).toContain('may still have been billed')
+    // No review text and no money: `$0.00` beside a failed attempt would say
+    // it was free, which is the one thing nobody can promise about it.
+    expect(wrapper.find('[data-testid="improve-review-rows"] .improve-review-body').exists()).toBe(
+      false,
+    )
+    expect(
+      wrapper.findAll('[data-testid="improve-review-rows"] [data-testid="admin-money"]'),
+    ).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('leaves an ordinary row alone', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    expect(wrapper.find('[data-testid^="improve-review-failed-"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="improve-review-rows"] .improve-review-body').exists()).toBe(
+      true,
+    )
+    wrapper.unmount()
+  })
+})
+
+describe('an arm with no runs is shown, not dropped', () => {
+  it('prints n = 0, the reason, and the too-few-runs flag', async () => {
+    const arms = (COMPARE.arms ?? []) as Array<Record<string, unknown>>
+    const missing = arms.find((arm) => arm.missing === true)
+    expect(missing, 'the fixture declares no missing arm').toBeDefined()
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    await runCompare(wrapper, '3', String(missing?.key ?? '5'))
+    // Found by its own note rather than by a header whose text contains the
+    // key: `needs 5` in a NEIGHBOUR's flag matches a key of `5` too, and the
+    // first version of this test passed the wrong column.
+    const note = wrapper.get(`[data-testid="improve-arm-note-${missing?.key}"]`)
+    const column = note.element.closest('th') as HTMLElement
+    expect(column.textContent).toContain('n = 0')
+    expect(column.textContent).toContain('No runs of this version in the window')
+    expect(column.textContent).toContain('too few runs to tell')
+    wrapper.unmount()
+  })
+
+  it('says it differently on the model axis, where the step is part of the answer', async () => {
+    const arms = (COMPARE.arms ?? []) as Array<Record<string, unknown>>
+    serve('/api/admin/improve/compare', {
+      ...COMPARE,
+      axis: 'model',
+      node_id: 'market_research',
+      arms: [
+        { ...arms[0], key: 'cheap/a', missing: false, underpowered: false },
+        { ...arms[0], key: 'dear/b', n: 0, missing: true, underpowered: true },
+      ],
+    })
+    serve('/api/admin/improve/hotspots', {
+      ...HOTSPOTS,
+      node_models: [
+        { node_id: 'market_research', label: 'Market research', models: ['cheap/a', 'dear/b'] },
+      ],
+    })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    await wrapper.get('[data-testid="improve-axis-model"]').trigger('click')
+    await settle()
+    await wrapper.get('[data-testid="improve-compare-node"]').setValue('market_research')
+    await wrapper.get('[data-testid="improve-compare-a"]').setValue('cheap/a')
+    await wrapper.get('[data-testid="improve-compare-b"]').setValue('dear/b')
+    await wrapper.get('[data-testid="improve-compare-run"]').trigger('click')
+    await settle()
+    expect(wrapper.get('[data-testid="improve-arm-note-dear/b"]').text()).toBe(
+      'No runs on this model at this step in the window',
+    )
+    expect(wrapper.find('[data-testid="improve-arm-note-cheap/a"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
 
 describe('the panel says none of the words R7 bans', () => {
   /*

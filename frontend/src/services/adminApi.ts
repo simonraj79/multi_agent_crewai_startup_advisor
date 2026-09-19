@@ -962,6 +962,15 @@ export interface ImproveCompareArm {
   n: number
   /** Under `IMPROVE_MIN_COMPARE_RUNS`. A difference over three runs is noise. */
   underpowered?: boolean
+  /**
+   * The version or model asked for has NO runs in this window.
+   *
+   * Shown with `n = 0` rather than dropped, and that is the whole point: an
+   * arm quietly missing from a two-column table leaves one column and the
+   * reader concludes the other side lost. "Nobody ran this" is a different
+   * answer from "this did worse", and only one of them is true here.
+   */
+  missing?: boolean
   status_mix?: Record<string, number>
   verdict_mix?: Record<string, number>
   mean_confidence?: number | null
@@ -1000,6 +1009,16 @@ export interface ImproveDigestRow {
   max_cost_usd?: number | null
   /** R5: the measured cost came out ABOVE the cap. Shown, never hidden. */
   over_cap?: boolean
+  /**
+   * The model did not answer, and the attempt was stored anyway.
+   *
+   * A failed attempt is a ROW because it may still have been billed - the
+   * tokens can be spent before the response falls over - so it is recorded
+   * where somebody watching money will see it. Such a row has no review text
+   * and no cost, and the panel renders neither rather than printing `$0.00`,
+   * which would read as "this one was free".
+   */
+  error?: string | null
   /** Model output. Rendered as TEXT, never as markup - see the panel. */
   body: string
   created_at: string
@@ -1025,6 +1044,18 @@ export interface ImproveDigestPage {
   /** R5: the two bounds the server gained so the button could print them. */
   max_input_chars?: number | null
   max_output_tokens?: number | null
+  /**
+   * How many reviews this deployment may still ask for today, and out of how
+   * many.
+   *
+   * A SERVER brake, not a client one. The knob is a deployment switch rather
+   * than a rate limit, and twenty presses were measured producing twenty model
+   * calls before these existed - so the count is printed before the press and
+   * the button goes off at zero, and the server refuses anyway if a second
+   * browser gets there first.
+   */
+  remaining_today?: number | null
+  max_per_day?: number | null
   /** Every stored row's `cost_usd` for this workflow, summed by the server. */
   total_cost_usd?: number | null
   /**

@@ -86,16 +86,58 @@ const bounds = computed(() => {
   return parts.join(' · ')
 })
 
+/**
+ * How many reviews are left today, out of how many, or `null` for neither.
+ *
+ * Read off the same `GET` as the cap, and printed BEFORE the press for the
+ * reason the cap is: a brake somebody only meets by hitting it is a brake that
+ * reads as a fault. `remaining === 0` is a real zero and a real refusal; an
+ * absent key is not zero and must never disable anything.
+ */
+const remaining = computed(() => {
+  const value = props.page?.remaining_today
+  return value === null || value === undefined || !Number.isFinite(value) ? null : value
+})
+
+const perDay = computed(() => {
+  const value = props.page?.max_per_day
+  return value === null || value === undefined || !Number.isFinite(value) ? null : value
+})
+
+const spentToday = computed(() => remaining.value !== null && remaining.value <= 0)
+
 const canRun = computed(
-  () => enabled.value && Boolean(props.workflowId) && !props.running && !props.loading,
+  () =>
+    enabled.value &&
+    Boolean(props.workflowId) &&
+    !spentToday.value &&
+    !props.running &&
+    !props.loading,
 )
 
 /** Why the button is off, in the order a person hits the reasons. */
 const blockedBecause = computed(() => {
   if (!props.workflowId) return 'Pick a workflow first.'
   if (!enabled.value) return 'Turned off on this server. Nothing here can spend money.'
+  if (spentToday.value) {
+    return perDay.value === null
+      ? 'No reviews left today. Try again tomorrow.'
+      : `No reviews left today, out of ${count(perDay.value)}. Try again tomorrow.`
+  }
   return ''
 })
+
+/**
+ * A row the model never answered.
+ *
+ * It has no review text and no cost, and NEITHER is rendered: a `$0.00` beside
+ * a failed attempt would read as "this one was free", which is the one thing
+ * nobody can promise - the tokens may already have been spent, which is why
+ * the attempt is a row at all.
+ */
+function failed(row: { error?: string | null }): boolean {
+  return typeof row.error === 'string' && row.error.trim() !== ''
+}
 </script>
 
 <template>
@@ -146,13 +188,33 @@ const blockedBecause = computed(() => {
         <dd v-if="enabled">yes</dd>
         <dd v-else>no<span class="admin-sub">Turned off on this server</span></dd>
       </div>
+      <!--
+        HOW MANY ARE LEFT TODAY, before the press. A brake somebody only meets
+        by hitting it is a brake that reads as a fault; this one says what it
+        is while there is still room under it.
+      -->
+      <div class="admin-fact" :class="{ 'is-warn': spentToday }" data-testid="improve-review-left">
+        <dt>Left today</dt>
+        <dd v-if="remaining !== null && perDay !== null">
+          {{ count(remaining) }} of {{ count(perDay) }} reviews left today
+        </dd>
+        <dd v-else-if="remaining !== null">{{ count(remaining) }} reviews left today</dd>
+        <dd v-else class="is-absent">the server did not report a daily allowance</dd>
+      </div>
     </dl>
 
     <div class="improve-controls">
+      <!--
+        `aria-busy` while the one paid call is in flight, beside the disabled
+        state rather than instead of it: `disabled` is what stops a second
+        press, and `aria-busy` is what tells a reader who cannot see the word
+        change that the press was taken.
+      -->
       <button
         type="button"
         class="improve-button"
         :disabled="!canRun"
+        :aria-busy="running ? 'true' : 'false'"
         data-testid="improve-review-run"
         @click="emit('run')"
       >
@@ -203,7 +265,33 @@ const blockedBecause = computed(() => {
     </p>
 
     <ul v-if="rows.length" class="improve-review-list" data-testid="improve-review-rows">
-      <li v-for="row in rows" :key="row.id" class="improve-review-row">
+      <li
+        v-for="row in rows"
+        :key="row.id"
+        class="improve-review-row"
+        :class="{ 'is-failed': failed(row) }"
+      >
+        <!--
+          A FAILED ATTEMPT IS A ROW, and it is a row because it may already
+          have been billed. It carries no review text and no cost: `$0.00`
+          beside it would say it was free, which is exactly the thing nobody
+          can promise about a call whose tokens may have been spent.
+        -->
+        <template v-if="failed(row)">
+          <header class="improve-review-head">
+            <span class="improve-review-when">{{ when(row.created_at) }}</span>
+            <span class="admin-sub">
+              {{ row.model }}
+              <template v-if="row.sample_runs"> · {{ count(row.sample_runs) }} run(s) read</template>
+            </span>
+          </header>
+          <p class="admin-warning" role="status" :data-testid="`improve-review-failed-${row.id}`">
+            <TriangleAlert :size="13" aria-hidden="true" />
+            The model did not answer. The attempt was recorded because it may still have been
+            billed.
+          </p>
+        </template>
+        <template v-else>
         <header class="improve-review-head">
           <span class="improve-review-when">{{ when(row.created_at) }}</span>
           <span class="admin-sub">
@@ -235,6 +323,7 @@ const blockedBecause = computed(() => {
           for; check the model and the ceiling before asking for another.
         </p>
         <p class="improve-review-body">{{ row.body }}</p>
+        </template>
       </li>
     </ul>
     <p v-else-if="!loading && !problem" class="admin-empty" data-testid="improve-review-empty">
@@ -288,6 +377,7 @@ const blockedBecause = computed(() => {
   border-radius: var(--r-md);
 }
 
+.improve-review-row.is-failed { border-color: var(--warn-border); }
 .improve-review-head { display: grid; gap: var(--space-1); }
 .improve-review-when { color: var(--text-body); font: var(--type-label); }
 

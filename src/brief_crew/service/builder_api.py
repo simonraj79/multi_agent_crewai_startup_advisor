@@ -2819,6 +2819,15 @@ def _register_runtime(
         node_registry=workflow.node_registry,
         runner=runner,
         input_field=workflow.input_field,
+        # Plan 21 R8. `graph_version` is a content hash and this is the
+        # integer beside it, so a comparison can group by "v3 versus v4"
+        # without recomputing a hash for every run written from now on. It is
+        # set HERE rather than at the publish route because this function is
+        # the one door both the publish path and the boot rehydration take -
+        # a graph republished by a restart must carry the same version a
+        # freshly published one does, or Compare's arms would depend on
+        # whether the process had bounced.
+        document_version=workflow.document.version,
     )
 
 

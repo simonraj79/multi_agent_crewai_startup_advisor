@@ -209,13 +209,32 @@ class AdminCase(unittest.TestCase):
         seconds: float = 120.0,
         age_hours: float = 1.0,
         note: str = "the segment is right, go on",
+        proposed: dict[str, Any] | None = None,
+        fields: dict[str, Any] | None = None,
     ) -> None:
+        """One gate, with the machine's PROPOSAL and the human's reply.
+
+        `request.fields` is not decoration: it is the proposal half of the
+        proposed-versus-corrected pair (plan 21), and a seeded
+        gate without one would let `proposed` and `corrections` come back
+        empty on every admin test in this package - which is a wildcard, not
+        a check. `proposed` and `fields` override the two halves for a test
+        that needs an unedited field beside an edited one.
+        """
+
         opened = NOW - timedelta(hours=age_hours)
         self.store.open_gate(
             run_id,
             gate_id,
             node_id=node_id,
-            request={"title": "Confirm the scope"},
+            request={
+                "title": "Confirm the scope",
+                "fields": (
+                    {"note": "the segment looks right"}
+                    if proposed is None
+                    else proposed
+                ),
+            },
             opened_at=opened,
         )
         if decision is not None:
@@ -224,7 +243,10 @@ class AdminCase(unittest.TestCase):
             self.store.answer_gate(
                 run_id,
                 gate_id,
-                {"decision": decision, "fields": {"note": note}},
+                {
+                    "decision": decision,
+                    "fields": {"note": note} if fields is None else fields,
+                },
                 answered_at=opened + timedelta(seconds=seconds),
             )
 

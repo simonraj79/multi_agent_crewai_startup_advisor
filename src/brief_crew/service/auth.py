@@ -307,11 +307,15 @@ NOT_FOUND_DETAIL = "Not Found"
 def require_admin(user: AuthenticatedUser | None) -> AuthenticatedUser:
     """The admin console's one gate. **404, never 403** (plan 17, risk 9).
 
-    It guards SIXTEEN of the seventeen `/api/admin` routes - count them off
-    `app.openapi()["paths"]`, never off this sentence, which has been stale
-    once already: it said fourteen of fifteen while the console served
-    sixteen, and plan 20's `PUT /api/admin/runs/{run_id}/rating` made it
-    seventeen. `GET /whoami` is
+    It guards TWENTY-ONE of the twenty-two `/api/admin` operations - COUNTED
+    off `app.openapi()["paths"]`, never off this sentence, which has been
+    stale twice already: it said fourteen of fifteen while the console served
+    sixteen, then sixteen of seventeen until plan 21's five
+    (`/improve/hotspots`, `/improve/compare`, `GET` and `POST
+    /improve/digests`, `/export/evalset`) took it to twenty-two. Operations,
+    not paths - `/improve/digests` is one path and two verbs, and a count of
+    paths would say twenty-one and be wrong about what is guarded.
+    `GET /whoami` is
     the documented exception and does not call this at all: it answers 200
     with `admin: false`, because the home page probes it on every page load
     and a 404 there is a console error for every non-admin on every

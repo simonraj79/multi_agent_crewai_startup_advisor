@@ -1704,6 +1704,232 @@ OPENROUTER_CREDITS_PAGE_URL = "https://openrouter.ai/settings/credits"
 FIRECRAWL_DASHBOARD_URL = "https://www.firecrawl.dev/app/settings?tab=billing"
 
 # --------------------------------------------------------------------------
+# Improve - test a change, export what was rated, ask a model to read the runs
+# --------------------------------------------------------------------------
+#
+# Plan 21, step 4 of the loop. TWELVE plain constants and ONE environment
+# knob, and the split is the point of the block. Eleven of the twelve bound a
+# SHAPE - how much is read, how much is written, how small a sample may still
+# be spoken about - and a knob is a thing an operator can raise back to the
+# defect, which is the call `MAX_EXPORT_FRAMES` and `MAX_RUN_INPUT_CHARS`
+# already made. The twelfth is a price ceiling checked at import (see
+# `worst_case_digest_cost` below). The one knob governs the one thing that
+# spends money.
+
+#: The floor a claim about one workflow's runs rests on.
+#:
+#: Five is not a statistical threshold and does not pretend to be one; it is
+#: the count below which a sentence naming a node would be an assertion
+#: dressed as evidence. It is printed ON SCREEN beside the numbers it governs,
+#: because an absent finding and an unmet sample are different facts and an
+#: empty list implying zero is the failure mode plan 17 risk 14 names.
+IMPROVE_MIN_RUNS = 5
+
+#: The per-arm floor on `/improve/compare`. An arm under it is flagged
+#: `underpowered: true` and still SHOWN, for `IMPROVE_MIN_RUNS`'s reason: a
+#: difference over three runs is noise wearing a number, and hiding the arm
+#: would leave a reader to assume the comparison could not be made at all.
+IMPROVE_MIN_COMPARE_RUNS = 5
+
+#: How many runs one review may look at - the newest in the window, every
+#: status. Twelve rather than "the window", because the sample is what the
+#: prompt is built from and the prompt is what is priced: an unbounded sample
+#: is an unbounded bill, and `DIGEST_MAX_INPUT_CHARS` below would then be the
+#: only thing between a click and a large one.
+DIGEST_MAX_SAMPLE_RUNS = 12
+
+#: And how many of their frames, across `agent`, `tool`, `guardrail`, `error`
+#: and `verdict` only. The other frame kinds carry no evidence a review can
+#: act on and would spend the prompt budget on plumbing.
+DIGEST_MAX_SAMPLE_FRAMES = 400
+
+#: The rendered prompt's ceiling. The sample is TRUNCATED to fit and the
+#: response says that it was, rather than the request being refused: a review
+#: over eleven of twelve runs is worth having and a 422 at the moment somebody
+#: clicks is not.
+DIGEST_MAX_INPUT_CHARS = 40_000
+
+#: Passed to the model as `max_tokens`. The second half of the arithmetic in
+#: `worst_case_digest_cost`, and the reason the cap can be checked at all: a
+#: completion with no bound has no price.
+DIGEST_MAX_OUTPUT_TOKENS = 1_200
+
+#: The ceiling one review may cost, CHECKED at import rather than hoped for -
+#: see `worst_case_digest_cost` immediately below. Five cents is roughly five
+#: times the computed worst case, which is the margin a model swap gets before
+#: the check fires and the feature turns itself off.
+DIGEST_MAX_COST_USD = 0.05
+
+#: The most runs one eval-set export will stream. `MAX_EXPORT_FRAMES` bounds
+#: the per-run half and is reused rather than restated.
+EVALSET_MAX_RUNS = 2000
+
+#: How much of a run's `markdown_body` becomes `outcome.result_summary`. The
+#: whole body has a 64 KiB home in `runs.result`; an eval set wants the
+#: conclusion, and 2,000 characters is what one costs.
+EVALSET_MAX_RESULT_CHARS = 2000
+
+#: The export's own byte ceiling, counted as the NDJSON is streamed (plan 21
+#: R3). `EVALSET_MAX_RUNS` bounds the row count and says nothing about the
+#: size of a row: 2,000 runs each carrying a 2,000-character summary, an
+#: inputs mapping and every gate pair is tens of megabytes on one response,
+#: assembled by a generator that no admission check bounds. A file that stops
+#: at 8 MiB with a `_truncated` trailer is worth more to whoever is reading it
+#: than a browser that gives up halfway - which is the same call
+#: `/api/runs/{id}/logs` made for frames.
+EVALSET_MAX_BYTES = 8 * 1024 * 1024
+
+#: How many of a `TaskOutput.tool_failures` records reach the task frame.
+#: Eight, because the list is a POINTER at which tools went wrong rather than
+#: an incident log: the ninth adds no evidence, and the count beside it -
+#: `tool_failure_count`, unbounded - is what a miner reads.
+MAX_TASK_TOOL_FAILURES = 8
+
+#: The `finish_reason` values that mean **the model was cut off by a length
+#: bound**, normalised to lower case.
+#:
+#: The correction is worth stating because the obvious version is the
+#: instrument reporting on itself: `output_chars > len(output_preview)` says
+#: the 2 KB FRAME bound cut a copy of the answer, which is true of nearly
+#: every long answer and says nothing about the answer. `finish_reason` is the
+#: provider's own word for what stopped the generation, it has been on the LLM
+#: after-frame since the utterance work (`serializer.py`), and nothing read it.
+#:
+#: Several spellings because several providers: OpenAI-compatible routes say
+#: `length`, Anthropic's say `max_tokens`, Google's say `MAX_TOKENS`, and
+#: LiteLLM passes whichever it received through unchanged. A set here rather
+#: than a substring test, so `stop` can never match by accident.
+TRUNCATING_FINISH_REASONS: frozenset[str] = frozenset(
+    {
+        "length",
+        "max_tokens",
+        "max_output_tokens",
+        "model_length",
+        "output_limit",
+    }
+)
+
+
+def finish_reason_is_truncation(value: object) -> bool:
+    """Whether this `finish_reason` means a length bound stopped the answer.
+
+    Total, and case-insensitive: the value arrives off a provider event and a
+    rule that raised on a non-string would take a whole panel down for one
+    malformed frame.
+    """
+
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in TRUNCATING_FINISH_REASONS
+
+
+#: Whether the model review may be requested at all. **The one environment
+#: knob this plan adds, and it defaults OFF.**
+#:
+#: Read at CALL time through `digest_enabled()` so a test patches one place -
+#: `is_admin` and `auth_is_required` are the precedents. The `POST` route
+#: answers 422 while it is false and constructs no `LLM` at all.
+#:
+#: It turns a BUTTON on. It schedules nothing, and there is no code path that
+#: reads it outside one explicit `POST` by a listed admin - never on page
+#: load, never on a `GET`, never on a timer.
+IMPROVE_DIGEST_ENABLED = _env_flag("IMPROVE_DIGEST_ENABLED", False)
+
+
+def digest_enabled() -> bool:
+    """Whether the review button will spend anything.
+
+    A function for `is_admin`'s reason: it reads the module global at CALL
+    time, so `patch.object(config, "IMPROVE_DIGEST_ENABLED", True)` is enough
+    on its own and no caller holds a copy taken at import.
+    """
+
+    return bool(IMPROVE_DIGEST_ENABLED)
+
+
+def worst_case_digest_cost() -> float:
+    """The dearest one review can be, from `PRICES`, at the dearest endpoint.
+
+    The arithmetic, so it can be checked rather than believed:
+    `DIGEST_MAX_INPUT_CHARS` (40,000) at the ~4 characters per token English
+    prose runs to is 10,000 prompt tokens; `DIGEST_MAX_OUTPUT_TOKENS` (1,200)
+    is the completion, passed as `max_tokens` so it is a bound and not an
+    expectation. Priced through `compute_cost_usd` - the SAME function the
+    token frame uses, so a review's dollars and a run's dollars mean the same
+    thing - and then multiplied by the model's own measured
+    `cost_in_max_endpoint / cost_in` spread, because `provider.max_price` with
+    no `provider.sort` lets any endpoint under the ceiling serve the slug
+    (audit M14). `NITRO_PRICE_FACTOR` is the fallback for a model with no
+    registry row, which is the fallback `builder/budget.py` already uses.
+
+    An unpriceable model RAISES rather than returning 0.0. `compute_cost_usd`
+    answers `None` for "no price on file", and treating that as free is
+    precisely the defect that once priced a 128,069-token run at $0.00 - so
+    here it is the state in which a ceiling cannot be proved, and the caller
+    below turns the feature off rather than guessing.
+    """
+
+    prompt_tokens = DIGEST_MAX_INPUT_CHARS // 4
+    estimate = compute_cost_usd(CHEAP_MODEL, prompt_tokens, DIGEST_MAX_OUTPUT_TOKENS)
+    if estimate is None:
+        raise RuntimeError(
+            f"{CHEAP_MODEL} is not in PRICES, so the review cost ceiling cannot "
+            "be proved; price the model or lower DIGEST_MAX_COST_USD"
+        )
+    row = registry_model(CHEAP_MODEL)
+    multiplier = (
+        NITRO_PRICE_FACTOR
+        if row is None or row.cost_in <= 0
+        else row.cost_in_max_endpoint / row.cost_in
+    )
+    return estimate * multiplier
+
+
+def _assert_digest_cost_ceiling() -> None:
+    """The import-time check - and it DISABLES rather than raises (plan 21 R9).
+
+    A model swap that broke the cap must be loud, and it must not make this
+    package unimportable. `config.py` is imported by every test module, every
+    console script and the ASGI factory itself, so raising here would take the
+    whole product down - the API, the two hand-written flows, the builder and
+    the suite - over a feature that is off by default and reachable only by a
+    named admin pressing a button.
+
+    So the failure mode is the safe one: the flag is forced off, one ERROR
+    names the model and the figure, and the route then answers 422 with the
+    sentence it already answers when the knob is off. The money rule is kept
+    (nothing can be spent), the check is still a check (it runs at import and
+    it is loud), and it reads `PRICES` through `compute_cost_usd`, so patching
+    the table upward and calling this is a test that can fail - which is why
+    it is a function and not four lines at module level.
+    """
+
+    global IMPROVE_DIGEST_ENABLED
+
+    try:
+        worst = worst_case_digest_cost()
+    except RuntimeError as exc:
+        IMPROVE_DIGEST_ENABLED = False
+        logging.getLogger(__name__).error(
+            "the model review is DISABLED: %s", exc
+        )
+        return
+    if worst > DIGEST_MAX_COST_USD:
+        IMPROVE_DIGEST_ENABLED = False
+        logging.getLogger(__name__).error(
+            "the model review is DISABLED: the worst case costs $%.4f at %s, "
+            "over the $%.2f ceiling (DIGEST_MAX_COST_USD). Lower "
+            "DIGEST_MAX_INPUT_CHARS or DIGEST_MAX_OUTPUT_TOKENS, or price a "
+            "cheaper CHEAP_MODEL",
+            worst,
+            CHEAP_MODEL,
+            DIGEST_MAX_COST_USD,
+        )
+
+
+_assert_digest_cost_ceiling()
+
+# --------------------------------------------------------------------------
 # The terminal result - what a COMPLETED run hands back over HTTP
 # --------------------------------------------------------------------------
 # `SerializerLimits.max_string` (4,096) exists to bound a STREAMING FRAME: one

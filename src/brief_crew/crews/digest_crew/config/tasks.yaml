@@ -1,0 +1,82 @@
+# The model review's prompt. Plan 21, "Ask a model to review".
+#
+# IN YAML BECAUSE THAT IS THE INVARIANT. "Prompts for this repository's own
+# crews stay in YAML" is a platform rule, and it is applied here even though
+# the review is a plain `LLM.call` rather than a Crew: the rule is about where
+# a prompt LIVES and can be read and edited, not about which CrewAI primitive
+# happens to send it. `service/digest.py` contains no prompt literal at all,
+# and a test greps for a sentence from this file to prove it.
+#
+# RENDERED with `str.format_map` over a WHITELIST of five keys -
+# `workflow_name`, `window`, `hotspots_json`, `lessons_json`, `sample_json` -
+# so a brace that arrives inside mined data cannot address anything this file
+# did not name. Nothing here is a template a caller can extend.
+#
+# WHAT THE REVIEW IS FOR, and it is worth stating where the words are: a
+# person reads it. It is never fed back into a decision this service makes,
+# never re-run over its own output, and rendered only through the escape-first
+# `markdown.ts`.
+#
+# RULE 4 BELOW IS A TRUE SENTENCE AND WAS MADE TRUE RATHER THAN ASSUMED
+# (plan 21 R2). `digest.build_sample` passes an ALLOW-LIST of structural keys
+# off each frame's `details` - names, roles, kinds, statuses, counts,
+# durations, error classes, the model, retry counts, `result_count`,
+# `tool_status`, fallback, confidence and the verdict code - and drops
+# everything else, including a tool's arguments, a tool's output and any free
+# text beyond an error class and a bounded, scrubbed error message. A test
+# plants a secret in an error message, a tool's arguments and an output
+# preview and fails if any of the three reaches the rendered prompt. Before
+# that allow-list existed this sentence was a hope; the difference is a test
+# that goes red when the list is removed.
+#
+# NESTED UNDER ONE TASK KEY, and the nesting is not cosmetic. Every top-level
+# key of a `crews/*/config/tasks.yaml` is read as a TASK KEY by
+# `tests/observability/test_no_flow_identifiers.py`, the test that stops the
+# Langfuse exporter naming anything this repository owns. With `system` and
+# `user` at the top level that scan would search the whole observability
+# package for the words "system" and "user" and find several. One task key,
+# whose name appears nowhere in that package, keeps both: the two halves of
+# the prompt, and a guard that still guards.
+
+improve_digest:
+  system: |
+    You are reviewing the run history of one automated workflow so its author
+    can make it better. You are reading counts that another system computed;
+    you are not running anything.
+
+    Rules you must follow:
+
+    1. Name nodes by the labels you are given. Never invent a node, an agent, a
+       tool or a number.
+    2. Every claim you make must cite a count that appears in the data below. If
+       the data does not support a claim, do not make it.
+    3. Say what you cannot see. This data has no prompt text, no model answers,
+       no tool arguments and no tool output; it has no embedding or search
+       costs; and it has nothing from runs made outside this service.
+    4. You are seeing structural facts only - names, kinds, statuses, counts,
+       durations, error classes and a bounded error message. Anything a person
+       or a model typed has been withheld before this prompt was built, so do
+       not ask for it and do not guess at it.
+    5. A small sample is a hint, not a finding. If a count rests on fewer than
+       five runs, say so in the same sentence.
+
+    Answer in Markdown, at most six short sections, with these headings:
+    "What went well", "What is failing", "What to change first", "What I cannot
+    see from here". Use plain sentences. No preamble, no summary of these
+    instructions, no closing pleasantries.
+
+  user: |
+    Workflow: {workflow_name}
+    Window: {window}
+
+    MINED COUNTS (JSON):
+    {hotspots_json}
+
+    FINDINGS ALREADY SHOWN TO THE AUTHOR (JSON, may be empty):
+    {lessons_json}
+
+    A SAMPLE OF RECENT RUNS AND THEIR FRAMES (JSON, structural keys only,
+    truncated to fit):
+    {sample_json}
+
+    Write the review.

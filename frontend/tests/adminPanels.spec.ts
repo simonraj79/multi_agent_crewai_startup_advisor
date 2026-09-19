@@ -103,28 +103,33 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('six docked panels behind a tab rail', () => {
-  it('renders exactly six tabs, in their navigation order', async () => {
+describe('seven docked panels behind a tab rail', () => {
+  it('renders exactly seven tabs, in their navigation order', async () => {
     const wrapper = mountAdmin()
     await settle()
     const tabs = wrapper.findAll('[role="tab"]')
+    // `Improve` sits between Insights and Health (plan 21, R7): Insights says
+    // what went wrong on its own, Improve is where somebody does something
+    // about it, and Health stays last because it is the only tab about the
+    // service rather than about the work.
     expect(tabs.map((tab) => tab.text())).toEqual([
       'Overview',
       'Money',
       'People',
       'Runs & decisions',
       'Insights',
+      'Improve',
       'Health',
     ])
   })
 
-  it('renders five panels, with exactly one of them showing', async () => {
+  it('renders seven panels, with exactly one of them showing', async () => {
     const wrapper = mountAdmin()
     await settle()
     const panels = wrapper.findAll('[role="tabpanel"]')
-    expect(panels).toHaveLength(6)
+    expect(panels).toHaveLength(7)
     // `hidden` rather than unmounted: every panel is in the document, so a
-    // reader tabbing by structure finds five, and only the chosen one paints.
+    // reader tabbing by structure finds seven, and only the chosen one paints.
     const shown = panels.filter((panel) => panel.attributes('hidden') === undefined)
     expect(shown).toHaveLength(1)
     expect(shown[0].attributes('id')).toBe('admin-panel-overview')
@@ -133,7 +138,7 @@ describe('six docked panels behind a tab rail', () => {
   it('opens each panel when its tab is pressed, and marks it selected', async () => {
     const wrapper = mountAdmin()
     await settle()
-    for (const id of ['money', 'people', 'runs', 'insights', 'health', 'overview']) {
+    for (const id of ['money', 'people', 'runs', 'insights', 'improve', 'health', 'overview']) {
       await wrapper.get(`[data-testid="admin-tab-${id}"]`).trigger('click')
       await settle(4)
       const tab = wrapper.get(`[data-testid="admin-tab-${id}"]`)

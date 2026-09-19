@@ -182,18 +182,19 @@ test.describe('the admin console', () => {
     await entry.click()
     await expect(page).toHaveURL(/#\/admin$/)
 
-    // Six tabs, six panels, one showing.
+    // Seven tabs, seven panels, one showing.
     const tabs = page.locator('[role="tab"]')
-    await expect(tabs).toHaveCount(6)
+    await expect(tabs).toHaveCount(7)
     await expect(tabs).toHaveText([
       'Overview',
       'Money',
       'People',
       'Runs & decisions',
       'Insights',
+      'Improve',
       'Health',
     ])
-    await expect(page.locator('[role="tabpanel"]')).toHaveCount(6)
+    await expect(page.locator('[role="tabpanel"]')).toHaveCount(7)
 
     // Every panel renders, and each carries a figure the SERVER produced. The
     // synthetic backend starts empty, so the honest assertion is that each
@@ -258,7 +259,7 @@ test.describe('the admin console', () => {
     await openHome(page)
     await page.goto('/#/admin')
     await expect(page.locator('[role="tablist"]')).toBeVisible()
-    for (const id of ['money', 'people', 'runs', 'health']) {
+    for (const id of ['money', 'people', 'runs', 'improve', 'health']) {
       await page.locator(`[data-testid="admin-tab-${id}"]`).click()
       await expect(page.locator(`#admin-panel-${id}`)).toBeVisible()
     }

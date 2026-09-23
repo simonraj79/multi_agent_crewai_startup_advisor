@@ -103,6 +103,12 @@ const emit = defineEmits<{
   exportEvalset: []
 }>()
 
+/** Blank, or a positive whole number - anything else is not sent. */
+const versionInvalid = computed(() => {
+  const text = props.hotspotsVersion.trim()
+  return text !== '' && !/^[1-9][0-9]*$/.test(text)
+})
+
 /**
  * Every step and the models it ran on, for the Model axis's three pickers.
  *
@@ -112,12 +118,6 @@ const emit = defineEmits<{
  * this window", so it would offer a model the chosen step never ran, and an
  * arm that cannot exist is a question with no answer.
  */
-/** Blank, or a positive whole number - anything else is not sent. */
-const versionInvalid = computed(() => {
-  const text = props.hotspotsVersion.trim()
-  return text !== '' && !/^[1-9][0-9]*$/.test(text)
-})
-
 const compareNodeModels = computed(() => props.hotspots?.node_models ?? [])
 
 const EVALSET_RATINGS: ReadonlyArray<{ id: EvalsetRating; label: string; note: string }> = [

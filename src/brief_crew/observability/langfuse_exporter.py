@@ -112,6 +112,7 @@ from brief_crew.observability.mapping import (
     disposition_for,
 )
 from brief_crew.observability.policy import ExporterPolicy
+from brief_crew import config as project_config
 
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,61 @@ _OPENING_FRAME_KEYS = ("frame_seq", "frame_ts", "frame_kind", "event_type")
 #: The section 3 keys a frame is allowed not to carry. `run_id`, `node_id` and
 #: the four frame facts are on every frame by construction.
 _NULLABLE_SECTION_THREE_KEYS = ("agent_role", "task_name")
+
+
+def _declared_task_name(details: Mapping[str, Any]) -> str:
+    """The frame's task name if somebody DECLARED one, else `""`.
+
+    CrewAI 1.15.18 fills `event.task_name` with `task.name or task.description`
+    (`crewai/events/base_events.py:104`), and a builder task is built with no
+    name - so on every builder frame `task_name` is the RENDERED description,
+    with the user's own input interpolated into it. That is content, and with
+    `LANGFUSE_CAPTURE_CONTENT` off no content may reach Langfuse in a name or
+    in metadata any more than in a payload. A declared name is an identifier
+    (`a_named_task`) and travels verbatim as row C2 asks; anything else is
+    read as ABSENT. Found 2026-09-23, from the Improve panel's grouping.
+    """
+
+    return project_config.declared_task_name(details.get("task_name"))
+
+
+def _frame_sentence(frame: FrameData, details: Mapping[str, Any]) -> str:
+    """The frame's own `message`, unless it quotes an undeclared task name.
+
+    The serializer writes a task frame's message as `f"{task_name} failed"`,
+    so for an unnamed builder task the sentence IS the rendered prompt. It is
+    replaced by a neutral one then rather than trimmed: the frame carries the
+    name clipped, the message does not, so no substring rule removes it all.
+    """
+
+    task_name = details.get("task_name")
+    if (
+        isinstance(task_name, str)
+        and task_name
+        and not _declared_task_name(details)
+        and task_name[:64] in frame.message
+    ):
+        return "the task failed"
+    return frame.message
+
+
+def _task_key(details: Mapping[str, Any]) -> str:
+    """What identifies one task execution, and never the rendered description.
+
+    `task_id` first, as before: CrewAI stamps its own UUID on every task
+    event. A frame with no `task_id` falls back to the declared name, and one
+    whose only task identity is an UNDECLARED name still gets a task span - the
+    hierarchy must not depend on whether the author named the task - under a
+    key that says only that such a task exists.
+    """
+
+    task_id = details.get("task_id")
+    if task_id:
+        return str(task_id)
+    declared = _declared_task_name(details)
+    if declared:
+        return declared
+    return "undeclared-task" if details.get("task_name") else ""
 
 #: How many items the drop-oldest path will look past before giving up. It only
 #: looks past flush markers and the shutdown sentinel, and a queue holding
@@ -1594,7 +1650,7 @@ class LangfuseExporter:
             "run_id": state.facts.run_id,
             "node_id": self._id(frame.node_id, limit=256),
             "agent_role": self._id_or_none(details.get("agent_role"), limit=256),
-            "task_name": self._id_or_none(details.get("task_name"), limit=256),
+            "task_name": self._id_or_none(_declared_task_name(details) or None, limit=256),
             "frame_seq": frame.seq,
             "frame_kind": frame.kind.value,
             "event_type": frame.event_type.value,
@@ -1755,14 +1811,17 @@ class LangfuseExporter:
         scope = self._node_scope(state, frame, details)
         if scope is None:
             return self._run_handle(state)
-        task_key = str(details.get("task_id") or details.get("task_name") or "")
+        task_key = _task_key(details)
         if task_key and (scope.task is None or scope.task_key != task_key):
             if scope.task is not None:
                 self._close_task(state, scope, frame.ts)
             opened = self._open_span(
                 state,
                 scope.span.handle,
-                name=str(details.get("task_name") or task_key),
+                # The declared name, else the NODE's own name - its label or
+                # id, which is what the node span is called. Never the task
+                # key: for an unnamed task that is a UUID nobody can read.
+                name=_declared_task_name(details) or scope.span.name,
                 as_type=TYPE_SPAN,
                 role="task",
                 start=frame.ts,
@@ -2020,7 +2079,7 @@ class LangfuseExporter:
 
         stage = str(details.get("stage") or "")
         agent_key = str(details.get("agent_id") or details.get("agent_role") or "")
-        task_key = str(details.get("task_id") or details.get("task_name") or "")
+        task_key = _task_key(details)
         parent = self._scope(state, frame, details)
         if stage not in ("after", "error"):
             # An opening frame that named an actor has already been recorded -
@@ -2200,7 +2259,7 @@ class LangfuseExporter:
                 [
                     frame.node_id,
                     str(details.get("agent_role") or ""),
-                    str(details.get("task_name") or ""),
+                    _declared_task_name(details),
                     model,
                 ]
             ),
@@ -2564,7 +2623,7 @@ class LangfuseExporter:
             metadata=metadata,
             level=None if level == _DEFAULT else level,
             status_message=(
-                self._safe(details.get("error") or frame.message)
+                self._safe(details.get("error") or _frame_sentence(frame, details))
                 if level == _ERROR
                 else None
             ),

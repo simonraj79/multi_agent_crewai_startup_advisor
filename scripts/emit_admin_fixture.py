@@ -290,6 +290,13 @@ def examples() -> dict[str, Any]:
             },
             rating=RUN_RATING,
             langfuse={"session_url": SESSION_URL, "trace_url": TRACE_URL},
+            answer=(
+                "## Verdict: needs work\n\n"
+                "The segment is real but the **pricing** is unproven. "
+                "See [the market note](https://example.com/market).\n\n"
+                "- Demand: 3 of 5\n- Competition: crowded"
+            ),
+            answer_truncated=False,
         ),
         "GET /api/admin/gates": AdminGatesModel(
             approve=71,

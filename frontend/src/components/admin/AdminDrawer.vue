@@ -26,6 +26,7 @@ import MoneyFigure from './MoneyFigure.vue'
 import RatingControl from '../RatingControl.vue'
 import { count, duration, durationMs, humanise, money, personLabel, when } from './adminFormat'
 import { adminApi } from '../../services/adminApi'
+import { renderMarkdown } from '../../utils/markdown'
 import { readRunRating, runRatingWord } from '../../data/runRating'
 import { isTerminalRunStatus } from '../../data/runStatusDisplay'
 import type {
@@ -66,6 +67,7 @@ watch(
     billed.value = null
     billedProblem.value = ''
     cancelProblem.value = ''
+    answerOpen.value = false
   },
 )
 
@@ -110,6 +112,32 @@ async function cancelRun(): Promise<void> {
     cancelBusy.value = false
   }
 }
+
+/* ── what it answered ────────────────────────────────────────────────────── */
+
+/**
+ * The run's own answer, so the person asked "was this run good?" has read the
+ * thing they are judging. Every automatic check can be green on a reply that
+ * is plainly wrong - a billing agent announcing a charge it never made - and
+ * nothing but reading it catches that.
+ *
+ * The body is model output, untrusted by construction, so it reaches the page
+ * only through `renderMarkdown`, which escapes every character before it
+ * recognises any structure (the same path `ReportPanel.vue` uses).
+ */
+const answer = computed(() => props.decisions?.answer ?? null)
+const answerHtml = computed(() => (answer.value ? renderMarkdown(answer.value) : ''))
+const answerOpen = ref(false)
+
+/** Past this many characters or lines the block starts collapsed and offers
+ *  "Show all". A count rather than a measured height, because the drawer is
+ *  judged in jsdom as well as in a browser and jsdom has no layout. */
+const ANSWER_COLLAPSE_CHARS = 600
+const ANSWER_COLLAPSE_LINES = 10
+const answerLong = computed(() => {
+  const text = answer.value ?? ''
+  return text.length > ANSWER_COLLAPSE_CHARS || text.split('\n').length > ANSWER_COLLAPSE_LINES
+})
 
 /* ── was this run good? ───────────────────────────────────────────────────── */
 
@@ -254,6 +282,45 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
           </dl>
           <p v-else-if="billedRefusal" class="admin-warning" role="status">{{ billedRefusal }}</p>
           <p v-if="billedProblem" class="admin-problem" role="alert">{{ billedProblem }}</p>
+        </section>
+
+        <!--
+          READ, THEN JUDGE. This block sits above "Was this run good?" on
+          purpose: the rating is only worth having from somebody who has read
+          the answer, and until this block existed nobody on this screen could.
+        -->
+        <section class="admin-drawer-block" aria-labelledby="admin-answer-title" data-testid="admin-answer">
+          <header class="admin-block-head">
+            <h3 id="admin-answer-title">What it answered</h3>
+            <span class="panel-meta">the run's final reply</span>
+          </header>
+          <template v-if="answer">
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <article
+              id="admin-answer-body"
+              class="admin-answer markdown-body"
+              :class="{ 'is-collapsed': answerLong && !answerOpen }"
+              data-testid="admin-answer-body"
+              v-html="answerHtml"
+            ></article>
+            <button
+              v-if="answerLong"
+              class="button button-secondary admin-answer-toggle"
+              type="button"
+              aria-controls="admin-answer-body"
+              :aria-expanded="answerOpen"
+              data-testid="admin-answer-toggle"
+              @click="answerOpen = !answerOpen"
+            >
+              {{ answerOpen ? 'Show less' : 'Show all' }}
+            </button>
+            <p v-if="decisions?.answer_truncated" class="admin-sub" data-testid="admin-answer-truncated">
+              This is the first part only; the stored answer is longer than the console shows.
+            </p>
+          </template>
+          <p v-else-if="!loading && decisions" class="admin-empty" data-testid="admin-answer-empty">
+            This run stored no answer.
+          </p>
         </section>
 
         <!--

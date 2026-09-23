@@ -283,7 +283,9 @@
     "langfuse": {
       "session_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/sessions/073c021f-4ff7-43e1-84d5-d9e8dd7fa0ba",
       "trace_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/traces/073c021f4ff743e184d5d9e8dd7fa0ba"
-    }
+    },
+    "answer": "## Verdict: needs work\n\nThe segment is real but the **pricing** is unproven. See [the market note](https://example.com/market).\n\n- Demand: 3 of 5\n- Competition: crowded",
+    "answer_truncated": false
   },
   "GET /api/admin/gates": {
     "approve": 71,

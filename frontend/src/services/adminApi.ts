@@ -328,6 +328,14 @@ export interface AdminDecisions {
    * see `data/runRating.ts` for which and why.
    */
   rating?: RunRatingWire | null
+  /**
+   * What the run answered: the stored result's body text and nothing else of
+   * it, or `null` when the run stored none. Untrusted model output - render it
+   * only through `utils/markdown.ts`.
+   */
+  answer?: string | null
+  /** True when the server cut `answer` at its bound. */
+  answer_truncated?: boolean
 }
 
 export interface AdminGateStats {
@@ -1072,7 +1080,11 @@ export interface ImproveDigestPage {
 export type EvalsetRating = 'good' | 'bad' | 'unsure' | 'any'
 
 export interface ImproveApiLike {
-  hotspots(workflowId: string, window?: AdminWindow): Promise<ImproveHotspots>
+  hotspots(
+    workflowId: string,
+    window?: AdminWindow,
+    documentVersion?: number | null,
+  ): Promise<ImproveHotspots>
   compare(
     workflowId: string,
     axis: ImproveCompareAxis,
@@ -1094,9 +1106,24 @@ function fileSafe(value: string): string {
 }
 
 export const improveApi: ImproveApiLike = {
-  hotspots: (workflowId, window) =>
+  /**
+   * `document_version` is sent ONLY for a positive whole number. Absent means
+   * every published version pooled together, which is the server's own
+   * default - so "All versions" is no parameter at all, never a sentinel.
+   */
+  hotspots: (workflowId, window, documentVersion) =>
     fetchJson<ImproveHotspots>(
-      improvePath(`/hotspots${windowQuery(window, { workflow_id: workflowId })}`),
+      improvePath(
+        `/hotspots${windowQuery(window, {
+          workflow_id: workflowId,
+          document_version:
+            typeof documentVersion === 'number' &&
+            Number.isInteger(documentVersion) &&
+            documentVersion > 0
+              ? String(documentVersion)
+              : '',
+        })}`,
+      ),
     ),
 
   /**

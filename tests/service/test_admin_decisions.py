@@ -189,6 +189,9 @@ class DecisionsDrawerTests(AdminCase):
                 # Plan 20's one addition to this drawer.
                 "rating",
                 "langfuse",
+                # What the run answered, so it can be read before it is judged.
+                "answer",
+                "answer_truncated",
             },
         )
         self.assertEqual(
@@ -204,6 +207,68 @@ class DecisionsDrawerTests(AdminCase):
                 "response",
             },
         )
+
+
+class WhatItAnsweredTests(AdminCase):
+    """The drawer shows the run's answer, so an admin judges what they read.
+
+    Found in a live demo: every automatic check was green on a billing reply
+    that claimed a card had been charged, and the only way to catch it was to
+    read the reply - which the drawer did not show.
+    """
+
+    def seed_answer(self, run_id: str, result: object) -> None:
+        self.seed_run(run_id)
+        self.store.update_run_status(run_id, "completed", result=result)
+
+    def test_the_body_text_comes_back_and_nothing_else_of_the_result(self) -> None:
+        reply = "# Reply\n\nYour card was charged."
+        self.seed_answer("r-a", {"markdown_body": reply, "verdict": {"secret": 1}})
+        body = self.ok("/runs/r-a/decisions")
+        self.assertEqual(body["answer"], reply)
+        self.assertFalse(body["answer_truncated"])
+        self.assertNotIn("secret", str(body["answer"]))
+
+    def test_a_run_with_no_stored_body_answers_null(self) -> None:
+        self.seed_run("r-none")
+        body = self.ok("/runs/r-none/decisions")
+        self.assertIsNone(body["answer"])
+        self.assertFalse(body["answer_truncated"])
+        self.seed_answer("r-other", {"verdict": "VALIDATE"})
+        self.assertIsNone(self.ok("/runs/r-other/decisions")["answer"])
+        self.seed_answer("r-blank", {"markdown_body": "   "})
+        self.assertIsNone(self.ok("/runs/r-blank/decisions")["answer"])
+
+    def test_an_unknown_run_answers_null_rather_than_failing(self) -> None:
+        body = self.ok("/runs/r-missing/decisions")
+        self.assertIsNone(body["answer"])
+
+    def test_a_long_answer_is_cut_at_the_bound_and_says_so(self) -> None:
+        from unittest.mock import patch
+
+        from brief_crew import config
+
+        self.seed_answer("r-long", {"markdown_body": "x" * 50})
+        with patch.object(config, "ADMIN_ANSWER_MAX_CHARS", 20):
+            body = self.ok("/runs/r-long/decisions")
+        self.assertEqual(body["answer"], "x" * 20)
+        self.assertTrue(body["answer_truncated"])
+
+    def test_the_bound_is_the_run_result_bound(self) -> None:
+        from brief_crew import config
+
+        self.assertEqual(config.ADMIN_ANSWER_MAX_CHARS, config.MAX_RUN_RESULT_BODY_CHARS)
+
+    def test_a_non_admin_still_gets_the_unknown_route_404(self) -> None:
+        self.seed_answer("r-a", {"markdown_body": "private reply"})
+        response = self.client.get(
+            "/api/admin/runs/r-a/decisions", headers=self.as_alice()
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("private reply", response.text)
+        anonymous = self.client.get("/api/admin/runs/r-a/decisions")
+        self.assertNotIn("private reply", anonymous.text)
+        self.assertNotEqual(anonymous.status_code, 200)
 
 
 class NoJsonPathInAnySqlTests(unittest.TestCase):

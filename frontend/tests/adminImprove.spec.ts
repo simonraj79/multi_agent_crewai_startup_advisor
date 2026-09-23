@@ -3,7 +3,7 @@ import path from 'node:path'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminView from '../src/views/AdminView.vue'
-import { resetAdminGate } from '../src/services/adminApi'
+import { improveApi, resetAdminGate } from '../src/services/adminApi'
 import { clearAccessToken, setSessionActive } from '../src/services/authClient'
 import adminFixture from './fixtures/adminApi.json'
 
@@ -600,6 +600,92 @@ describe('Where runs go wrong names the step, not the mechanism', () => {
     expect(wrapper.get(`[data-testid="improve-copy-run-${ids[0]}"]`).attributes('aria-label')).toContain(
       'Copy run id',
     )
+    wrapper.unmount()
+  })
+})
+
+/* ── Where runs go wrong, one version at a time ──────────────────────────── */
+
+describe('Where runs go wrong can be scoped to one published version', () => {
+  const hotspotUrls = () =>
+    asked.map((entry) => entry.url).filter((url) => url.includes('/api/admin/improve/hotspots'))
+  const digestReads = () =>
+    asked.filter(
+      (entry) => entry.method === 'GET' && entry.url.includes('/api/admin/improve/digests'),
+    ).length
+
+  it('the client sends document_version only for a positive whole number', async () => {
+    await improveApi.hotspots(WORKFLOW_ID, undefined, 3)
+    expect(asked.at(-1)?.url).toContain('document_version=3')
+    for (const absent of [undefined, null, 0, -1, 1.5, Number.NaN]) {
+      await improveApi.hotspots(WORKFLOW_ID, undefined, absent as number | null | undefined)
+      expect(asked.at(-1)?.url, String(absent)).not.toContain('document_version')
+    }
+  })
+
+  it('reads every version by default: "All" sends no version at all', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const box = wrapper.get('[data-testid="improve-wrong-version"]')
+    expect((box.element as HTMLInputElement).value).toBe('')
+    expect(box.attributes('placeholder')).toBe('All versions')
+    expect(wrapper.text()).toContain('Version (blank = all)')
+    const urls = hotspotUrls()
+    expect(urls.length).toBeGreaterThan(0)
+    for (const url of urls) expect(url).not.toContain('document_version')
+    wrapper.unmount()
+  })
+
+  it('sends the chosen version, and re-reads only this section', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const hotspotsBefore = hotspotUrls().length
+    const digestsBefore = digestReads()
+    const box = wrapper.get('[data-testid="improve-wrong-version"]')
+    await box.setValue('2')
+    await settle()
+    const urls = hotspotUrls()
+    expect(urls.length).toBe(hotspotsBefore + 1)
+    expect(urls.at(-1)).toContain('document_version=2')
+    expect(urls.at(-1)).toContain(`workflow_id=${encodeURIComponent(WORKFLOW_ID)}`)
+    expect(digestReads()).toBe(digestsBefore)
+
+    // Back to blank is back to every version, with no parameter.
+    await box.setValue('')
+    await settle()
+    expect(hotspotUrls().at(-1)).not.toContain('document_version')
+    wrapper.unmount()
+  })
+
+  it('fetches nothing for a value that is not a version, and says what it wants', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const before = hotspotUrls().length
+    const box = wrapper.get('[data-testid="improve-wrong-version"]')
+    await box.setValue('v2')
+    await settle()
+    expect(hotspotUrls().length).toBe(before)
+    expect(wrapper.get('[data-testid="improve-wrong-version-invalid"]').text()).toContain(
+      'whole number',
+    )
+    wrapper.unmount()
+  })
+
+  it('goes back to every version when the workflow changes', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const box = wrapper.get('[data-testid="improve-wrong-version"]')
+    await box.setValue('2')
+    await settle()
+    expect(hotspotUrls().at(-1)).toContain('document_version=2')
+
+    await wrapper.get('[data-testid="improve-workflow"]').setValue('')
+    await settle()
+    await chooseWorkflow(wrapper)
+    expect(
+      (wrapper.get('[data-testid="improve-wrong-version"]').element as HTMLInputElement).value,
+    ).toBe('')
+    expect(hotspotUrls().at(-1)).not.toContain('document_version')
     wrapper.unmount()
   })
 })

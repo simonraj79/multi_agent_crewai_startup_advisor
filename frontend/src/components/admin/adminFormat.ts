@@ -77,6 +77,11 @@ export function when(value: string | null | undefined): string {
   return Number.isNaN(parsed.getTime()) ? '—' : stamp.format(parsed)
 }
 
+/** A run's workflow version as `v3`, or `—` when none was recorded. */
+export function versionLabel(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `v${value}` : '—'
+}
+
 /** A bare day bucket (`2026-09-01`) as `Mon 1 Sep`, without inventing a zone. */
 export function dayLabel(day: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)

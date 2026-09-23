@@ -2220,6 +2220,7 @@ class PostgresFlowPersistence(FlowPersistence):
             runs.c.rating,
             runs.c.rated_by,
             runs.c.rated_at,
+            runs.c.document_version,
         )
         statement = self._window(statement, runs.c.created_at, start, end)
         if status:
@@ -2287,6 +2288,11 @@ class PostgresFlowPersistence(FlowPersistence):
                 "rating": row["rating"],
                 "rated_by": row["rated_by"],
                 "rated_at": _as_utc(row["rated_at"]),
+                "document_version": (
+                    int(row["document_version"])
+                    if row["document_version"] is not None
+                    else None
+                ),
             }
             for row in rows
         ]

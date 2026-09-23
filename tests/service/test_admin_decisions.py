@@ -192,6 +192,9 @@ class DecisionsDrawerTests(AdminCase):
                 # What the run answered, so it can be read before it is judged.
                 "answer",
                 "answer_truncated",
+                # What it was asked, and which version asked it.
+                "question",
+                "document_version",
             },
         )
         self.assertEqual(
@@ -269,6 +272,104 @@ class WhatItAnsweredTests(AdminCase):
         anonymous = self.client.get("/api/admin/runs/r-a/decisions")
         self.assertNotIn("private reply", anonymous.text)
         self.assertNotEqual(anonymous.status_code, 200)
+
+
+class WhatWasAskedTests(AdminCase):
+    """The drawer shows the run's question beside its answer.
+
+    Found on production comparing a v3 and a v5 run of one workflow: a support
+    reply cannot be judged without the customer's message. The question is the
+    ONE input `create_run` bounds as the prompt, by `workflow_input_field`.
+    """
+
+    def register_builder(self, workflow_id: str, input_field: str) -> None:
+        from dataclasses import replace
+
+        base = self.registry.workflows["idea-validator"]
+        self.registry.workflows[workflow_id] = replace(base, input_field=input_field)
+        self.addCleanup(self.registry.workflows.pop, workflow_id, None)
+
+    def test_a_builder_run_answers_its_own_input_field(self) -> None:
+        self.register_builder("ug_support01", "customer_message")
+        self.seed_run(
+            "r-b",
+            workflow_id="ug_support01",
+            inputs={"customer_message": "Was I charged twice?", "tone": "warm"},
+            document_version=5,
+        )
+        body = self.ok("/runs/r-b/decisions")
+        self.assertEqual(body["question"], "Was I charged twice?")
+        self.assertEqual(body["document_version"], 5)
+
+    def test_the_validator_answers_its_idea(self) -> None:
+        self.seed_run("r-v")
+        body = self.ok("/runs/r-v/decisions")
+        self.assertEqual(body["question"], "a scheduling assistant for clinics")
+        self.assertIsNone(body["document_version"])
+
+    def test_other_input_keys_never_travel(self) -> None:
+        self.seed_run(
+            "r-x",
+            inputs={
+                "idea": "the prompt",
+                "topic": "SECRET-TOPIC",
+                "api_note": "SECRET-NOTE",
+            },
+        )
+        response = self.get("/runs/r-x/decisions")
+        self.assertEqual(response.json()["question"], "the prompt")
+        self.assertNotIn("SECRET", response.text)
+
+    def test_null_when_the_prompt_input_is_absent(self) -> None:
+        self.seed_run("r-empty", inputs={"topic": "not the validator's key"})
+        self.assertIsNone(self.ok("/runs/r-empty/decisions")["question"])
+        self.seed_run("r-blank", inputs={"idea": "   "})
+        self.assertIsNone(self.ok("/runs/r-blank/decisions")["question"])
+        self.assertIsNone(self.ok("/runs/r-missing/decisions")["question"])
+
+    def test_null_for_a_workflow_this_process_does_not_know(self) -> None:
+        self.seed_run(
+            "r-gone", workflow_id="ug_deadbeef", inputs={"idea": "an old graph"}
+        )
+        self.assertIsNone(self.ok("/runs/r-gone/decisions")["question"])
+
+    def test_a_long_question_is_cut_at_the_prompt_bound(self) -> None:
+        from brief_crew import config
+
+        self.seed_run(
+            "r-long", inputs={"idea": "y" * (config.MAX_RUN_INPUT_CHARS + 50)}
+        )
+        question = self.ok("/runs/r-long/decisions")["question"]
+        self.assertEqual(len(question), config.MAX_RUN_INPUT_CHARS)
+
+    def test_a_non_admin_gets_the_unknown_route_404(self) -> None:
+        self.seed_run("r-p", inputs={"idea": "private question"})
+        response = self.client.get(
+            "/api/admin/runs/r-p/decisions", headers=self.as_alice()
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("private question", response.text)
+        anonymous = self.client.get("/api/admin/runs/r-p/decisions")
+        self.assertNotEqual(anonymous.status_code, 200)
+        self.assertNotIn("private question", anonymous.text)
+
+
+class RunRowVersionTests(AdminCase):
+    """Which version produced a run, on the Runs table and a user's detail."""
+
+    def test_the_runs_list_carries_document_version(self) -> None:
+        self.seed_run("r-v3", age_hours=2, document_version=3)
+        self.seed_run("r-v5", age_hours=1, document_version=5)
+        self.seed_run("r-none", age_hours=3)
+        rows = {row["run_id"]: row for row in self.ok("/runs")["rows"]}
+        self.assertEqual(rows["r-v3"]["document_version"], 3)
+        self.assertEqual(rows["r-v5"]["document_version"], 5)
+        self.assertIsNone(rows["r-none"]["document_version"])
+
+    def test_the_user_detail_rows_carry_it_too(self) -> None:
+        self.seed_run("r-u", document_version=4)
+        detail = self.ok(f"/users/{ALICE.id}")
+        self.assertEqual(detail["recent_runs"][0]["document_version"], 4)
 
 
 class NoJsonPathInAnySqlTests(unittest.TestCase):

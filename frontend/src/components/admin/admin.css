@@ -518,6 +518,16 @@
    long URL in a model's reply cannot widen the docked drawer. */
 .admin-answer { min-width: 0; margin: 0; padding: var(--space-4); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); overflow-wrap: anywhere; }
 .admin-answer.is-collapsed { max-height: 16em; overflow: hidden; }
+/* The question is the person's own text: kept as typed, line breaks and all. */
+.admin-question { white-space: pre-wrap; font: var(--type-body); color: var(--text-body); }
+/* A reply's headings at the drawer's scale, not a document's: `.markdown-body`
+   sizes an h1 for a full-width report, which in a ~340px drawer pushes the
+   body below the fold. Two classes, so this outranks the global rule. */
+.admin-answer.markdown-body h1,
+.admin-answer.markdown-body h2 { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-15); }
+.admin-answer.markdown-body h3,
+.admin-answer.markdown-body h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-14); }
+.admin-answer.markdown-body > :first-child { margin-top: 0; }
 .admin-answer-toggle { justify-self: start; }
 
 .admin-trail { display: grid; gap: var(--space-3); margin: 0; padding: 0 0 0 var(--space-5); }

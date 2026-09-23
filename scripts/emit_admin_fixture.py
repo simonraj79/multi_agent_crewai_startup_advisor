@@ -126,6 +126,7 @@ RUN_ROW: dict[str, Any] = {
     "rating": "good",
     "rated_by": "user_owner",
     "rated_at": "2026-09-08T11:44:00Z",
+    "document_version": 3,
     "integrity": {"captured": 412, "dropped": 0, "gaps": 0},
     "langfuse": {"session_url": SESSION_URL, "trace_url": TRACE_URL},
 }
@@ -297,6 +298,8 @@ def examples() -> dict[str, Any]:
                 "- Demand: 3 of 5\n- Competition: crowded"
             ),
             answer_truncated=False,
+            question="A scheduling assistant for clinics that fills no-show slots",
+            document_version=3,
         ),
         "GET /api/admin/gates": AdminGatesModel(
             approve=71,

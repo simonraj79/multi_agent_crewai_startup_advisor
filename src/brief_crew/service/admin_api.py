@@ -351,6 +351,11 @@ class RunRow(AdminModel):
     rating: str | None
     rated_by: str | None
     rated_at: str | None
+    #: The published builder document version this run ran (plan 21's
+    #: `runs.document_version`), or `None` for a hand-written flow or a run
+    #: recorded before the column existed. Shown so a before and an after run
+    #: of one workflow can be told apart.
+    document_version: int | None = None
     integrity: RunIntegrity
     langfuse: LangfuseRunLinks
 
@@ -420,6 +425,33 @@ class AdminDecisionsModel(AdminModel):
     answer: str | None = None
     #: True when `answer` was cut at `ADMIN_ANSWER_MAX_CHARS`.
     answer_truncated: bool = False
+    #: What the run was asked: the ONE stored input `create_run` bounded as
+    #: the prompt (`workflow_input_field`'s key - `idea`, `topic`, or a
+    #: builder graph's own `input_field`), as text, cut at
+    #: `MAX_RUN_INPUT_CHARS`. No other input key ever travels. `None` when the
+    #: workflow is unknown to this process or the run stored no such input.
+    #: Admin-only, never logged, never sent to Langfuse - `answer`'s rule.
+    question: str | None = None
+    #: The run's `runs.document_version`, for the drawer's header.
+    document_version: int | None = None
+
+
+def run_question(inputs: Any, field: str | None) -> str | None:
+    """The one prompt input of a stored run, as bounded text, or `None`.
+
+    `field` is decided by the caller with `create_run`'s own rule; this reads
+    that key and nothing else of `inputs`.
+    """
+
+    if not field or not isinstance(inputs, Mapping):
+        return None
+    value = inputs.get(field)
+    if value is None:
+        return None
+    text = value if isinstance(value, str) else str(value)
+    if not text.strip():
+        return None
+    return text[: config.MAX_RUN_INPUT_CHARS]
 
 
 def run_answer(result: Any) -> tuple[str | None, bool]:
@@ -945,6 +977,7 @@ def create_admin_router(
     resolve_user: Callable[..., Any],
     registry: Any,
     persistence_factory: Callable[[], Any],
+    input_field_for: Callable[[str], str | None] | None = None,
     store_factory: Callable[[], Any],
     health_payload: Callable[..., tuple[dict[str, Any], int]],
     exporter_state_for: Callable[[], dict[str, Any]],
@@ -970,6 +1003,10 @@ def create_admin_router(
     `providers` is the probe cache (`service/providers.py`); a test passes a
     double, and `None` builds the real one lazily on first use so an app that
     never opens the console makes no client.
+
+    `input_field_for` is `app.py`'s `registered_input_field`, injected so the
+    drawer's "What was asked" reads the same key `create_run` bounds as the
+    prompt. `None` (a caller that builds the router by hand) shows no question.
     """
 
     from fastapi import APIRouter, Depends, HTTPException, Query
@@ -1100,6 +1137,7 @@ def create_admin_router(
                     rating=row.get("rating"),
                     rated_by=row.get("rated_by"),
                     rated_at=_iso(row.get("rated_at")),
+                    document_version=row.get("document_version"),
                     integrity=RunIntegrity(
                         captured=row["captured_frames"],
                         dropped=row["dropped_frames"],
@@ -1552,6 +1590,14 @@ def create_admin_router(
         gates = persistence.list_gates(run_id)
         stored = persistence.get_run(run_id)
         answer, answer_truncated = run_answer(stored.get("result") if stored else None)
+        question = (
+            run_question(
+                stored.get("inputs"),
+                input_field_for(stored["workflow_id"]) if input_field_for else None,
+            )
+            if stored
+            else None
+        )
         frames, _truncated = persistence.admin_frames_by_kind(
             ["guardrail", "verdict", "error"],
             run_ids=[run_id],
@@ -1621,6 +1667,8 @@ def create_admin_router(
             langfuse=langfuse_links(run_id),
             answer=answer,
             answer_truncated=answer_truncated,
+            question=question,
+            document_version=stored.get("document_version") if stored else None,
         )
 
     @router.get("/gates", response_model=AdminGatesModel)

@@ -587,3 +587,78 @@ describe('the drawer shows what the run answered, above "Was this run good?"', (
     whole.unmount()
   })
 })
+
+describe('the drawer shows what was asked, then what it answered, then the rating', () => {
+  const RUN = (fixture['GET /api/admin/runs'] as { rows: AdminRunRow[] }).rows[0]
+  const DECISIONS = F['GET /api/admin/runs/{run_id}/decisions'] as AdminDecisions
+
+  function drawer(decisions: AdminDecisions | null, run: AdminRunRow = RUN, loading = false) {
+    return mount(AdminDrawer, {
+      props: { run, decisions, person: null, links: null, loading, problem: '' },
+    })
+  }
+
+  it('orders the three blocks: asked, answered, judged', () => {
+    const wrapper = drawer(DECISIONS)
+    const headings = wrapper.findAll('h3').map((h) => h.text())
+    const asked = headings.indexOf('What was asked')
+    const answered = headings.indexOf('What it answered')
+    const judged = headings.indexOf('Was this run good?')
+    expect(asked).toBeGreaterThanOrEqual(0)
+    expect(asked).toBeLessThan(answered)
+    expect(answered).toBeLessThan(judged)
+    expect(wrapper.get('[data-testid="admin-question-body"]').text()).toBe(DECISIONS.question)
+    wrapper.unmount()
+  })
+
+  it('renders the question as escaped text, never as markdown or markup', () => {
+    const typed = '# Not a heading\n\n**not bold** <img src=x onerror="alert(1)"> <b>no</b>'
+    const wrapper = drawer({ ...DECISIONS, question: typed })
+    const body = wrapper.get('[data-testid="admin-question-body"]')
+    expect(body.find('h1').exists()).toBe(false)
+    expect(body.find('strong').exists()).toBe(false)
+    expect(body.find('img').exists()).toBe(false)
+    expect(body.find('b').exists()).toBe(false)
+    expect(body.element.textContent).toBe(typed)
+    wrapper.unmount()
+  })
+
+  it('says so when the run stored no question, but not while still reading', () => {
+    const wrapper = drawer({ ...DECISIONS, question: null })
+    expect(wrapper.find('[data-testid="admin-question-body"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="admin-question-empty"]').exists()).toBe(true)
+    wrapper.unmount()
+    const reading = drawer(null, RUN, true)
+    expect(reading.find('[data-testid="admin-question-empty"]').exists()).toBe(false)
+    reading.unmount()
+  })
+
+  it('puts the version in the drawer header, from the decisions or the row', () => {
+    const fromDecisions = drawer({ ...DECISIONS, document_version: 5 }, { ...RUN, document_version: null })
+    expect(fromDecisions.get('[data-testid="admin-drawer-meta"]').text()).toContain('· v5')
+    fromDecisions.unmount()
+    const fromRow = drawer({ ...DECISIONS, document_version: null }, { ...RUN, document_version: 3 })
+    expect(fromRow.get('[data-testid="admin-drawer-meta"]').text()).toContain('· v3')
+    fromRow.unmount()
+    const none = drawer({ ...DECISIONS, document_version: null }, { ...RUN, document_version: null })
+    const meta = none.get('[data-testid="admin-drawer-meta"]').text()
+    expect(meta).toBe(RUN.run_id)
+    none.unmount()
+  })
+
+  it('shows a Version column: v3 for a versioned run, a dash for none', () => {
+    const other = '9a2f0000-0000-4000-8000-000000000003'
+    const wrapper = mount(AdminRuns, {
+      props: {
+        runs: { rows: [{ ...RUN, document_version: 3 }, { ...RUN, run_id: other, document_version: null }], next: null },
+        gates: null, verdicts: null, links: null,
+        selectedRunId: null, rating: '' as const, loading: false, problem: '',
+      },
+    })
+    const heads = wrapper.findAll('thead th').map((th) => th.text())
+    expect(heads.indexOf('Version')).toBe(heads.indexOf('Workflow') + 1)
+    expect(wrapper.get(`[data-testid="admin-run-version-${RUN.run_id}"]`).text()).toBe('v3')
+    expect(wrapper.get(`[data-testid="admin-run-version-${other}"]`).text()).toBe('—')
+    wrapper.unmount()
+  })
+})

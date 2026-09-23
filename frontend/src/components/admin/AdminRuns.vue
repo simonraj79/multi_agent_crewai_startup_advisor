@@ -17,7 +17,7 @@ import { TriangleAlert } from 'lucide-vue-next'
 import AdminBar from './AdminBar.vue'
 import LangfuseLink from './LangfuseLink.vue'
 import MoneyFigure from './MoneyFigure.vue'
-import { count, duration, durationMs, humanise, personLabel, shortId, when } from './adminFormat'
+import { count, duration, durationMs, humanise, personLabel, shortId, versionLabel, when } from './adminFormat'
 import { runRatingWord } from '../../data/runRating'
 import type {
   AdminGateStats,
@@ -203,6 +203,7 @@ const slowestGate = computed(() => {
               <th scope="col">Run</th>
               <th scope="col">Person</th>
               <th scope="col">Workflow</th>
+              <th scope="col" title="The published version of the workflow this run ran">Version</th>
               <th scope="col">Status</th>
               <th scope="col" class="is-number">Took</th>
               <th scope="col" class="is-number">Est.</th>
@@ -233,6 +234,7 @@ const slowestGate = computed(() => {
               </th>
               <td>{{ personLabel(row.user_id, row.email) }}</td>
               <td>{{ row.workflow_id }}</td>
+              <td :data-testid="`admin-run-version-${row.run_id}`">{{ versionLabel(row.document_version) }}</td>
               <td>
                 <span class="admin-pill" :class="`is-${row.status}`">{{ row.status }}</span>
                 <span v-if="row.stop_reason" class="admin-sub">{{ humanise(row.stop_reason) }}</span>

@@ -727,5 +727,120 @@ class NoJsonPathInMiningSqlTests(unittest.TestCase):
         self.assertNotIn("sqlalchemy import text", source)
 
 
+class TasksGroupByStepNotByPromptTests(unittest.TestCase):
+    """Found by LOOKING at production, 2026-09-23.
+
+    A builder task has no `name`, so CrewAI fills the frame's `task_name`
+    with the RENDERED description - the user's input interpolated into it. The
+    panel grouped on that string, so 24 runs of a four-agent workflow read as
+    26 "tasks", one per customer message, each "0 of 2 completions". The key
+    is the node now, plus a task name only when one was declared.
+
+    Called on `mine_hotspots` directly, with no database: the function is
+    free precisely so a test can hand it rows.
+    """
+
+    WORKFLOW = "ug_triage001"
+    INPUTS = (
+        "Please add three more seats for our new hires.",
+        "Downgrade us to the starter plan next month.",
+        "Why was my card charged twice on the 4th?",
+    )
+
+    def mine(self, frames: list[dict]) -> dict:
+        from brief_crew.service.improve_api import _window_model, mine_hotspots
+
+        run_ids = sorted({frame["run_id"] for frame in frames})
+        return mine_hotspots(
+            window=_window_model(NOW - timedelta(days=1), NOW),
+            workflow_id=self.WORKFLOW,
+            runs=[{"run_id": run_id, "status": "completed"} for run_id in run_ids],
+            frames=frames,
+            gates=[],
+            node_costs=[],
+        ).model_dump(mode="json")
+
+    @staticmethod
+    def completion(run_id: str, node_id: str, task_name: str, failures: int) -> dict:
+        return {
+            "run_id": run_id,
+            "kind": "agent",
+            "node_id": node_id,
+            "message": f"{task_name} completed",
+            "details": {
+                "stage": "after",
+                "task_name": task_name,
+                "agent_role": "Account agent",
+                "tool_failure_count": failures,
+            },
+        }
+
+    def builder_frames(self) -> list[dict]:
+        return [
+            self.completion(
+                f"run-{index}",
+                "account",
+                f"Answer this account message. MESSAGE: {text}",
+                1 if index == 0 else 0,
+            )
+            for index, text in enumerate(self.INPUTS)
+        ]
+
+    def test_three_inputs_to_one_node_are_ONE_group_keyed_by_the_node(self) -> None:
+        tasks = self.mine(self.builder_frames())["tasks"]
+        self.assertEqual(1, len(tasks), tasks)
+        row = tasks[0]
+        self.assertEqual("account", row["node_id"])
+        self.assertEqual("account", row["task_name"])
+        self.assertEqual(3, row["completions"])
+        self.assertEqual(1, row["tool_failures"])
+
+    def test_no_users_text_appears_anywhere_in_the_task_section(self) -> None:
+        body = self.mine(self.builder_frames())
+        section = repr(body["tasks"])
+        for text in self.INPUTS:
+            with self.subTest(text=text):
+                self.assertNotIn(text, section)
+        self.assertNotIn("MESSAGE", section)
+        self.assertEqual(3, body["task_completions"])
+        self.assertEqual(1, body["task_tool_failures"])
+
+    def test_a_declared_task_name_still_splits_one_crew_node_in_two(self) -> None:
+        """The key is node PLUS declared name, so a crew node running two
+        named tasks is two rows - the fix did not collapse real steps."""
+
+        frames = [
+            self.completion("r-1", "brief", "research_task", 0),
+            self.completion("r-1", "brief", "writing_task", 1),
+            self.completion("r-2", "brief", "research_task", 0),
+        ]
+        rows = {row["task_name"]: row for row in self.mine(frames)["tasks"]}
+        self.assertEqual({"research_task", "writing_task"}, set(rows))
+        self.assertEqual(2, rows["research_task"]["completions"])
+        self.assertEqual(1, rows["writing_task"]["tool_failures"])
+
+
+class DeclaredTaskNameTests(unittest.TestCase):
+    """The predicate every consumer of a frame's `task_name` now asks."""
+
+    def test_identifiers_are_names(self) -> None:
+        for value in ("scoping_task", "market_task", "n1", "triage-2", "a.b"):
+            with self.subTest(value=value):
+                self.assertEqual(value, config.declared_task_name(value))
+
+    def test_a_rendered_description_is_not(self) -> None:
+        for value in (
+            "Classify the customer message below as exactly one of: billing",
+            "Answer this account message.",
+            "",
+            "   ",
+            "x" * 65,
+            None,
+            42,
+        ):
+            with self.subTest(value=value):
+                self.assertEqual("", config.declared_task_name(value))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

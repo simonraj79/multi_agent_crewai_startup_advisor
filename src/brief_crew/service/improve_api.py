@@ -316,7 +316,12 @@ class RouteHotspot(ImproveModel):
 
 
 class TaskHotspot(ImproveModel):
-    """One task's completions, and how many finished over a tool failure.
+    """One STEP's task completions, and how many finished over a tool failure.
+
+    Keyed by node, plus the task's name only when one was DECLARED
+    (`config.declared_task_name`). `task_name` is that declared name, or the
+    node id when there is none - never the rendered task description, which
+    for a builder task carries the user's own input.
 
     The only row here that CANNOT be answered for a run recorded before the
     serializer change shipped: `tool_failure_count` did not exist, so
@@ -769,15 +774,24 @@ def mine_hotspots(
                 # pair. A run recorded before that shipped produces none,
                 # which is why `task_completions` is reported beside these
                 # rows rather than left to an empty list.
-                task_name = (
-                    _detail_str(details, "task_name")
-                    or labels.get(node_id, {}).get("task_name")
-                    or node_id
+                #
+                # GROUPED BY STEP, never by the frame's `task_name` as it
+                # stands. CrewAI fills that with `task.description` when a task
+                # has no name, and a builder task never has one, so the key
+                # was the RENDERED prompt with the user's input in it: 24 runs
+                # of one four-agent workflow came back as 26 "tasks", one per
+                # customer message (production, 2026-09-23). The key is now
+                # the node, plus a task name only when one was declared - a
+                # crew node running two named tasks still reads as two rows.
+                declared = config.declared_task_name(
+                    details.get("task_name")
+                ) or config.declared_task_name(
+                    labels.get(node_id, {}).get("task_name")
                 )
                 task = tasks.setdefault(
-                    (task_name, node_id),
+                    (declared, node_id),
                     {
-                        "task_name": task_name,
+                        "task_name": declared or node_id,
                         "node_id": node_id,
                         "node_label": labels.get(node_id, {}).get("label") or node_id,
                         "completions": 0,

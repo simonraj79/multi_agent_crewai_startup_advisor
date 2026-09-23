@@ -472,6 +472,12 @@ IDENTITY_STRING_KEYS: frozenset[str] = frozenset(
 MAX_STRUCTURAL_CHARS = 256
 
 
+def _is_declared_task_name(value: str) -> bool:
+    from brief_crew import config as project_config
+
+    return bool(project_config.declared_task_name(value))
+
+
 def described_string(value: str) -> dict[str, Any]:
     """A string as its length and its hash: joinable, unreadable."""
 
@@ -501,6 +507,12 @@ def policy_details(
     if details is None or isinstance(details, (bool, int, float)):
         return details
     if isinstance(details, str):
+        if key == "task_name" and not _is_declared_task_name(details):
+            # CrewAI's `task_name` is `task.description` when the task has no
+            # name, and a builder task never has one: the RENDERED prompt, with
+            # the user's input in it. That is content, however structural the
+            # key. Described, like any other free text (2026-09-23).
+            return described_string(details)
         if key in STRUCTURAL_STRING_KEYS and len(details) <= MAX_STRUCTURAL_CHARS:
             if key in IDENTITY_STRING_KEYS:
                 # An IDENTIFIER: exact-value only. The shape rule has no

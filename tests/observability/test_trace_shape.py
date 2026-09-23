@@ -37,7 +37,13 @@ from tests.observability.replay import (
 
 
 ROLE = "an authored role"
-TASK = "an authored task"
+# An IDENTIFIER, and it has to be one since 2026-09-23. CrewAI fills a
+# frame's `task_name` with the rendered task description when the task has no
+# name, so the exporter carries a task name only when it is identifier-shaped
+# (`config.declared_task_name`) and names the span after the node otherwise.
+# A declared name still travels verbatim, which is what these tests assert;
+# `test_task_name_is_not_content.py` asserts the other half.
+TASK = "an_authored_task"
 IDENTITY = {"agent_role": ROLE, "task_name": TASK}
 
 #: Contract section 3, in the order the contract lists them. `frame_ts` is the

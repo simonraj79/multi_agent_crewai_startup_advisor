@@ -32,7 +32,7 @@ behind a queue.
 trace (one per run; sessionId = run_id)
 └── SPAN  run                     name: "run"                   the whole run; ends with the terminal frame
     └── SPAN  node                name: node label or id        one per flow-method (node) start/end frame
-        └── SPAN  task            name: task name               when the frames carry a task boundary
+        └── SPAN  task            name: task name (see §3a)     when the frames carry a task boundary
             └── AGENT agent       name: agent role              one per agent execution start/end (Langfuse's native AGENT type; metadata.observation_role = "agent")
                 ├── GENERATION    name: model                   one per LLM call (before/after or failed)
                 ├── TOOL          name: tool name               one per tool call (started/finished/error)
@@ -48,6 +48,22 @@ Langfuse ingestion in use has no TOOL type, a SPAN with `metadata.observation_ro
 An unknown frame kind or event type becomes an EVENT observation named after the
 frame's `event_type`, carrying the frame's redacted `details` as metadata. It is
 never dropped silently (C3).
+
+### 3a. A task name is sent only when it is DECLARED (amended 2026-09-23)
+
+CrewAI sets a task event's `task_name` to `task.name or task.description`, so a task
+with no `name` - every builder task - reports its **rendered description**, with the
+user's input interpolated. Found on production during the routing live run: the
+customer's message was reaching the task span's name, `metadata.task_name`, an
+EVENT's details and an error's status message, with content capture OFF.
+
+So `task_name` travels only if `config.declared_task_name()` accepts it (identifier
+shaped: `[A-Za-z_][A-Za-z0-9_.-]{0,63}`, no spaces). Otherwise `metadata.task_name`
+is null, the task span is named after its node span, an EVENT carries the name's
+length and hash instead, and a failure reads "the task failed". Ids and the
+run -> node -> task -> agent hierarchy do not change. A hand-written task named with
+spaces would lose its name here; the repository's crews all use identifier names.
+`tests/observability/test_task_name_is_not_content.py` holds it.
 
 ## 3. Attributes on EVERY observation (`metadata`)
 

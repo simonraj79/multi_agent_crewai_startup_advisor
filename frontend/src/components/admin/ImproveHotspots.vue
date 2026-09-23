@@ -53,6 +53,15 @@ const gates = computed(() => props.hotspots?.gates ?? [])
 const routes = computed(() => props.hotspots?.routes ?? [])
 const outcomes = computed(() => props.hotspots?.outcomes ?? null)
 const tasks = computed(() => props.hotspots?.tasks ?? [])
+/**
+ * Only the steps that finished over at least one tool failure.
+ *
+ * A row reading "0 of 2 completions recorded a tool failure" says nothing an
+ * admin can act on, and a workflow with many steps drowned the one row that
+ * did in two dozen that did not (production, 2026-09-23). The header count
+ * still says how many completions were looked at, so the silence is honest.
+ */
+const failingTasks = computed(() => tasks.value.filter((row) => row.tool_failures > 0))
 const taskCompletions = computed(() => props.hotspots?.task_completions ?? 0)
 const taskToolFailures = computed(() => props.hotspots?.task_tool_failures ?? 0)
 const sampleRunIds = computed(() => props.hotspots?.sample_run_ids ?? [])
@@ -142,16 +151,24 @@ function routeSentence(row: ImproveRouteRow): string {
 }
 
 /**
- * One task, naming the task AND the node it sits on.
+ * One step's tasks, named by the step and never by the task's rendered prompt.
  *
  * `completions` counts the task-completed frames that carry the new keys, not
  * every task that has ever finished - so the noun is `completions` rather than
  * `runs`, and the section's empty state carries the rest of that caveat.
  */
 function taskSentence(row: ImproveTaskRow): string {
+  // The STEP's own label, never the task's prompt: a builder task has no
+  // declared name, and the server groups and names it by node. A declared
+  // task name is added only when it says something the label does not - a
+  // crew node running two named tasks.
   const where = row.node_label || row.node_id
+  const named =
+    row.task_name && row.task_name !== row.node_id && row.task_name !== where
+      ? ` (${row.task_name})`
+      : ''
   return (
-    `${row.task_name} on ${where}: ${count(row.tool_failures)} of ` +
+    `${where}${named}: ${count(row.tool_failures)} of ` +
     `${count(row.completions)} completions recorded a tool failure and still finished.`
   )
 }
@@ -378,9 +395,9 @@ async function copyRunId(runId: string): Promise<void> {
         A tool can fail and the task can still finish: the agent narrates the failure and writes
         around it. That is the run nobody reports, and it is where a workflow quietly gets worse.
       </p>
-      <ul v-if="tasks.length" class="improve-sentences" data-testid="improve-task-rows">
+      <ul v-if="failingTasks.length" class="improve-sentences" data-testid="improve-task-rows">
         <li
-          v-for="row in tasks"
+          v-for="row in failingTasks"
           :key="`${row.task_name}:${row.node_id}`"
           class="improve-sentence"
           :class="{ 'is-warn': row.tool_failures > 0 }"
@@ -389,6 +406,13 @@ async function copyRunId(runId: string): Promise<void> {
           <span class="improve-sentence-line">{{ taskSentence(row) }}</span>
         </li>
       </ul>
+      <p
+        v-else-if="!loading && tasks.length"
+        class="admin-empty"
+        data-testid="improve-tasks-clean"
+      >
+        No task finished over a tool failure ({{ count(taskCompletions) }} completions).
+      </p>
       <p v-else-if="!loading" class="admin-empty" data-testid="improve-tasks-empty">
         No run recorded after the update has finished a task yet.
       </p>

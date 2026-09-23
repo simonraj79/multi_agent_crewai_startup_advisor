@@ -1535,8 +1535,12 @@ def create_admin_router(
         )
 
     @router.get("/runs/{run_id}/decisions", response_model=AdminDecisionsModel)
-    async def decisions(run_id: str, _: Any = Depends(admin)) -> AdminDecisionsModel:
+    def decisions(run_id: str, _: Any = Depends(admin)) -> AdminDecisionsModel:
         """The one view Langfuse cannot give: what a person actually replied.
+
+        A plain `def`, not `async def`: every read below is a blocking database
+        call, and FastAPI runs a sync handler in its thread pool rather than on
+        the event loop (gotcha 91). It awaits nothing, so nothing is lost.
 
         Gate replies and edited fields are hashed in the trace by the content
         policy, on purpose. Here the reply comes back **verbatim** off

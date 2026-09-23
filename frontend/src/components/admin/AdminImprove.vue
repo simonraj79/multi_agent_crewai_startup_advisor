@@ -53,6 +53,12 @@ const props = withDefaults(
     workflows: ImproveWorkflowOption[]
     workflowId: string
     hotspots: ImproveHotspotsShape | null
+    /**
+     * The version "Where runs go wrong" is scoped to, as typed; blank is all.
+     * A plain number box, like Compare's version fields, because no read this
+     * page makes lists a workflow's versions.
+     */
+    hotspotsVersion?: string
     compare: ImproveCompareShape | null
     digests: ImproveDigestPage | null
     compareAxis: ImproveCompareAxis
@@ -72,6 +78,7 @@ const props = withDefaults(
     exportProblem?: string
   }>(),
   {
+    hotspotsVersion: '',
     loading: false,
     comparing: false,
     digesting: false,
@@ -85,6 +92,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   selectWorkflow: [id: string]
+  selectHotspotsVersion: [value: string]
   selectAxis: [axis: ImproveCompareAxis]
   updateCompareA: [value: string]
   updateCompareB: [value: string]
@@ -104,6 +112,12 @@ const emit = defineEmits<{
  * this window", so it would offer a model the chosen step never ran, and an
  * arm that cannot exist is a question with no answer.
  */
+/** Blank, or a positive whole number - anything else is not sent. */
+const versionInvalid = computed(() => {
+  const text = props.hotspotsVersion.trim()
+  return text !== '' && !/^[1-9][0-9]*$/.test(text)
+})
+
 const compareNodeModels = computed(() => props.hotspots?.node_models ?? [])
 
 const EVALSET_RATINGS: ReadonlyArray<{ id: EvalsetRating; label: string; note: string }> = [
@@ -162,12 +176,40 @@ const chosenRating = computed(
     >
       <header class="admin-block-head">
         <h3 id="improve-wrong-title">Where runs go wrong</h3>
-        <span class="panel-meta">{{ workflowId || 'no workflow chosen' }}</span>
+        <span class="panel-meta">
+          {{ workflowId || 'no workflow chosen' }}<template
+            v-if="workflowId && hotspots?.document_version"
+          > · version {{ hotspots.document_version }}</template>
+        </span>
       </header>
       <p class="improve-lede">
         Which step fails most, which tool comes back empty, and what each step costs. Every row
         carries the counts behind it, so a share you do not believe can be checked.
       </p>
+      <!--
+        ONE VERSION, OR ALL OF THEM. Without this, runs of version 1 and
+        version 2 are counted together, so a change cannot be seen in these
+        lists at all. Applied on Enter or when the box loses focus, and it
+        re-reads this section only.
+      -->
+      <div v-if="workflowId" class="improve-controls">
+        <label class="improve-field">
+          <span>Version (blank = all)</span>
+          <input
+            class="improve-input"
+            type="text"
+            inputmode="numeric"
+            :value="hotspotsVersion"
+            placeholder="All versions"
+            :aria-invalid="versionInvalid"
+            data-testid="improve-wrong-version"
+            @change="emit('selectHotspotsVersion', ($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <span v-if="versionInvalid" class="improve-note" data-testid="improve-wrong-version-invalid">
+          A version is a whole number such as 2. Leave it blank for every version.
+        </span>
+      </div>
       <p v-if="!workflowId" class="admin-empty" data-testid="improve-wrong-none">
         Choose a workflow above and this fills in. Nothing is fetched until you do.
       </p>
@@ -353,6 +395,28 @@ const chosenRating = computed(
 .improve-select:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 
 .improve-controls { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+
+.improve-field { display: grid; gap: var(--space-1); }
+.improve-field > span {
+  color: var(--text-meta);
+  font: var(--type-kicker);
+  letter-spacing: var(--track-kicker);
+  text-transform: uppercase;
+}
+
+.improve-input {
+  min-width: 180px;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-body);
+  font: var(--type-meta);
+  font-family: var(--font-mono);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+}
+
+.improve-input:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
 .improve-axis { min-height: 44px; }
 
 .improve-button {

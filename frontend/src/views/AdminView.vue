@@ -301,6 +301,12 @@ const improveWorkflowId = ref('')
 const improveHotspots = ref<ImproveHotspots | null>(null)
 const improveDigests = ref<ImproveDigestPage | null>(null)
 const improveCompareResult = ref<ImproveCompare | null>(null)
+/**
+ * Which published version "Where runs go wrong" is scoped to, as typed; blank
+ * is every version pooled. Kept as text so a half-typed value is not coerced,
+ * and parsed by `improveVersionNumber` - which is the ONLY thing sent.
+ */
+const improveVersion = ref('')
 
 const compareAxis = ref<ImproveCompareAxis>('version')
 const compareA = ref('')
@@ -348,6 +354,13 @@ async function loadImprove(): Promise<void> {
   if (improveWorkflowId.value) await loadImproveWorkflow()
 }
 
+/** A positive whole number, or null for "all versions" (blank or not a version). */
+function improveVersionNumber(): number | null {
+  const text = improveVersion.value.trim()
+  if (!/^[1-9][0-9]*$/.test(text)) return null
+  return Number(text)
+}
+
 /** The two per-workflow reads. Both are free; neither calls a model. */
 async function loadImproveWorkflow(): Promise<void> {
   const workflowId = improveWorkflowId.value
@@ -360,7 +373,11 @@ async function loadImproveWorkflow(): Promise<void> {
     'improve',
     [
       async () => {
-        improveHotspots.value = await improveApi.hotspots(workflowId, activeWindow.value)
+        improveHotspots.value = await improveApi.hotspots(
+          workflowId,
+          activeWindow.value,
+          improveVersionNumber(),
+        )
       },
       async () => {
         improveDigests.value = await improveApi.digests(workflowId)
@@ -370,8 +387,40 @@ async function loadImproveWorkflow(): Promise<void> {
   )
 }
 
+/**
+ * Re-scope "Where runs go wrong" to one version, re-reading ONLY that section.
+ *
+ * The stored reviews are not per version, so re-reading them here would be a
+ * request whose answer cannot have changed. A value that is neither blank nor
+ * a version is kept in the box (the panel says what it wants) and fetches
+ * nothing. A response that lands after the reader has moved on - another
+ * version, another workflow - is dropped rather than drawn under the new one.
+ */
+async function selectImproveVersion(value: string): Promise<void> {
+  improveVersion.value = value
+  const workflowId = improveWorkflowId.value
+  const text = value.trim()
+  if (!workflowId || (text !== '' && improveVersionNumber() === null)) return
+  const version = improveVersionNumber()
+  await load(
+    'improve',
+    [
+      async () => {
+        const answer = await improveApi.hotspots(workflowId, activeWindow.value, version)
+        if (improveWorkflowId.value === workflowId && improveVersionNumber() === version) {
+          improveHotspots.value = answer
+        }
+      },
+    ],
+    'this workflow could not be read.',
+  )
+}
+
 function selectImproveWorkflow(id: string): void {
   improveWorkflowId.value = id
+  // Version numbers belong to one workflow, so a new workflow starts on all
+  // of its versions rather than on a number that meant something elsewhere.
+  improveVersion.value = ''
   // A comparison belongs to the workflow it was asked about, so switching
   // workflows drops it rather than leaving two sides of somebody else's graph
   // sitting under a new name. The chosen step goes with it, for the same
@@ -831,6 +880,7 @@ onMounted(() => {
               :workflows="improveWorkflows"
               :workflow-id="improveWorkflowId"
               :hotspots="improveHotspots"
+              :hotspots-version="improveVersion"
               :compare="improveCompareResult"
               :digests="improveDigests"
               :compare-axis="compareAxis"
@@ -848,6 +898,7 @@ onMounted(() => {
               :digest-problem="digestProblem"
               :export-problem="exportProblem"
               @select-workflow="selectImproveWorkflow"
+              @select-hotspots-version="selectImproveVersion"
               @select-axis="selectCompareAxis"
               @update-compare-a="compareA = $event"
               @update-compare-b="compareB = $event"

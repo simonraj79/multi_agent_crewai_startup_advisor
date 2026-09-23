@@ -24,7 +24,7 @@ import { LoaderCircle, Square, TriangleAlert, X } from 'lucide-vue-next'
 import LangfuseLink from './LangfuseLink.vue'
 import MoneyFigure from './MoneyFigure.vue'
 import RatingControl from '../RatingControl.vue'
-import { count, duration, durationMs, humanise, money, personLabel, when } from './adminFormat'
+import { count, duration, durationMs, humanise, money, personLabel, versionLabel, when } from './adminFormat'
 import { adminApi } from '../../services/adminApi'
 import { renderMarkdown } from '../../utils/markdown'
 import { readRunRating, runRatingWord } from '../../data/runRating'
@@ -126,6 +126,20 @@ async function cancelRun(): Promise<void> {
  * recognises any structure (the same path `ReportPanel.vue` uses).
  */
 const answer = computed(() => props.decisions?.answer ?? null)
+
+/**
+ * What the run was asked: the one input that became its prompt. A reply cannot
+ * be judged without the message it answers. It is the person's own typing, so
+ * it is rendered as TEXT by interpolation - never markdown, never `v-html`.
+ */
+const question = computed(() => props.decisions?.question ?? null)
+
+/** Which published version produced this run. The drawer's own read wins,
+ *  because a run opened from Insights arrives without the row's field. */
+const version = computed(() => {
+  const value = props.decisions?.document_version ?? props.run?.document_version ?? null
+  return value === null ? '' : versionLabel(value)
+})
 const answerHtml = computed(() => (answer.value ? renderMarkdown(answer.value) : ''))
 const answerOpen = ref(false)
 
@@ -188,7 +202,9 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
           {{ run ? `${run.workflow_id} · ${personLabel(run.user_id, run.email)}`
                  : personLabel(person?.user_id, person?.email) }}
         </h2>
-        <p v-if="run" class="panel-meta">{{ run.run_id }}</p>
+        <p v-if="run" class="panel-meta" data-testid="admin-drawer-meta">
+          {{ run.run_id }}<template v-if="version"> · {{ version }}</template>
+        </p>
       </div>
       <button class="admin-drawer-close" type="button" aria-label="Close the drawer" @click="emit('close')">
         <X :size="15" aria-hidden="true" />
@@ -282,6 +298,21 @@ function responseLines(response: Record<string, unknown> | null | undefined): st
           </dl>
           <p v-else-if="billedRefusal" class="admin-warning" role="status">{{ billedRefusal }}</p>
           <p v-if="billedProblem" class="admin-problem" role="alert">{{ billedProblem }}</p>
+        </section>
+
+        <!--
+          ASKED, ANSWERED, JUDGED - in that order. The question first, because
+          an answer read without the message it replies to cannot be judged.
+        -->
+        <section class="admin-drawer-block" aria-labelledby="admin-question-title" data-testid="admin-question">
+          <header class="admin-block-head">
+            <h3 id="admin-question-title">What was asked</h3>
+            <span class="panel-meta">the run's input</span>
+          </header>
+          <p v-if="question" class="admin-answer admin-question" data-testid="admin-question-body">{{ question }}</p>
+          <p v-else-if="!loading && decisions" class="admin-empty" data-testid="admin-question-empty">
+            This run stored no input the console can show.
+          </p>
         </section>
 
         <!--

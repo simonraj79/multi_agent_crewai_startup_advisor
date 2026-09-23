@@ -156,6 +156,8 @@ class AdminCase(unittest.TestCase):
         max_cost_usd: float | None = None,
         account_cap_usd: float | None = None,
         tokens: int = 1000,
+        inputs: dict[str, Any] | None = None,
+        document_version: int | None = None,
     ) -> str:
         """One run, its node metrics and its terminal status.
 
@@ -170,7 +172,11 @@ class AdminCase(unittest.TestCase):
             session_id="admin-tests",
             workflow_id=workflow_id,
             graph_version="v1",
-            inputs={"idea": "a scheduling assistant for clinics"},
+            inputs=(
+                inputs
+                if inputs is not None
+                else {"idea": "a scheduling assistant for clinics"}
+            ),
             user_id=user_id,
             status="queued",
             created_at=created,
@@ -178,6 +184,7 @@ class AdminCase(unittest.TestCase):
             max_cost_usd=max_cost_usd,
             ceiling_kind="account" if account_cap_usd is not None else None,
             account_cap_usd=account_cap_usd,
+            document_version=document_version,
         )
         if cost is not None:
             self.store.save_node_metrics(

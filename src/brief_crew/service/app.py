@@ -160,6 +160,22 @@ def workflow_input_field(workflow_id: str, runtime: WorkflowRuntime) -> str | No
     return BUILTIN_WORKFLOW_INPUT_FIELDS.get(workflow_id)
 
 
+def registered_input_field(registry: RunRegistry, workflow_id: str) -> str | None:
+    """`workflow_input_field` for a workflow id alone, or `None` if unknown.
+
+    The same rule `create_run` applies to decide which input is the prompt,
+    reached through the registry for a caller holding a stored run rather than
+    a request - the history label and the admin drawer's "What was asked". An
+    id this process has never registered answers `None` rather than raising.
+    """
+
+    try:
+        runtime = registry.workflow_runtime(workflow_id)
+    except UnknownWorkflowError:
+        return None
+    return workflow_input_field(workflow_id, runtime)
+
+
 def run_history_label(registry: RunRegistry, workflow_id: str, inputs: Mapping[str, Any]) -> str:
     """The one line of prose the history sidebar shows for a run.
 
@@ -177,13 +193,7 @@ def run_history_label(registry: RunRegistry, workflow_id: str, inputs: Mapping[s
     names a workflow this process has never heard of.
     """
 
-    field: str | None = None
-    try:
-        runtime = registry.workflow_runtime(workflow_id)
-    except UnknownWorkflowError:
-        pass
-    else:
-        field = workflow_input_field(workflow_id, runtime)
+    field = registered_input_field(registry, workflow_id)
     if field is not None:
         declared = inputs.get(field)
         if declared:
@@ -1380,6 +1390,11 @@ def create_app(
             # exists to prevent. A token that IS offered is still verified.
             resolve_user=optional_user,
             registry=registry,
+            # The drawer's "What was asked" reads the ONE input `create_run`
+            # bounds as the prompt, by the same rule - injected, not re-derived.
+            input_field_for=lambda workflow_id: registered_input_field(
+                registry, workflow_id
+            ),
             persistence_factory=lambda: getattr(registry, "persistence", None),
             store_factory=builder_store_factory,
             health_payload=health_payload,

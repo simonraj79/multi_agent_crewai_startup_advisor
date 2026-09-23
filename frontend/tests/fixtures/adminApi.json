@@ -182,6 +182,7 @@
         "rating": "good",
         "rated_by": "user_owner",
         "rated_at": "2026-09-08T11:44:00Z",
+        "document_version": 3,
         "integrity": {
           "captured": 412,
           "dropped": 0,
@@ -220,6 +221,7 @@
         "rating": "good",
         "rated_by": "user_owner",
         "rated_at": "2026-09-08T11:44:00Z",
+        "document_version": 3,
         "integrity": {
           "captured": 412,
           "dropped": 0,
@@ -285,7 +287,9 @@
       "trace_url": "https://us.cloud.langfuse.com/project/cmf0examplelangfuseproj/traces/073c021f4ff743e184d5d9e8dd7fa0ba"
     },
     "answer": "## Verdict: needs work\n\nThe segment is real but the **pricing** is unproven. See [the market note](https://example.com/market).\n\n- Demand: 3 of 5\n- Competition: crowded",
-    "answer_truncated": false
+    "answer_truncated": false,
+    "question": "A scheduling assistant for clinics that fills no-show slots",
+    "document_version": 3
   },
   "GET /api/admin/gates": {
     "approve": 71,

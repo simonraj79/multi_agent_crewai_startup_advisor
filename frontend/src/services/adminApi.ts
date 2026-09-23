@@ -217,6 +217,9 @@ export interface AdminRunRow {
   rating?: RunRatingValue | null
   rated_by?: string | null
   rated_at?: string | null
+  /** The published document version this run ran (`runs.document_version`),
+   *  or null for a hand-written flow or a run recorded before the column. */
+  document_version?: number | null
 }
 
 /** The four states the admin Runs filter may ask for (plan 20 §2.2). */
@@ -336,6 +339,13 @@ export interface AdminDecisions {
   answer?: string | null
   /** True when the server cut `answer` at its bound. */
   answer_truncated?: boolean
+  /**
+   * What the run was asked: the one input that became its prompt, or `null`.
+   * User-typed text - render it as TEXT, never through markdown or v-html.
+   */
+  question?: string | null
+  /** The run's `runs.document_version`, for the drawer header. */
+  document_version?: number | null
 }
 
 export interface AdminGateStats {

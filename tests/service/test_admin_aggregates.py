@@ -339,6 +339,8 @@ class RunsAndGatesAndVerdictsShapeTests(AdminCase):
                 "rating",
                 "rated_by",
                 "rated_at",
+                # Which published version produced the run (plan 21's column).
+                "document_version",
                 "integrity",
                 "langfuse",
             },

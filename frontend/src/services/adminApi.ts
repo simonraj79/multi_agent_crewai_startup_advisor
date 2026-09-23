@@ -328,6 +328,14 @@ export interface AdminDecisions {
    * see `data/runRating.ts` for which and why.
    */
   rating?: RunRatingWire | null
+  /**
+   * What the run answered: the stored result's body text and nothing else of
+   * it, or `null` when the run stored none. Untrusted model output - render it
+   * only through `utils/markdown.ts`.
+   */
+  answer?: string | null
+  /** True when the server cut `answer` at its bound. */
+  answer_truncated?: boolean
 }
 
 export interface AdminGateStats {

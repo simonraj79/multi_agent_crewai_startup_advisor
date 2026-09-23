@@ -5,7 +5,7 @@ import AdminDrawer from '../src/components/admin/AdminDrawer.vue'
 import AdminRuns from '../src/components/admin/AdminRuns.vue'
 import { personLabel } from '../src/components/admin/adminFormat'
 import { resetAdminGate } from '../src/services/adminApi'
-import type { AdminRunRow } from '../src/services/adminApi'
+import type { AdminDecisions, AdminRunRow } from '../src/services/adminApi'
 import fixture from './fixtures/adminApi.json'
 
 /**
@@ -508,5 +508,82 @@ describe('the drawer says what is fragile about what it shows', () => {
       },
     })
     expect(live.find('[data-testid="admin-cancel-run"]').exists()).toBe(true)
+  })
+})
+
+describe('the drawer shows what the run answered, above "Was this run good?"', () => {
+  const RUN = (fixture['GET /api/admin/runs'] as { rows: AdminRunRow[] }).rows[0]
+  const DECISIONS = F['GET /api/admin/runs/{run_id}/decisions'] as AdminDecisions
+
+  function drawer(decisions: AdminDecisions | null, loading = false) {
+    return mount(AdminDrawer, {
+      props: { run: RUN, decisions, person: null, links: null, loading, problem: '' },
+    })
+  }
+
+  it("renders the server's own answer as markdown, before the rating block", () => {
+    const wrapper = drawer(DECISIONS)
+    const body = wrapper.get('[data-testid="admin-answer-body"]')
+    expect(body.find('h2').text()).toBe('Verdict: needs work')
+    expect(body.find('strong').text()).toBe('pricing')
+    expect(body.find('a').attributes('href')).toBe('https://example.com/market')
+    expect(body.findAll('li')).toHaveLength(2)
+    const headings = wrapper.findAll('h3').map((h) => h.text())
+    expect(headings).toContain('What it answered')
+    expect(headings.indexOf('What it answered')).toBeLessThan(headings.indexOf('Was this run good?'))
+    expect(wrapper.find('[data-testid="admin-answer-empty"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('escapes markup in the answer rather than executing it', () => {
+    const wrapper = drawer({
+      ...DECISIONS,
+      answer: 'Charged <img src=x onerror="alert(1)"> and <script>alert(2)</script> [x](javascript:alert(3))',
+    })
+    const body = wrapper.get('[data-testid="admin-answer-body"]')
+    expect(body.find('img').exists()).toBe(false)
+    expect(body.find('script').exists()).toBe(false)
+    expect(body.find('a[href^="javascript"]').exists()).toBe(false)
+    expect(body.text()).toContain('<img src=x onerror="alert(1)">')
+    wrapper.unmount()
+  })
+
+  it('says so plainly when the run stored no answer', () => {
+    const wrapper = drawer({ ...DECISIONS, answer: null })
+    expect(wrapper.find('[data-testid="admin-answer-body"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="admin-answer-empty"]').text()).toBe('This run stored no answer.')
+    wrapper.unmount()
+    // Not while the decisions are still being read: that would claim an
+    // absence nobody has measured yet.
+    const reading = drawer(null, true)
+    expect(reading.find('[data-testid="admin-answer-empty"]').exists()).toBe(false)
+    reading.unmount()
+  })
+
+  it('collapses a long answer behind "Show all" and opens it on a press', async () => {
+    const short = drawer(DECISIONS)
+    expect(short.find('[data-testid="admin-answer-toggle"]').exists()).toBe(false)
+    expect(short.get('[data-testid="admin-answer-body"]').classes()).not.toContain('is-collapsed')
+    short.unmount()
+
+    const long = drawer({ ...DECISIONS, answer: Array.from({ length: 30 }, (_, i) => `Line ${i}`).join('\n\n') })
+    const toggle = long.get('[data-testid="admin-answer-toggle"]')
+    expect(toggle.text()).toBe('Show all')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(long.get('[data-testid="admin-answer-body"]').classes()).toContain('is-collapsed')
+    await toggle.trigger('click')
+    expect(toggle.text()).toBe('Show less')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(long.get('[data-testid="admin-answer-body"]').classes()).not.toContain('is-collapsed')
+    long.unmount()
+  })
+
+  it('says when the server cut the answer short', () => {
+    const cut = drawer({ ...DECISIONS, answer_truncated: true })
+    expect(cut.find('[data-testid="admin-answer-truncated"]').exists()).toBe(true)
+    cut.unmount()
+    const whole = drawer(DECISIONS)
+    expect(whole.find('[data-testid="admin-answer-truncated"]').exists()).toBe(false)
+    whole.unmount()
   })
 })

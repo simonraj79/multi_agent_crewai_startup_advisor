@@ -2019,6 +2019,15 @@ _assert_digest_cost_ceiling()
 #     realistic 12 KB.
 MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
 
+#: How much of a run's stored answer the admin drawer's "What it answered"
+#: section is sent. The body is already clipped at MAX_RUN_RESULT_BODY_CHARS
+#: when it is written, so this is the same figure: the admin reads what the
+#: owner could read, never less, and a row written under a larger bound (or by
+#: hand) is cut here and reported as `answer_truncated` rather than shipped
+#: whole. It is its own name so the drawer's bound can move without moving the
+#: write path's.
+ADMIN_ANSWER_MAX_CHARS = MAX_RUN_RESULT_BODY_CHARS
+
 #: The bound on a rating note, enforced by the request model (422 above it)
 #: and again by the `VARCHAR(512)` column that stores it. Two bounds on one
 #: value, deliberately: the column is what a driver would truncate silently.

@@ -513,6 +513,13 @@
 .admin-drawer-block { display: grid; gap: var(--space-3); }
 .admin-drawer-links { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; }
 
+/* What it answered: the run's reply, read before it is judged. Collapsed to a
+   readable height with "Show all"; `min-width: 0` and `overflow-wrap` so a
+   long URL in a model's reply cannot widen the docked drawer. */
+.admin-answer { min-width: 0; margin: 0; padding: var(--space-4); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); overflow-wrap: anywhere; }
+.admin-answer.is-collapsed { max-height: 16em; overflow: hidden; }
+.admin-answer-toggle { justify-self: start; }
+
 .admin-trail { display: grid; gap: var(--space-3); margin: 0; padding: 0 0 0 var(--space-5); }
 .admin-trail-head { color: var(--text-body); font: var(--type-label); }
 .admin-trail-said { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; padding: var(--space-3); color: var(--text-meta); font: var(--type-meta); font-family: var(--font-mono); background: var(--surface-well); border: 1px solid var(--border-control); border-radius: var(--r-sm); list-style: none; overflow-wrap: anywhere; }

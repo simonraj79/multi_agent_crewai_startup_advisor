@@ -411,6 +411,35 @@ class AdminDecisionsModel(AdminModel):
         default_factory=lambda: RunRatingModel(run_id="")
     )
     langfuse: LangfuseRunLinks = Field(default_factory=LangfuseRunLinks)
+    #: What the run actually answered: the stored result's body text
+    #: (`RUN_RESULT_BODY_KEYS`, today `markdown_body`) and nothing else of the
+    #: result, or `None` when the run stored none. It is shown so the person
+    #: asked "was this run good?" can read the thing being judged. It can echo
+    #: user-typed content, which this admin-only route already returns in gate
+    #: replies; it is never logged and never sent to Langfuse.
+    answer: str | None = None
+    #: True when `answer` was cut at `ADMIN_ANSWER_MAX_CHARS`.
+    answer_truncated: bool = False
+
+
+def run_answer(result: Any) -> tuple[str | None, bool]:
+    """The body text of a stored run result, bounded, and whether it was cut.
+
+    Only the declared body keys are read; every other key of the result stays
+    on the server. A non-string or empty body is `None` - the drawer says the
+    run stored no answer rather than printing a JSON blob as if it were one.
+    """
+
+    if not isinstance(result, Mapping):
+        return None, False
+    for key in config.RUN_RESULT_BODY_KEYS:
+        body = result.get(key)
+        if isinstance(body, str) and body.strip():
+            limit = config.ADMIN_ANSWER_MAX_CHARS
+            if len(body) > limit:
+                return body[:limit], True
+            return body, False
+    return None, False
 
 
 class GateBucket(AdminModel):
@@ -1517,6 +1546,8 @@ def create_admin_router(
 
         persistence = store()
         gates = persistence.list_gates(run_id)
+        stored = persistence.get_run(run_id)
+        answer, answer_truncated = run_answer(stored.get("result") if stored else None)
         frames, _truncated = persistence.admin_frames_by_kind(
             ["guardrail", "verdict", "error"],
             run_ids=[run_id],
@@ -1584,6 +1615,8 @@ def create_admin_router(
                 run_id, persistence.run_ratings([run_id]).get(run_id)
             ),
             langfuse=langfuse_links(run_id),
+            answer=answer,
+            answer_truncated=answer_truncated,
         )
 
     @router.get("/gates", response_model=AdminGatesModel)

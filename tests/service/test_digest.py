@@ -1239,5 +1239,85 @@ class MoneyBrakeTests(AdminCase):
         )
 
 
+class NoRenderedTaskDescriptionReachesThePromptTests(unittest.TestCase):
+    """A builder task's `task_name` is its rendered description (CrewAI falls
+    back to `task.description` for an unnamed task), so the allow-list's
+    `task_name` and `task` keys carried the user's input to the model. Found
+    2026-09-23 beside the grouping defect on the Improve panel; R2 says the
+    prompt is an allow-list of names, codes and numbers, and this was none.
+    """
+
+    USER_INPUT = "Please add three more seats for our new hires."
+
+    def frames(self) -> list[dict[str, Any]]:
+        description = f"Answer this account message. MESSAGE: {self.USER_INPUT}"
+        return [
+            {
+                "run_id": "r-0",
+                "kind": "agent",
+                "node_id": "account",
+                "message": f"{description} completed",
+                "details": {
+                    "stage": "after",
+                    "task_name": description,
+                    "agent_role": "Account agent",
+                    "tool_failure_count": 1,
+                },
+            },
+            {
+                "run_id": "r-0",
+                "kind": "agent",
+                "node_id": "account",
+                "message": "Account agent started",
+                "details": {"stage": "before", "task": description, "task_name": description},
+            },
+            {
+                "run_id": "r-0",
+                "kind": "agent",
+                "node_id": "scope",
+                "message": "scoping_task completed",
+                "details": {"stage": "after", "task_name": "scoping_task"},
+            },
+        ]
+
+    def prompt(self) -> str:
+        from brief_crew.service.improve_api import _window_model, mine_hotspots
+
+        now = datetime(2026, 9, 23, tzinfo=timezone.utc)
+        runs = [{"run_id": "r-0", "status": "completed"}]
+        frames = self.frames()
+        mined = mine_hotspots(
+            window=_window_model(now - timedelta(days=1), now),
+            workflow_id="ug_triage001",
+            runs=runs,
+            frames=frames,
+            gates=[],
+            node_costs=[],
+        ).model_dump(mode="json")
+        sample, _truncated = digest_module.build_sample(runs, frames)
+        system, user, _cut = digest_module.render_prompt(
+            digest_module.load_prompt(),
+            workflow_name="a workflow",
+            window="a window",
+            hotspots=digest_module.structural_hotspots(mined, secrets=[]),
+            lessons=[],
+            sample=sample,
+        )
+        return system + user
+
+    def test_the_users_input_reaches_no_part_of_the_prompt(self) -> None:
+        prompt = self.prompt()
+        self.assertNotIn(self.USER_INPUT, prompt)
+        self.assertNotIn("MESSAGE:", prompt)
+
+    def test_a_declared_task_name_still_reaches_it(self) -> None:
+        self.assertIn("scoping_task", self.prompt())
+
+    def test_an_undeclared_task_name_is_dropped_from_a_mined_payload_too(self) -> None:
+        payload = {"tasks": [{"task_name": f"Do this: {self.USER_INPUT}", "node_id": "n1"}]}
+        cleaned = digest_module.structural_hotspots(payload, secrets=[])
+        self.assertEqual([{"node_id": "n1"}], cleaned["tasks"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

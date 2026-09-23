@@ -426,6 +426,16 @@ _METER_FLUSH_SECONDS = 5.0
 #: `scrub_text` because it is the author's words.
 LABEL_KEYS: frozenset[str] = frozenset({"node_label", "label"})
 
+#: The two `details` keys that name a task. Allowed by `SAMPLE_DETAIL_KEYS`
+#: because a declared task name is an identifier, and carried ONLY when the
+#: value is one: CrewAI falls back to `task.description` for an unnamed task,
+#: and on a builder frame that is the rendered prompt with the user's input
+#: in it (`config.declared_task_name`). The mined payload's `tasks[].task_name`
+#: is safe at its source - `mine_hotspots` never writes a description there -
+#: and this key set is also applied to it below, so the guarantee holds even
+#: for a payload built by something else.
+TASK_NAME_KEYS: frozenset[str] = frozenset({"task_name", "task"})
+
 
 def structural_hotspots(payload: Any, secrets: Sequence[str] | None = None) -> Any:
     """The mined counts with the one non-structural key removed (R2).
@@ -459,6 +469,13 @@ def structural_hotspots(payload: Any, secrets: Sequence[str] | None = None) -> A
             )
             for key, value in payload.items()
             if key not in NON_STRUCTURAL_HOTSPOT_KEYS
+            # A task name that is not a declared identifier is a rendered
+            # description, and it is dropped rather than carried.
+            and not (
+                key in TASK_NAME_KEYS
+                and isinstance(value, str)
+                and not config.declared_task_name(value)
+            )
         }
     if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes)):
         return [structural_hotspots(item, secrets) for item in payload]
@@ -503,6 +520,16 @@ def _structural_details(details: Any, secrets: Sequence[str]) -> dict[str, Any]:
             # hole in the list: `usage` is a count, `usage.messages` would not
             # be, and the list cannot vet a shape it has not seen.
             if value is None or isinstance(value, (str, int, float, bool)):
+                if name in TASK_NAME_KEYS:
+                    # A task name is a name only when somebody declared one.
+                    # Otherwise CrewAI filled it with the RENDERED task
+                    # description, which carries the user's input - so it is
+                    # dropped, never truncated: forty characters of a
+                    # customer's message is still a customer's message.
+                    declared = config.declared_task_name(value)
+                    if declared:
+                        kept[name] = declared
+                    continue
                 # A node label is the author's own words - bounded and
                 # scrubbed like the ones on the mined payload.
                 kept[name] = (

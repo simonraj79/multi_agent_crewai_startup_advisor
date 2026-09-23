@@ -567,6 +567,52 @@ describe('Where runs go wrong names the step, not the mechanism', () => {
     wrapper.unmount()
   })
 
+  it('collapses tasks with no tool failure into one line, keeping the header count', async () => {
+    // Production, 2026-09-23: 26 rows of "0 of 2 completions recorded a tool
+    // failure" for one four-agent workflow. Zero rows are noise.
+    serve('/improve/hotspots', {
+      ...HOTSPOTS,
+      tasks: [
+        { task_name: 'account', node_id: 'account', node_label: 'Account', completions: 24, tool_failures: 0, truncated_outputs: 0 },
+        { task_name: 'triage', node_id: 'triage', node_label: 'Triage', completions: 24, tool_failures: 0, truncated_outputs: 0 },
+      ],
+      task_completions: 48,
+      task_tool_failures: 0,
+    })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    expect(wrapper.find('[data-testid="improve-task-rows"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="improve-tasks-empty"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="improve-tasks-clean"]').text()).toBe(
+      'No task finished over a tool failure (48 completions).',
+    )
+    const section = wrapper.get('[aria-labelledby="improve-tasks-title"]')
+    expect(section.get('.panel-meta').text()).toBe('0 of 48 completions')
+    wrapper.unmount()
+  })
+
+  it('lists only failing tasks, named by the step and never by a prompt', async () => {
+    serve('/improve/hotspots', {
+      ...HOTSPOTS,
+      tasks: [
+        { task_name: 'account', node_id: 'account', node_label: 'Account', completions: 24, tool_failures: 3, truncated_outputs: 0 },
+        { task_name: 'triage', node_id: 'triage', node_label: 'Triage', completions: 24, tool_failures: 0, truncated_outputs: 0 },
+        { task_name: 'writing_task', node_id: 'brief', node_label: 'Brief crew', completions: 5, tool_failures: 1, truncated_outputs: 0 },
+      ],
+      task_completions: 53,
+      task_tool_failures: 4,
+    })
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const rows = wrapper.get('[data-testid="improve-task-rows"]').findAll('.improve-sentence')
+    expect(rows.map((row) => row.text())).toEqual([
+      'Account: 3 of 24 completions recorded a tool failure and still finished.',
+      'Brief crew (writing_task): 1 of 5 completions recorded a tool failure and still finished.',
+    ])
+    expect(wrapper.find('[data-testid="improve-tasks-clean"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('reads what people said about these runs, and offers no way to change it', async () => {
     serve('/improve/hotspots', {
       ...HOTSPOTS,

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import shlex
 from collections.abc import Iterable
 from typing import NamedTuple
@@ -1868,6 +1869,31 @@ TRUNCATING_FINISH_REASONS: frozenset[str] = frozenset(
         "output_limit",
     }
 )
+
+
+#: The shape of a task NAME somebody declared, as opposed to the text CrewAI
+#: falls back to when there is none. CrewAI 1.15.18 fills `event.task_name`
+#: with `task.name or task.description` (`events/base_events.py:104`,
+#: `events/types/task_events.py:103`), and a builder task is built with no
+#: `name` - so on every builder frame `task_name` is the RENDERED description,
+#: with the user's own input interpolated into it. A declared name is an
+#: identifier (`scoping_task`, `market_task`); a description has spaces. Found
+#: on production 2026-09-23: one "task" per distinct customer message.
+DECLARED_TASK_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.\-]{0,63}")
+
+
+def declared_task_name(value: object) -> str:
+    """`value` if it is a declared task name, else `""`. Never user text.
+
+    Total: a non-string, an empty string and a rendered description all come
+    back as `""`, so a caller can use the answer as a grouping key or a label
+    without deciding again whether it is safe to show or to send to a model.
+    """
+
+    if not isinstance(value, str):
+        return ""
+    candidate = value.strip()
+    return candidate if DECLARED_TASK_NAME_PATTERN.fullmatch(candidate) else ""
 
 
 def finish_reason_is_truncation(value: object) -> bool:

@@ -1,0 +1,40 @@
+TRACE 86371a877c50498ab32b4936bd6c0c6a  name=ug_3e30fae3  session=86371a87-7c50-498a-b32b-4936bd6c0c6a
+  roots (parentObservationId null): 1
+  - SPAN/run run
+    - EVENT/event NODE_START  [OPEN]
+    - EVENT/event NODE_START  [OPEN]
+    - EVENT/event NODE_START  [OPEN]
+    - EVENT/event NODE_START  [OPEN]
+    - EVENT/event NODE_START  [OPEN]
+    - EVENT/event NODE_START  [OPEN]
+    - EVENT/event NODE_START  [OPEN]
+    - SPAN/node submission
+    - SPAN/node teacher_check
+      - EVENT/event NODE_PAUSED  [OPEN]
+      - EVENT/event gate:0e8eeee2-5cbd-56f9-aa83-9ccae01c064b  [OPEN]
+      - EVENT/event gate:0e8eeee2-5cbd-56f9-aa83-9ccae01c064b  [OPEN]
+    - SPAN/node teacher_check
+    - SPAN/node teacher_check
+    - SPAN/node assess
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task assess
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Assessor  (agent=Assessor)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Assessor)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node verdict
+    - SPAN/node tutor
+      - EVENT/event AGENT_CALL  [OPEN]
+      - SPAN/task tutor
+        - EVENT/event AGENT_CALL  [OPEN]
+        - EVENT/event AGENT_CALL  [OPEN]
+        - AGENT/agent Tutor  (agent=Tutor)
+          - GENERATION/generation google/gemini-3.5-flash-lite:nitro  (agent=Tutor)
+          - EVENT/event AGENT_CALL  [OPEN]
+          - EVENT/event AGENT_CALL  [OPEN]
+      - EVENT/event AGENT_CALL  [OPEN]
+    - SPAN/node report
+    - SPAN/node final

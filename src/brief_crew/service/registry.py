@@ -153,6 +153,31 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _crewai_clock_utc(value: datetime, *, local_tz: Any = None) -> datetime:
+    """A CrewAI gate timestamp as an aware UTC datetime.
+
+    `PendingFeedbackContext.requested_at` is `field(default_factory=datetime.now)`
+    at 1.15.18 - NAIVE and in the process's LOCAL time. Labelling it UTC with
+    `replace(tzinfo=utc)`, which is what every reader here did, is right only on
+    a host whose clock is UTC. Render's is, so production never showed it; a
+    backend on a UTC+8 machine stored every gate's `opened_at` and `expires_at`
+    eight hours in the future, and hotspots reported the Teacher check's median
+    wait as -28,798 s (docs/observability/TEACHING-EVAL-LOOP.md section 5). West
+    of UTC the same arithmetic puts `expires_at` in the past and the sweep
+    expires a gate the moment it opens.
+
+    A naive value is therefore read as local time, which is what produced it.
+    `local_tz` exists for the test, because a CI runner in UTC cannot otherwise
+    tell the correct conversion from the old mislabelling.
+    """
+
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc)
+    if local_tz is not None:
+        return value.replace(tzinfo=local_tz).astimezone(timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _restored_stop_reason(stored_error: Any) -> str | None:
     """Recover `stop_reason` from the durable `error` column.
 
@@ -2835,9 +2860,7 @@ class RunRegistry:
         # stamps `requested_at` naive, so subtracting them raw is a TypeError
         # on the ordinary path rather than an exotic one - and it would be
         # raised from inside a background sweep, where nothing is watching.
-        opened = record.pending_context.requested_at
-        if opened.tzinfo is None:
-            opened = opened.replace(tzinfo=timezone.utc)
+        opened = _crewai_clock_utc(record.pending_context.requested_at)
         return max(0, int((deadline - opened).total_seconds()))
 
     def dependency_status(self) -> dict[str, dict[str, Any]]:
@@ -3094,7 +3117,7 @@ class RunRegistry:
                 str(prompt["gate_id"]),
                 node_id=node_id,
                 request=prompt,
-                opened_at=context.requested_at,
+                opened_at=_crewai_clock_utc(context.requested_at),
                 expires_at=datetime.fromisoformat(str(prompt["expires_at"])),
             )
         record.mark_waiting(prompt, context)
@@ -3248,7 +3271,11 @@ class RunRegistry:
             if authored is not None
             else VALIDATOR_GATE_TIMEOUT_SECONDS
         )
-        expires_at = context.requested_at + timedelta(seconds=timeout_seconds)
+        # The gate id above keeps the RAW value: it is a uuid5 over its isoformat,
+        # and changing that string would re-key every gate a restart replays.
+        expires_at = _crewai_clock_utc(context.requested_at) + timedelta(
+            seconds=timeout_seconds
+        )
         # How much of this gate's revise budget is left, and therefore whether
         # Revise is offered at all.
         #

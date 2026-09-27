@@ -391,6 +391,39 @@ class NodeModelsTests(MiningWorld):
         self.assertNotIn("nameless", self.rows())
 
 
+class GateBucketedByNodeTests(MiningWorld):
+    """One canvas gate is one row, however many runs opened it.
+
+    The world above seeds every run with the literal id `scope-confirmation`,
+    which production never does: the registry mints a gate id per run, uuid5
+    over the run id, the method and the request time. Bucketed on that id, the
+    teaching loop's 24 runs listed their one Teacher check as 24 rows of
+    `opened: 1` (docs/observability/TEACHING-EVAL-LOOP.md section 5).
+    """
+
+    def seed_world(self) -> None:
+        for index in range(4):
+            run_id = f"mine-uuid-{index}"
+            self.seed_run(run_id, user_id=ALICE.id, workflow_id=MINE)
+            self.seed_gate(
+                run_id,
+                f"{index:08d}-0000-5000-8000-000000000000",
+                node_id="teacher_check",
+                decision="revise" if index == 0 else "approve",
+                seconds=100 + 10 * index,
+            )
+            self.store.update_run_status(run_id, "completed")
+
+    def test_four_openings_with_four_ids_are_one_row(self) -> None:
+        gates = self.hotspots()["gates"]
+        self.assertEqual(["teacher_check"], [row["node_id"] for row in gates])
+        row = gates[0]
+        self.assertEqual(4, row["opened"])
+        self.assertEqual(4, row["answered"])
+        self.assertEqual(0.25, row["revise_rate"])
+        self.assertGreater(row["median_seconds"], 0)
+
+
 class NoLeakBetweenWorkflowsTests(MiningWorld):
     """The other workflow's rows never appear - A16's second half."""
 

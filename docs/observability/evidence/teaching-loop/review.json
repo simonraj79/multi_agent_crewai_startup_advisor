@@ -1,0 +1,22 @@
+{
+  "id": "dg_d031b703",
+  "workflow_id": "ug_2805daab",
+  "created_by": "teaching-proof",
+  "window": {
+    "start": "2026-08-28T07:24:12.100Z",
+    "end": "2026-09-27T07:24:12.100Z",
+    "days": 30
+  },
+  "sample_runs": 12,
+  "sample_frames": 192,
+  "truncated_sample": false,
+  "model": "openrouter/google/gemini-3.5-flash-lite:nitro",
+  "prompt_tokens": 8177,
+  "completion_tokens": 259,
+  "cost_usd": 0.0031006,
+  "max_cost_usd": 0.05,
+  "error": null,
+  "over_cap": false,
+  "body": "### What went well\n- The workflow completed 24 out of 24 runs successfully with zero failures.\n- Both the \"Assess\" and \"Tutor\" agents recorded 24 executions each with zero failures and zero tool failures.\n- The \"Teacher check\" node successfully processed 24 decisions via the \"e2_approve\" route with a revise rate of 0.0.\n- Out of 24 rated runs, 16 received a \"good\" rating.\n\n### What is failing\n- Out of 24 rated runs, 8 received a \"bad\" rating, accounting for $0.010112 of the cost.\n- Because this count rests on fewer than five runs for failures, the specific failure type is a small sample hint rather than a firm finding.\n\n### What to change first\n- Investigate the 8 runs rated as \"bad\" to see why they failed to satisfy the rating criteria while the \"Teacher check\" node approved all 24 routes.\n\n### What I cannot see from here\n- I cannot see prompt text, model answers, tool arguments, or tool output.\n- I cannot see embedding or search costs, nor anything from runs made outside this service.",
+  "created_at": "2026-09-27T07:24:14.218Z"
+}

@@ -1,0 +1,153 @@
+{
+  "window": {
+    "start": "2026-08-28T07:35:02.732Z",
+    "end": "2026-09-27T07:35:02.732Z",
+    "days": 30
+  },
+  "workflow_id": "ug_2805daab",
+  "runs": 25,
+  "min_runs": 5,
+  "document_version": null,
+  "agents": [
+    {
+      "agent_role": "Tutor",
+      "node_id": "tutor",
+      "node_label": "Tutor",
+      "runs": 25,
+      "executions": 25,
+      "failures": 0,
+      "error_classes": [],
+      "guardrail_retries": 0,
+      "guardrail_names": [],
+      "llm_calls": 25,
+      "calls_per_execution": 1.0,
+      "mean_ms": 1458.6,
+      "cost_usd": 0.013754,
+      "cost_share": 0.6562,
+      "cheap_tier_cost_usd": 0.013754,
+      "truncated_outputs": 0
+    },
+    {
+      "agent_role": "Assessor",
+      "node_id": "assess",
+      "node_label": "Assess",
+      "runs": 25,
+      "executions": 25,
+      "failures": 0,
+      "error_classes": [],
+      "guardrail_retries": 0,
+      "guardrail_names": [],
+      "llm_calls": 25,
+      "calls_per_execution": 1.0,
+      "mean_ms": 1059.8,
+      "cost_usd": 0.007206,
+      "cost_share": 0.3438,
+      "cheap_tier_cost_usd": 0.007203,
+      "truncated_outputs": 0
+    }
+  ],
+  "tools": [],
+  "errors": [],
+  "gates": [
+    {
+      "gate_id": "5ae6759c-58a8-5b49-b72f-30b217f44917",
+      "node_id": "teacher_check",
+      "node_label": "Teacher check",
+      "opened": 25,
+      "answered": 25,
+      "revise": 0,
+      "revise_rate": 0.0,
+      "expired": 0,
+      "median_seconds": -28798.52,
+      "edited_fields": []
+    }
+  ],
+  "routes": [
+    {
+      "node_id": "teacher_check",
+      "node_label": "Teacher check",
+      "decisions": 25,
+      "routes": {
+        "e2_approve": 25
+      },
+      "unique_routes": 1
+    }
+  ],
+  "outcomes": {
+    "by_verdict": [],
+    "by_rating": [
+      {
+        "rating": "bad",
+        "runs": 8,
+        "cost_usd": 0.010112
+      },
+      {
+        "rating": "good",
+        "runs": 17,
+        "cost_usd": 0.010848
+      }
+    ],
+    "by_status": {
+      "completed": 25,
+      "failed": 0,
+      "cancelled": 0,
+      "other": 0
+    }
+  },
+  "tasks": [
+    {
+      "task_name": "assess",
+      "node_id": "assess",
+      "node_label": "Assess",
+      "completions": 25,
+      "tool_failures": 0,
+      "truncated_outputs": 0
+    },
+    {
+      "task_name": "tutor",
+      "node_id": "tutor",
+      "node_label": "Tutor",
+      "completions": 25,
+      "tool_failures": 0,
+      "truncated_outputs": 0
+    }
+  ],
+  "task_completions": 50,
+  "task_tool_failures": 0,
+  "rated": 25,
+  "rating_mix": {
+    "good": 17,
+    "bad": 8,
+    "unsure": 0,
+    "unrated": 0
+  },
+  "verdicts": 0,
+  "low_confidence": 0,
+  "mean_confidence": null,
+  "sample_run_ids": [
+    "a1ccf2bc-6730-44ba-b9cc-28d019cebfca",
+    "66d08c58-7387-4627-87ba-3edcb6b56317",
+    "7f469103-1e81-4ff3-a105-5b6c50bc8989"
+  ],
+  "node_models": [
+    {
+      "node_id": "assess",
+      "label": "Assess",
+      "models": [
+        "google/gemini-3.5-flash-lite:nitro"
+      ],
+      "runs": 25
+    },
+    {
+      "node_id": "tutor",
+      "label": "Tutor",
+      "models": [
+        "google/gemini-3.5-flash-lite:nitro"
+      ],
+      "runs": 25
+    }
+  ],
+  "estimate": true,
+  "error_note": "measured -14.5% to +9.95% against billed",
+  "truncated": false
+}

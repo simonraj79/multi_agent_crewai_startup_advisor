@@ -55,6 +55,7 @@ from brief_crew.service.builder_runner import BuilderFlowRunner
 from brief_crew.service.models import GatePrompt, RunStatus
 from brief_crew.service.persistence import PostgresFlowPersistence
 from brief_crew.service.registry import (
+    _crewai_clock_utc,
     GATE_NOTE_FIELD,
     GateFieldError,
     RunRegistry,
@@ -482,7 +483,10 @@ class BuilderGateExpiryTests(BuilderGateTestCase):
         assert context is not None
         expires_at = datetime.fromisoformat(str(prompt["expires_at"]))
         self.assertEqual(
-            expires_at - context.requested_at,
+            # `requested_at` is CrewAI's naive LOCAL stamp and `expires_at` is
+            # served in UTC with its offset (test_gate_clock.py says why), so
+            # the window is measured between the two as the same instant.
+            expires_at - _crewai_clock_utc(context.requested_at),
             timedelta(seconds=GATE_EXPIRY_SECONDS),
         )
 
@@ -492,7 +496,8 @@ class BuilderGateExpiryTests(BuilderGateTestCase):
         assert context is not None
         self.assertLess(
             datetime.fromisoformat(str(prompt["expires_at"])),
-            context.requested_at + timedelta(seconds=VALIDATOR_GATE_TIMEOUT_SECONDS),
+            _crewai_clock_utc(context.requested_at)
+            + timedelta(seconds=VALIDATOR_GATE_TIMEOUT_SECONDS),
         )
 
     def test_the_expiry_sweep_reports_the_window_that_was_really_used(self) -> None:

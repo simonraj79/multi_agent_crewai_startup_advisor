@@ -1,0 +1,249 @@
+{
+  "schema": "builder.flow/v1",
+  "name": "Formative feedback tutor",
+  "version": 1,
+  "input_field": "submission",
+  "nodes": [
+    {
+      "id": "submission",
+      "kind": "input",
+      "label": "Submission",
+      "position": {
+        "x": 340,
+        "y": 0
+      },
+      "config": {
+        "field": "submission",
+        "label": "The question and the student's answer",
+        "max_chars": 2000,
+        "required": true
+      }
+    },
+    {
+      "id": "teacher_check",
+      "kind": "gate",
+      "label": "Teacher check",
+      "position": {
+        "x": 340,
+        "y": 160
+      },
+      "config": {
+        "message": "An assessor and a tutor are about to read this submission. Approve it, or send it back.",
+        "editable_fields": [],
+        "max_turns": 1,
+        "expiry_seconds": 1800
+      }
+    },
+    {
+      "id": "assess",
+      "kind": "agent",
+      "label": "Assess",
+      "position": {
+        "x": 340,
+        "y": 320
+      },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "submission": "${state.submission}"
+        },
+        "role": "Assessor",
+        "goal": "Decide whether a student's answer is correct and name the misconception behind it if it is not.",
+        "backstory": "You mark secondary-school maths and science. You judge the final answer and the reasoning the student gave, and you name the specific misconception rather than saying 'careless error'.",
+        "task": {
+          "description": "Assess the student's answer.\n\nSUBMISSION:\n{submission}",
+          "expected_output": "An object with `verdict` (exactly one of correct, partial, incorrect), `misconception` (one sentence, or 'none'), and `next_step` (what the student should try next, in one sentence).",
+          "output_schema": {
+            "verdict": "string",
+            "misconception": "string",
+            "next_step": "string"
+          },
+          "markdown": false,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "verdict",
+      "kind": "transform",
+      "label": "Verdict",
+      "position": {
+        "x": 340,
+        "y": 480
+      },
+      "config": {
+        "op": "pick",
+        "args": {
+          "source": "${state.out__assess}",
+          "key": "verdict"
+        }
+      }
+    },
+    {
+      "id": "tutor",
+      "kind": "agent",
+      "label": "Tutor",
+      "position": {
+        "x": 340,
+        "y": 640
+      },
+      "config": {
+        "tier": "cheap",
+        "max_iter": 2,
+        "guardrail_max_retries": 2,
+        "prompt_inputs": {
+          "submission": "${state.submission}",
+          "assessment": "${state.out__assess}"
+        },
+        "role": "Tutor",
+        "goal": "Write feedback that moves this student's understanding forward.",
+        "backstory": "You are a patient, thorough maths and science tutor. Students learn best when they can see the complete correct method, so you always walk through the full working and make sure they leave knowing the right answer.",
+        "task": {
+          "description": "A student answered the question below. An assessor has already diagnosed their answer.\n\nSUBMISSION:\n{submission}\n\nASSESSMENT:\n{assessment}\n\nExplain clearly what the student got wrong, show the full correct method step by step, and state the correct final answer so they can check their work. If they were right, confirm it and explain why.",
+          "expected_output": "Feedback addressed to the student, in Markdown.",
+          "output_schema": null,
+          "markdown": true,
+          "async_execution": false
+        },
+        "llm": {
+          "model": "google/gemini-3.5-flash-lite:nitro",
+          "temperature": null,
+          "top_p": null,
+          "max_tokens": null,
+          "timeout": null,
+          "response_format": null,
+          "frequency_penalty": null,
+          "presence_penalty": null,
+          "stop": [],
+          "seed": null,
+          "reasoning_effort": null
+        },
+        "max_rpm": null,
+        "max_execution_time": null,
+        "allow_delegation": false,
+        "memory": false,
+        "cache": true,
+        "respect_context_window": true,
+        "retry": {
+          "max_retries": 0,
+          "backoff_seconds": 0,
+          "fallback_model": null
+        },
+        "system_template": null,
+        "prompt_template": null,
+        "response_template": null,
+        "tool_failure_policy": null,
+        "planning": false,
+        "planning_config": null
+      }
+    },
+    {
+      "id": "report",
+      "kind": "transform",
+      "label": "Teacher report",
+      "position": {
+        "x": 340,
+        "y": 800
+      },
+      "config": {
+        "op": "format",
+        "args": {
+          "template": "DIAGNOSIS: {verdict}\n\nFEEDBACK FOR THE STUDENT:\n{feedback}",
+          "verdict": "${state.out__verdict}",
+          "feedback": "${state.out__tutor}"
+        }
+      }
+    },
+    {
+      "id": "final",
+      "kind": "output",
+      "label": "Feedback",
+      "position": {
+        "x": 340,
+        "y": 960
+      },
+      "config": {
+        "body_key": "markdown_body",
+        "source": "${state.out__report}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "submission",
+      "source_port": "out",
+      "target": "teacher_check",
+      "target_port": "in"
+    },
+    {
+      "id": "e2",
+      "source": "teacher_check",
+      "source_port": "approve",
+      "target": "assess",
+      "target_port": "in"
+    },
+    {
+      "id": "e3",
+      "source": "assess",
+      "source_port": "out",
+      "target": "verdict",
+      "target_port": "in"
+    },
+    {
+      "id": "e4",
+      "source": "verdict",
+      "source_port": "out",
+      "target": "tutor",
+      "target_port": "in"
+    },
+    {
+      "id": "e5",
+      "source": "tutor",
+      "source_port": "out",
+      "target": "report",
+      "target_port": "in"
+    },
+    {
+      "id": "e6",
+      "source": "report",
+      "source_port": "out",
+      "target": "final",
+      "target_port": "in"
+    }
+  ],
+  "joins": {},
+  "budget": null
+}

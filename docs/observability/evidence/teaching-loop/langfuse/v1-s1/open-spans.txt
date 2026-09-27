@@ -1,0 +1,46 @@
+unfinished spans (non-EVENT observations with endTime null): 0
+
+run_id: 0813aacd-1550-4eca-b5be-c15ca29d5ffc   checked: 2026-09-27T07:32:58Z
+observations examined: 38
+
+The split, because these are three different numbers:
+  observations with endTime null, ALL types  : 22
+  of those, EVENT (no endTime by construction): 22
+  of those, able to end and still open (D3)   : 0
+
+  by type: EVENT=22
+  by role: event=22
+
+A Langfuse EVENT is a point in time and carries no endTime:
+TRACE-CONTRACT.md section 2 makes it the catch-all for a gate opening or
+an unknown frame kind. Counting one as an unfinished span is a category
+error, and it is the one this file made until 2026-09-06 - it read 38 on
+a paid run whose unfinished-span count was 0. See
+evidence/proof/cancelled/open-spans-by-type.txt.
+
+  (no unfinished span - DoD D3 is satisfied for this run)
+
+The 22 EVENT observation(s) with no endTime, listed for
+completeness. None of these is a D3 finding:
+  EVENT AGENT_CALL id=a9e19cfe9ff5ac9a start=2026-09-27T07:20:58.012Z
+  EVENT AGENT_CALL id=1d8afe01739a2c44 start=2026-09-27T07:20:58.008Z
+  EVENT AGENT_CALL id=c1b384801feb8365 start=2026-09-27T07:20:58.004Z
+  EVENT AGENT_CALL id=87aac52ec70931c1 start=2026-09-27T07:20:55.583Z
+  EVENT AGENT_CALL id=a6e80d1c58737f63 start=2026-09-27T07:20:55.580Z
+  EVENT AGENT_CALL id=548651eda4b37e30 start=2026-09-27T07:20:55.562Z
+  EVENT AGENT_CALL id=ec99e32039855811 start=2026-09-27T07:20:55.128Z
+  EVENT AGENT_CALL id=603381bf86ddf398 start=2026-09-27T07:20:55.122Z
+  EVENT AGENT_CALL id=52e9d1d4a6f4d28f start=2026-09-27T07:20:55.116Z
+  EVENT AGENT_CALL id=1fbe43c1b07b6a58 start=2026-09-27T07:20:53.237Z
+  EVENT AGENT_CALL id=b4afc51388b3311a start=2026-09-27T07:20:53.232Z
+  EVENT AGENT_CALL id=5fb2180ac4a60260 start=2026-09-27T07:20:53.209Z
+  EVENT gate:b2de0cf8-4e0d-514b-b878-2956d99c3ad2 id=8c219560d92feabd start=2026-09-27T07:20:52.740Z
+  EVENT gate:b2de0cf8-4e0d-514b-b878-2956d99c3ad2 id=1aad32b153e18fb3 start=2026-09-27T07:20:51.994Z
+  EVENT NODE_PAUSED id=51540bdaa53f22eb start=2026-09-27T07:20:51.964Z
+  EVENT NODE_START id=9cf2d4f9d721bdd7 start=2026-09-27T07:20:51.248Z
+  EVENT NODE_START id=9b545957fe11f1a0 start=2026-09-27T07:20:51.248Z
+  EVENT NODE_START id=bcb586e233bc8191 start=2026-09-27T07:20:51.248Z
+  EVENT NODE_START id=e85446128ddec841 start=2026-09-27T07:20:51.248Z
+  EVENT NODE_START id=4cff598c623fd565 start=2026-09-27T07:20:51.248Z
+  EVENT NODE_START id=2cb05a159e1cf2f9 start=2026-09-27T07:20:51.248Z
+  EVENT NODE_START id=be575ec230ce0b56 start=2026-09-27T07:20:51.247Z

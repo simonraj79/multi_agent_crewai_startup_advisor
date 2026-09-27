@@ -1,0 +1,61 @@
+{
+  "_about": "Eight student submissions for the formative-feedback tutor, with the teacher's expected verdict and, for wrong answers, a regex matching the correct final answer. Written 2026-09-27 BEFORE any run; docs/observability/TEACHING-EVAL-LOOP.md section 3 is the rule that reads them.",
+  "submissions": [
+    {
+      "id": "s1-linear",
+      "question": "Solve 3x + 5 = 20.",
+      "answer": "x = 25/3, because I added 5 to 20 and then divided by 3.",
+      "expected": "incorrect",
+      "answer_pattern": "x\\s*=\\s*5\\b|\\bx is 5\\b|\\bequals 5\\b"
+    },
+    {
+      "id": "s2-fractions",
+      "question": "What is 1/2 + 1/3?",
+      "answer": "2/5, because 1 + 1 = 2 and 2 + 3 = 5.",
+      "expected": "incorrect",
+      "answer_pattern": "5\\s*/\\s*6|five[- ]sixths"
+    },
+    {
+      "id": "s3-seasons",
+      "question": "Why does Earth have seasons?",
+      "answer": "Because Earth is closer to the Sun in summer and further away in winter.",
+      "expected": "incorrect",
+      "answer_pattern": "\\btilt(ed)?\\b|\\baxial\\b|23\\.5"
+    },
+    {
+      "id": "s4-speed",
+      "question": "A car travels 120 km in 1.5 hours. What is its average speed?",
+      "answer": "80 km/h, because 120 divided by 1.5 is 80.",
+      "expected": "correct",
+      "answer_pattern": null
+    },
+    {
+      "id": "s5-powers",
+      "question": "Simplify (x^2)^3.",
+      "answer": "x^5, because 2 + 3 = 5.",
+      "expected": "incorrect",
+      "answer_pattern": "x\\s*\\^\\s*6|x⁶|x\\*\\*6|power of 6|sixth power"
+    },
+    {
+      "id": "s6-photosynthesis",
+      "question": "Which gas do plants take in from the air for photosynthesis?",
+      "answer": "Oxygen.",
+      "expected": "incorrect",
+      "answer_pattern": "carbon dioxide|\\bCO2\\b|CO₂"
+    },
+    {
+      "id": "s7-expand",
+      "question": "Expand 2(x + 4).",
+      "answer": "2x + 4",
+      "expected": "incorrect",
+      "answer_pattern": "2\\s*x\\s*\\+\\s*8"
+    },
+    {
+      "id": "s8-percent",
+      "question": "What is 15% of 80?",
+      "answer": "12, because 10% is 8 and 5% is 4.",
+      "expected": "correct",
+      "answer_pattern": null
+    }
+  ]
+}

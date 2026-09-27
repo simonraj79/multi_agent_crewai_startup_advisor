@@ -533,6 +533,20 @@ describe('Where runs go wrong names the step, not the mechanism', () => {
     wrapper.unmount()
   })
 
+  it('names each approval row by its step, never by a gate id', async () => {
+    const wrapper = await openImprove()
+    await chooseWorkflow(wrapper)
+    const gates = (HOTSPOTS.gates ?? []) as Array<Record<string, string | null>>
+    const rows = wrapper.get('[data-testid="improve-gate-rows"]')
+    expect(gates.length).toBeGreaterThan(0)
+    for (const gate of gates) {
+      const name = gate.node_label || gate.node_id || gate.gate_id
+      expect(rows.text()).toContain(name as string)
+      if (gate.node_label || gate.node_id) expect(rows.text()).not.toContain(gate.gate_id as string)
+    }
+    wrapper.unmount()
+  })
+
   it('writes one sentence per decision point, and warns on exactly the stuck ones', async () => {
     // The warn count is COMPUTED from the payload rather than typed: the rule
     // is "a router that decided something and never varied", and a fixture

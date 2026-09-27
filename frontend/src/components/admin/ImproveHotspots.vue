@@ -115,6 +115,14 @@ function agentName(row: { agent_role?: string | null; node_label?: string | null
   return row.agent_role || row.node_label || row.node_id
 }
 
+// A gate row is one canvas step since the server buckets openings by node,
+// not by the per-run gate id (TEACHING-EVAL-LOOP.md 5b). So it is named the
+// way the author named the step - "Teacher check" - and never by a uuid a
+// reader cannot look anything up with; the id is the last resort.
+function gateName(row: { node_label?: string | null; node_id?: string | null; gate_id: string }): string {
+  return row.node_label || row.node_id || row.gate_id
+}
+
 /**
  * A stored rating in the words the control itself uses.
  *
@@ -328,8 +336,8 @@ async function copyRunId(runId: string): Promise<void> {
         <ul v-if="gates.length" class="admin-bars" data-testid="improve-gate-rows">
           <AdminBar
             v-for="row in gates"
-            :key="row.gate_id"
-            :label="row.gate_id"
+            :key="row.node_id || row.gate_id"
+            :label="gateName(row)"
             :value="Math.round((row.revise_rate ?? 0) * 100)"
             :total="100"
             tone="warn"

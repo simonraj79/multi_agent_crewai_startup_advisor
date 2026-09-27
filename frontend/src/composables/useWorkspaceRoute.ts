@@ -32,6 +32,7 @@ export type WorkspaceRoute =
   | { name: 'home' }
   | { name: 'studio' }
   | { name: 'admin' }
+  | { name: 'apiKeys' }
   | { name: 'builder'; documentId: DocumentId | null }
 
 const HOME: WorkspaceRoute = { name: 'home' }
@@ -52,6 +53,16 @@ const STUDIO: WorkspaceRoute = { name: 'studio' }
  * server's 404 - the actual control - untested by anything on this side.
  */
 const ADMIN: WorkspaceRoute = { name: 'admin' }
+
+/**
+ * `#/account/api-keys` (`.agent/plans/22-api-keys.md` D9): the page where a
+ * signed-in person mints and revokes the keys their own scripts run with.
+ * Two segments because it is the first ACCOUNT page and the hash should say
+ * whose it is; `#/account` alone, or any other second segment, names nothing
+ * and falls to the home like every other unknown hash. Like `#/admin` it is an
+ * address, not a permission - the server's session-only rule is the control.
+ */
+const API_KEYS: WorkspaceRoute = { name: 'apiKeys' }
 
 /**
  * The route a hash names, with anything unrecognised falling to the home.
@@ -79,6 +90,7 @@ export function workspaceRoute(hash: string): WorkspaceRoute {
   if (segments.length === 0) return HOME
   if (segments[0] === 'run') return STUDIO
   if (segments[0] === 'admin') return ADMIN
+  if (segments[0] === 'account') return segments[1] === 'api-keys' ? API_KEYS : HOME
   if (segments[0] !== 'build') return HOME
   const id = segments[1]
   if (id === undefined || !DOCUMENT_ID_PATTERN.test(id)) return { name: 'builder', documentId: null }
@@ -90,6 +102,7 @@ export function routeHash(route: WorkspaceRoute): string {
   if (route.name === 'home') return '#/'
   if (route.name === 'studio') return '#/run'
   if (route.name === 'admin') return '#/admin'
+  if (route.name === 'apiKeys') return '#/account/api-keys'
   return route.documentId === null ? '#/build' : `#/build/${route.documentId}`
 }
 

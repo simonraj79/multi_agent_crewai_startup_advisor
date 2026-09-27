@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import BrandLockup from './components/BrandLockup.vue'
 import SignInPanel from './components/SignInPanel.vue'
+import AccountKeysView from './views/AccountKeysView.vue'
 import AdminView from './views/AdminView.vue'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
@@ -223,6 +224,19 @@ watch(
     @open-document="navigate({ name: 'builder', documentId: $event })"
     @open-template="openTemplate"
     @admin="navigate({ name: 'admin' })"
+    @api-keys="navigate({ name: 'apiKeys' })"
+    @sign-out="endSession"
+  />
+
+  <!--
+    Personal API keys (plan 22 D9). Behind the same auth gate as every other
+    view - a signed-out reader got the sign-in wall above - and the server's
+    session-only rule is the control, not this route.
+  -->
+  <AccountKeysView
+    v-else-if="route.name === 'apiKeys'"
+    :user="signedInUser"
+    @home="navigate({ name: 'home' })"
     @sign-out="endSession"
   />
 

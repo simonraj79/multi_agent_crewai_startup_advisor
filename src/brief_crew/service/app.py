@@ -42,6 +42,14 @@ from brief_crew.service.auth import (
     bearer_token_from_header,
     verify_token,
 )
+from brief_crew.service.api_keys import (
+    API_KEY_INVALID_DETAIL,
+    SESSION_REQUIRED_DETAIL,
+    create_account_router,
+    is_api_key,
+    key_may_use,
+    resolve_api_key,
+)
 from brief_crew.service.graph import (
     BRIEF_GRAPH,
     BRIEF_NODE_REGISTRY,
@@ -1045,6 +1053,7 @@ def create_app(
         )
 
     def optional_user(
+        request: Request,
         authorization: str | None = Header(default=None),
         x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
     ) -> AuthenticatedUser | None:
@@ -1066,6 +1075,28 @@ def create_app(
         the event loop for every other connection, including live run streams.
         """
         token = bearer_token_from_header(authorization)
+        # Plan 22: a personal API key is recognised by its prefix BEFORE the
+        # JWT path, and whether or not an auth server is configured - a key is
+        # proved against this service's own table, not against JWKS. A key that
+        # is offered and does not resolve is a 401, never an anonymous caller.
+        if is_api_key(token):
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", None)
+            # Under `/api/admin` a key - live or junk - gets FastAPI's own
+            # unknown-route 404, so a key cannot even learn the console exists
+            # (plan 17 risk 9). Checked before the lookup: no query is spent.
+            if request.url.path.startswith("/api/admin"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            if not key_may_use(request.method, route_path):
+                raise HTTPException(status_code=403, detail=SESSION_REQUIRED_DETAIL)
+            key_user = resolve_api_key(getattr(registry, "persistence", None), token)
+            if key_user is None:
+                raise HTTPException(
+                    status_code=401,
+                    detail=API_KEY_INVALID_DETAIL,
+                    headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                )
+            return key_user
         if token is not None and project_config.AUTH_BASE_URL:
             try:
                 return verify_token(token)
@@ -1078,6 +1109,7 @@ def create_app(
         return synthetic_identity(x_synthetic_user)
 
     def current_user(
+        request: Request,
         authorization: str | None = Header(default=None),
         x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
     ) -> AuthenticatedUser | None:
@@ -1093,7 +1125,7 @@ def create_app(
         ``stream_frames`` already does for the WebSocket - the two paths must
         not disagree about who is signed in.
         """
-        user = optional_user(authorization, x_synthetic_user)
+        user = optional_user(request, authorization, x_synthetic_user)
         if user is None and auth_is_required():
             raise HTTPException(
                 status_code=401,
@@ -1359,11 +1391,32 @@ def create_app(
     # same `authedFetch` path; a probe is charged to the RUN limiter under the
     # caller's own key, because it is a user-initiated call to a third party
     # and that bucket is the one that already means "spend per person".
+    def require_session_user(user: AuthenticatedUser | None) -> AuthenticatedUser:
+        """`require_user`, and refused (403) for an API key - plan 22 D4.
+
+        The vault holds the owner's third-party secrets; a leaked Crew Studio
+        key must not be a way to read which ones exist, add one, or delete one.
+        """
+        resolved = require_user(user)
+        if resolved.via != "session":
+            raise HTTPException(status_code=403, detail=SESSION_REQUIRED_DETAIL)
+        return resolved
+
+    # `/api/account` (plan 22): whoami for a script, and key management for
+    # the person at the console.
+    app.include_router(
+        create_account_router(
+            current_user=current_user,
+            require_user=require_user,
+            persistence_factory=lambda: getattr(registry, "persistence", None),
+        )
+    )
+
     app.include_router(
         create_credentials_router(
             store_factory=credential_store_factory,
             current_user=current_user,
-            require_user=require_user,
+            require_user=require_session_user,
             rate_limiter=run_rate_limiter,
             limit_key=lambda user: f"user:{user.id}",
         )

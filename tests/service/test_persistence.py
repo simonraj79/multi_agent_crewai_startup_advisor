@@ -50,6 +50,7 @@ class PersistenceTests(unittest.TestCase):
                 # `create_all` makes it whole and the additive-column list
                 # does not apply to it.
                 "improve_digests",
+                "api_keys",
                 "mcp_servers",
                 "pending_feedback",
                 # Audit H4: the per-user, per-UTC-day meter on a PLATFORM key.

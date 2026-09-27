@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ArrowRight, Clock3, FilePlus2, Gauge, GitBranch, History, Loader, Play, TriangleAlert } from 'lucide-vue-next'
+import { ArrowRight, Clock3, FilePlus2, Gauge, GitBranch, History, KeyRound, Loader, Play, TriangleAlert } from 'lucide-vue-next'
 import AccountChip from '../components/builder/AccountChip.vue'
 import BrandLockup from '../components/BrandLockup.vue'
 import GraphThumbnail from '../components/builder/GraphThumbnail.vue'
@@ -104,6 +104,8 @@ const emit = defineEmits<{
   openTemplate: [templateId: string]
   /** Open `#/admin`. Emitted only from an entry that only an admin can see. */
   admin: []
+  /** Open `#/account/api-keys` (plan 22 D9). Drawn only for a signed-in account. */
+  apiKeys: []
   signOut: []
 }>()
 
@@ -452,6 +454,19 @@ onBeforeUnmount(() => window.clearInterval(ticker))
           @click="emit('admin')"
         >
           <Gauge :size="14" aria-hidden="true" /> Admin
+        </button>
+        <!--
+          API keys (plan 22 D9): a door, like Admin, and only for a signed-in
+          account - keys are minted by a session and belong to it.
+        -->
+        <button
+          v-if="user"
+          class="button button-quiet home-admin"
+          type="button"
+          data-testid="home-api-keys"
+          @click="emit('apiKeys')"
+        >
+          <KeyRound :size="14" aria-hidden="true" /> API keys
         </button>
         <AccountChip v-if="user" :user="user" @sign-out="emit('signOut')" />
       </div>

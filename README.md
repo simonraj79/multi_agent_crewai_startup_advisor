@@ -39,6 +39,7 @@ synthetic mode** below. It needs no API keys and spends nothing.
 - [Why it is useful](#why-it-is-useful)
 - [How a run looks](#how-a-run-looks)
 - [Getting started](#getting-started)
+- [Calling it from your own code](#calling-it-from-your-own-code)
 - [Using the CLI](#using-the-cli)
 - [Running against real models](#running-against-real-models)
 - [Project layout](#project-layout)
@@ -360,6 +361,50 @@ npm run dev:server        # listens on :3000, which vite.config.ts proxies /api/
 > load-bearing: `/api/auth` must be declared before `/api`, or every Better Auth
 > request — the Google callback included — is proxied to FastAPI and 404s with
 > nothing in either log to say why.
+
+---
+
+## Calling it from your own code
+
+A published workflow is also an HTTP API. Sign in, open **API keys** from the
+home page (`#/account/api-keys`), and create a key. The key is shown **once**:
+copy it then, because only its SHA-256 is stored and nobody can show it again.
+
+```bash
+API=https://agentic-crew-ai-api.onrender.com
+KEY=cs_live_...                                   # from the API keys page
+
+# Check the key works.
+curl "$API/api/account/whoami" -H "Authorization: Bearer $KEY"
+
+# Launch a published workflow. If it has approval steps, add "gates": "auto"
+# to run it unattended; without it the run pauses at its first human gate.
+# (A workflow with no approval steps refuses "gates": "auto" with a 422.)
+curl -X POST "$API/api/sessions/my-script/runs"   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json"   -d '{"workflow_id": "<workflow id>", "inputs": {"<input>": "<value>"}}'
+
+# Poll it until `status` is completed, failed or cancelled; the report is in `result`.
+curl "$API/api/runs/<run_id>" -H "Authorization: Bearer $KEY"
+```
+
+What a key can and cannot do:
+
+- It acts as **you**. Your runs, your published workflows, your rate limit and
+  your spend allowance - a run launched with a key shows up in your run
+  history like any other.
+- It can do **exactly** this: launch, read, cancel and rate runs, answer a
+  run's approval step, and read your workflows. Everything else - editing or
+  publishing a workflow, tools, MCP servers, skills, saved credentials, keys,
+  and the admin console even if you are an admin - needs you signed in. The
+  list is an allow-list in `service/api_keys.py`, so a route added later is
+  closed to keys until someone opens it on purpose.
+- It streams nothing: the live WebSocket is for the console. A script polls
+  `GET /api/runs/{run_id}`.
+- Revoking it takes effect on the very next request. You can hold ten live
+  keys; name each one after where it lives (`ci`, `zapier`, `laptop`) so you
+  know which to revoke.
+
+Keys start with `cs_live_` so secret scanners and `grep` can find one that was
+committed by mistake. If that happens, revoke it on the API keys page.
 
 ---
 

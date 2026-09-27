@@ -1228,7 +1228,9 @@ def create_admin_router(
         """
 
         return AdminWhoamiModel(
-            admin=config.is_admin(
+            # Plan 22: a key is never an admin, so it must not be told it is.
+            admin=getattr(user, "via", "session") == "session"
+            and config.is_admin(
                 getattr(user, "id", None), getattr(user, "email", None)
             ),
             user_id=getattr(user, "id", None),

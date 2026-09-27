@@ -68,6 +68,11 @@ class AuthenticatedUser:
     email: str | None = None
     name: str | None = None
     image: str | None = None
+    #: How this identity was proved: `"session"` (a Better Auth JWT, or the
+    #: synthetic header in tests) or `"api_key"` (plan 22). Routes that only a
+    #: person at the console may reach refuse the second.
+    via: str = "session"
+    api_key_id: str | None = None
 
     @property
     def label(self) -> str:
@@ -347,6 +352,13 @@ def require_admin(user: AuthenticatedUser | None) -> AuthenticatedUser:
 
     from fastapi import HTTPException
 
-    if user is None or not config.is_admin(getattr(user, "id", None), getattr(user, "email", None)):
+    # Plan 22: an API key never reaches the console, even its admin owner's.
+    # A leaked key must not become a read of every user's runs; the 404 is the
+    # same one a stranger gets, so a key learns nothing about the surface.
+    if (
+        user is None
+        or getattr(user, "via", "session") != "session"
+        or not config.is_admin(getattr(user, "id", None), getattr(user, "email", None))
+    ):
         raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
     return user

@@ -1,0 +1,200 @@
+[
+  {
+    "id": "86371a877c50498ab32b4936bd6c0c6a-human_rating",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "human_rating",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T09:26:14.000Z",
+    "updatedAt": "2026-09-27T09:26:18.334Z",
+    "timestamp": "2026-09-27T09:26:12.389Z",
+    "traceId": "86371a877c50498ab32b4936bd6c0c6a",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "good",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "<owner-user-id>",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_3e30fae3"
+      ],
+      "environment": "live",
+      "sessionId": "86371a87-7c50-498a-b32b-4936bd6c0c6a"
+    }
+  },
+  {
+    "id": "7d3a9eaffd60fcce",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "run_succeeded",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T09:25:24.000Z",
+    "updatedAt": "2026-09-27T09:25:28.987Z",
+    "timestamp": "2026-09-27T09:25:23.385Z",
+    "traceId": "86371a877c50498ab32b4936bd6c0c6a",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "<owner-user-id>",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_3e30fae3"
+      ],
+      "environment": "live",
+      "sessionId": "86371a87-7c50-498a-b32b-4936bd6c0c6a"
+    }
+  },
+  {
+    "id": "f031112e817ca3c2",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "run_status",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T09:25:24.000Z",
+    "updatedAt": "2026-09-27T09:25:28.984Z",
+    "timestamp": "2026-09-27T09:25:23.385Z",
+    "traceId": "86371a877c50498ab32b4936bd6c0c6a",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "completed",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "<owner-user-id>",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_3e30fae3"
+      ],
+      "environment": "live",
+      "sessionId": "86371a87-7c50-498a-b32b-4936bd6c0c6a"
+    }
+  },
+  {
+    "id": "e259de67356991ea",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T09:25:24.000Z",
+    "updatedAt": "2026-09-27T09:25:28.448Z",
+    "timestamp": "2026-09-27T09:25:23.046Z",
+    "traceId": "86371a877c50498ab32b4936bd6c0c6a",
+    "observationId": "7cb0fe0cd8491b60",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "<owner-user-id>",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_3e30fae3"
+      ],
+      "environment": "live",
+      "sessionId": "86371a87-7c50-498a-b32b-4936bd6c0c6a"
+    }
+  },
+  {
+    "id": "15b32c4121c301dc",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T09:25:22.000Z",
+    "updatedAt": "2026-09-27T09:25:26.559Z",
+    "timestamp": "2026-09-27T09:25:21.377Z",
+    "traceId": "86371a877c50498ab32b4936bd6c0c6a",
+    "observationId": "5bbfe24f2002ce93",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "<owner-user-id>",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_3e30fae3"
+      ],
+      "environment": "live",
+      "sessionId": "86371a87-7c50-498a-b32b-4936bd6c0c6a"
+    }
+  },
+  {
+    "id": "6f51a60e58a311d1",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "gate_outcome",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T09:25:19.000Z",
+    "updatedAt": "2026-09-27T09:25:23.802Z",
+    "timestamp": "2026-09-27T09:25:17.875Z",
+    "traceId": "86371a877c50498ab32b4936bd6c0c6a",
+    "observationId": "6940ee11fb873b45",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "approve",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "<owner-user-id>",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_3e30fae3"
+      ],
+      "environment": "live",
+      "sessionId": "86371a87-7c50-498a-b32b-4936bd6c0c6a"
+    }
+  }
+]

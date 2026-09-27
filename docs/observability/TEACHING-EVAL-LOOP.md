@@ -220,6 +220,37 @@ and revise module pass (`DATABASE_URL=sqlite+pysqlite:///:memory:`), and
 - **The dev database's gate backlog** (405 expired gates at boot) is remaining
   work item 66's residue, not this loop's.
 
+## 5d. On production (Render), 2026-09-27
+
+PR #37 merged as `76a3e88`. The API (`agentic-crew-ai-api`, starter) went from
+build to live in about 2 minutes (09:13:30Z → 09:15:34Z, Render API). The studio
+(free tier) was correctly **not** redeployed: it has `rootDir: frontend` and the
+merge touched nothing under `frontend/`. Its first request after sleeping took
+over a minute; after that it answered in 0.16 s.
+
+Tested from the owner's signed-in browser against the public API. The owner's
+id is replaced with `<owner-user-id>` throughout `evidence/teaching-loop/production/`.
+
+| Check | Answer on production |
+| --- | --- |
+| v3 created and published as `ug_3e30fae3` | static estimate $0.3846, `gated_before_spend: true` |
+| Two runs (s3 seasons, s1 linear), each approved at the gate | both `completed` in 13 s and 7 s |
+| **Gate clock fix** | `expires_at` served as `2026-09-27T09:55:16.000908Z`: explicit UTC, exactly 30 min after the gate opened. The old code served a naive string. |
+| **Hotspot fix** | one `teacher_check` row, `opened: 2`, median wait **+2.03 s** |
+| The rule, applied by hand | both Good (no answer pattern, a question, under 120 words, assessor right). The seasons feedback now points at "the angle sunlight hits… on a globe", not the tilt. |
+| Compare | 2/2 Good, $0.000705 per run, correctly flagged `underpowered` (n = 2 < 5) |
+| Langfuse | one `live` trace per run with `human_rating: good` and `gate_outcome: approve`. The generations arrived about **5 min** after the run, all four `openrouter-billed`. |
+
+**Finding: production pays about 1.8× what the app estimates.** Langfuse's
+billed totals are $0.001375 and $0.001162. The app's estimates are $0.000764 and
+$0.000646. Production was served by provider **"Google"**; the local runs were
+served by **"Google AI Studio"** and billed at the estimate. `:nitro` routes on
+speed, not price. This is the 1.8× priority-endpoint finding of the
+observability programme, met again. So Compare's `cost_per_run` (an estimate)
+understates production spend by about 45%. The billed figure in Langfuse is the
+true one. Recorded, not changed: pricing policy is the owner's call (audit M14
+already prices the static estimate at the dearest endpoint).
+
 ## 6. How to reproduce
 
 ```bash

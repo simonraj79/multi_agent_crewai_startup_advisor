@@ -212,8 +212,78 @@ class WhatAKeyMayNotDoTests(ApiKeyCase):  # 6
             self.client.get("/api/admin/summary", headers=self.auth(secret)).status_code,
             404,
         )
-        whoami = self.client.get("/api/admin/whoami", headers=self.auth(secret)).json()
-        self.assertFalse(whoami["admin"])
+        # Even whoami, which answers 200 to every non-admin session, is the
+        # unknown-route 404 to a key: a key learns nothing about the console.
+        self.assertEqual(
+            self.client.get("/api/admin/whoami", headers=self.auth(secret)).status_code,
+            404,
+        )
+
+
+class AllowListTests(ApiKeyCase):
+    """The verifier's High: a deny-list let a key exfiltrate a vault secret.
+
+    Every step of that attack is refused now, BEFORE the key is even looked
+    up, because none of those routes is on `API_KEY_ALLOWED_ROUTES`.
+    """
+
+    def test_the_exfiltration_path_is_refused_at_every_step(self) -> None:
+        secret = self.mint()["secret"]
+        headers = self.auth(secret)
+        for method, path, body in (
+            ("get", "/api/builder/tools", None),
+            ("get", "/api/builder/mcp/servers", None),
+            ("post", "/api/builder/tools/custom", {"name": "x"}),
+            ("put", "/api/builder/tools/custom/t1", {"name": "x"}),
+            ("post", "/api/builder/tools/custom/t1/test", {}),
+            ("post", "/api/builder/mcp/servers", {"name": "x"}),
+            ("post", "/api/builder/mcp/servers/s1/discover", {}),
+            ("post", "/api/builder/skills", {}),
+            ("post", "/api/builder/workflows", {}),
+            ("delete", "/api/builder/workflows/ug_0123abcd", None),
+            ("post", "/api/builder/workflows/ug_0123abcd/publish", None),
+            ("post", "/api/builder/workflows/ug_0123abcd/unpublish", None),
+        ):
+            kwargs = {"headers": headers}
+            if body is not None:
+                kwargs["json"] = body
+            with self.subTest(method=method, path=path):
+                response = getattr(self.client, method)(path, **kwargs)
+                self.assertEqual(response.status_code, 403, response.text)
+                self.assertEqual(response.json()["detail"], SESSION_REQUIRED_DETAIL)
+
+    def test_a_key_may_read_workflows(self) -> None:
+        secret = self.mint()["secret"]
+        for path in ("/api/workflows", "/api/builder/workflows"):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    self.client.get(path, headers=self.auth(secret)).status_code, 200
+                )
+
+    def test_any_key_under_admin_is_the_unknown_route_404(self) -> None:
+        live = self.mint("admin-token")["secret"]
+        junk, _, _ = generate_api_key()
+        unknown = self.client.get("/api/no-such-route").json()
+        for key in (live, junk):
+            response = self.client.get("/api/admin/runs", headers=self.auth(key))
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json(), unknown)
+
+    def test_every_allowed_route_really_exists(self) -> None:
+        """A renamed route must not leave a dead entry that grants nothing -
+        or, worse, a stale one that matches a NEW route by accident."""
+
+        from brief_crew.service.api_keys import API_KEY_ALLOWED_ROUTES
+
+        # Off the OpenAPI document, not `app.routes`: FastAPI 0.141 nests an
+        # included router as one `_IncludedRouter` entry, so walking the top
+        # level misses every route the builder and account routers serve.
+        served = {
+            (method.upper(), path)
+            for path, operations in self.app.openapi()["paths"].items()
+            for method in operations
+        }
+        self.assertFalse(API_KEY_ALLOWED_ROUTES - served)
 
 
 class LimitAndBookkeepingTests(ApiKeyCase):

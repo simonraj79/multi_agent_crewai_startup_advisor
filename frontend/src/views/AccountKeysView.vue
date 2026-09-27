@@ -66,7 +66,7 @@ const curlLaunch = computed(
     `curl -X POST "${origin}/api/sessions/my-script/runs" \\\n`
     + '  -H "Authorization: Bearer <key>" \\\n'
     + '  -H "Content-Type: application/json" \\\n'
-    + `  -d '{"workflow_id":"<workflow id>","inputs":{"<input>":"<value>"},"gates":"auto"}'`,
+    + `  -d '{"workflow_id":"<workflow id>","inputs":{"<input>":"<value>"}}'`,
 )
 const curlRead = computed(
   () => `curl "${origin}/api/runs/<run_id>" \\\n  -H "Authorization: Bearer <key>"`,
@@ -170,8 +170,8 @@ onMounted(() => {
           <p>
             Run your published workflows from your own code - a script, a cron job, a CI step or
             an automation tool. A key acts as you: its runs are yours, count against your spending
-            limit, and can see only your workflows. It cannot manage keys or saved credentials.
-            Treat it like a password.
+            limit, and can see only your workflows. It can launch, read and cancel runs and read your workflows - nothing else;
+            editing, publishing, credentials and keys need you signed in. Treat it like a password.
           </p>
         </section>
 
@@ -204,7 +204,7 @@ onMounted(() => {
               {{ copied ? 'Copied' : 'Copy' }}
             </button>
           </div>
-          <p class="account-hint">Start a run of a published workflow, then read it back until it finishes:</p>
+          <p class="account-hint">Start a run of a published workflow, then read it back until it finishes. If the workflow asks for approval along the way, add <code>"gates":"auto"</code> to run it unattended.</p>
           <pre class="account-code" data-testid="account-keys-curl"><code>{{ curlLaunch }}
 
 {{ curlRead }}</code></pre>

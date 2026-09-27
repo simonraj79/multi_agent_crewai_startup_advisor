@@ -47,6 +47,7 @@ from brief_crew.service.api_keys import (
     SESSION_REQUIRED_DETAIL,
     create_account_router,
     is_api_key,
+    key_may_use,
     resolve_api_key,
 )
 from brief_crew.service.graph import (
@@ -1042,6 +1043,7 @@ def create_app(
         )
 
     def optional_user(
+        request: Request,
         authorization: str | None = Header(default=None),
         x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
     ) -> AuthenticatedUser | None:
@@ -1068,6 +1070,15 @@ def create_app(
         # proved against this service's own table, not against JWKS. A key that
         # is offered and does not resolve is a 401, never an anonymous caller.
         if is_api_key(token):
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", None)
+            # Under `/api/admin` a key - live or junk - gets FastAPI's own
+            # unknown-route 404, so a key cannot even learn the console exists
+            # (plan 17 risk 9). Checked before the lookup: no query is spent.
+            if request.url.path.startswith("/api/admin"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            if not key_may_use(request.method, route_path):
+                raise HTTPException(status_code=403, detail=SESSION_REQUIRED_DETAIL)
             key_user = resolve_api_key(getattr(registry, "persistence", None), token)
             if key_user is None:
                 raise HTTPException(
@@ -1088,6 +1099,7 @@ def create_app(
         return synthetic_identity(x_synthetic_user)
 
     def current_user(
+        request: Request,
         authorization: str | None = Header(default=None),
         x_synthetic_user: str | None = Header(default=None, alias=SYNTHETIC_USER_HEADER),
     ) -> AuthenticatedUser | None:
@@ -1103,7 +1115,7 @@ def create_app(
         ``stream_frames`` already does for the WebSocket - the two paths must
         not disagree about who is signed in.
         """
-        user = optional_user(authorization, x_synthetic_user)
+        user = optional_user(request, authorization, x_synthetic_user)
         if user is None and auth_is_required():
             raise HTTPException(
                 status_code=401,

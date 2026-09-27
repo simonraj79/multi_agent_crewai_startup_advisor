@@ -111,7 +111,8 @@ describe('create, and the secret shown once', () => {
     const curl = wrapper.get('[data-testid="account-keys-curl"]').text()
     expect(curl).toContain(`${window.location.origin}/api/sessions/my-script/runs`)
     expect(curl).toContain('Authorization: Bearer <key>')
-    expect(curl).toContain('"gates":"auto"')
+    // Not in the command: a workflow with no approval steps answers 422 to it.
+    expect(curl).not.toContain('"gates"')
     expect(curl).toContain(`${window.location.origin}/api/runs/<run_id>`)
 
     // The new key joins the list, and the list never carries the secret.

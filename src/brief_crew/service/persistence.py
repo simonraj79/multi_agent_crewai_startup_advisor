@@ -2959,8 +2959,8 @@ class PostgresFlowPersistence(FlowPersistence):
         """Insert a key unless the owner already holds `max_active` live ones.
 
         Answers None at the limit. The count and the insert share one
-        transaction; two concurrent creates at `max_active - 1` can still both
-        land (no row lock on a COUNT), which overshoots the cap by one. That is
+        transaction but no row lock covers a COUNT, so k concurrent creates at
+        `max_active - 1` can all land and overshoot the cap by k - 1. That is
         accepted rather than engineered around: the cap is a tidiness bound on
         a list a person manages, not a spend control.
         """

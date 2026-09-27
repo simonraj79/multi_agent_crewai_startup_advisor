@@ -251,6 +251,39 @@ understates production spend by about 45%. The billed figure in Langfuse is the
 true one. Recorded, not changed: pricing policy is the owner's call (audit M14
 already prices the static estimate at the dearest endpoint).
 
+## 5e. The full loop on production, 2026-09-27 (for LinkedIn post 4)
+
+The same three versions and eight submissions, run on production as workflow
+`ug_b89d38c7` "Homework feedback tutor", driven from the owner's signed-in
+browser and rated in the page by the same rule. 24 runs, all `completed`.
+
+| | v1 | v2 | v3 |
+| --- | ---: | ---: | ---: |
+| Good by the rule | 0 / 8 | 7 / 8 | 8 / 8 |
+| Cost per run (Compare, estimate) | $0.001385 | $0.000608 | $0.000623 |
+
+- v1's two right answers were Bad too, both for length (260 and 175 words).
+  The rule flagged "gives the answer away" on 5 of the 6 wrong answers. The
+  sixth (fractions) was Bad for length and asking nothing; the model writes
+  LaTeX (`\frac`, `$x = 5$`), which the answer pattern may not match. The
+  drawer shows the LaTeX raw.
+- v2's one Bad was seasons again, exactly as in the local run.
+- **Billed matched the estimate this time**: Langfuse's billed totals over the
+  24 traces sum to $0.020927, and Compare's estimate is $0.020928. OpenRouter
+  routed these calls to Google AI Studio. The two test runs in 5d went to a
+  dearer endpoint. Routing decides the price, which is why the billed figure is
+  kept beside the estimate.
+- The model review ($0.0023) saw 24 of 24 completed with zero failures, and
+  said to review "the Assess and Tutor nodes". From counts alone it cannot tell
+  which agent is wrong. The Assessor was right in all 24 runs.
+- A refinement it prompted, shipped the same evening as PR #39: the Improve
+  panel now names an approval row by its step ("Teacher check") instead of the
+  per-run gate id.
+- Open: one `401 your session has expired` on a gate reply mid-batch, with a
+  valid session and a fresh token a second later. The API logs the reason only
+  at INFO, so it was not visible from outside. A retry-once driver needed no
+  retries afterwards.
+
 ## 6. How to reproduce
 
 ```bash

@@ -1,0 +1,17 @@
+{
+  "run_id": "4b215775-ee6d-4407-aca0-fdd6ab5887c7",
+  "submission": "s3-seasons",
+  "status": "completed",
+  "rating": "good",
+  "reasons": [],
+  "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt is a very common idea that Earth's seasons are caused by us getting closer to and further from the Sun during our orbit. \n\n* **Hint:** Remember that the Northern and Southern Hemispheres experience opposite seasons at the exact same time of year. \n* If distance from the Sun were the main driver of temperature, how would you explain why it is winter in Australia while it is summer in the United States?",
+  "usage": {
+    "successful_requests": 2,
+    "prompt_tokens": 886,
+    "completion_tokens": 177,
+    "total_tokens": 1063,
+    "call_count": 2,
+    "elapsed_ms": 2626,
+    "cost_usd": 0.0007083
+  }
+}

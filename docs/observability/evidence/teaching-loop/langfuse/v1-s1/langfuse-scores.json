@@ -1,0 +1,200 @@
+[
+  {
+    "id": "0813aacd15504ecab5bec15ca29d5ffc-human_rating",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "human_rating",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T07:20:59.000Z",
+    "updatedAt": "2026-09-27T07:21:04.069Z",
+    "timestamp": "2026-09-27T07:20:58.282Z",
+    "traceId": "0813aacd15504ecab5bec15ca29d5ffc",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "bad",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "teaching-proof",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_2805daab"
+      ],
+      "environment": "live",
+      "sessionId": "0813aacd-1550-4eca-b5be-c15ca29d5ffc"
+    }
+  },
+  {
+    "id": "3fb730ad93d9671c",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "run_succeeded",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T07:20:59.000Z",
+    "updatedAt": "2026-09-27T07:21:03.584Z",
+    "timestamp": "2026-09-27T07:20:58.040Z",
+    "traceId": "0813aacd15504ecab5bec15ca29d5ffc",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "teaching-proof",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_2805daab"
+      ],
+      "environment": "live",
+      "sessionId": "0813aacd-1550-4eca-b5be-c15ca29d5ffc"
+    }
+  },
+  {
+    "id": "ec61ff1a3ceb6f00",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "run_status",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T07:20:59.000Z",
+    "updatedAt": "2026-09-27T07:21:03.569Z",
+    "timestamp": "2026-09-27T07:20:58.040Z",
+    "traceId": "0813aacd15504ecab5bec15ca29d5ffc",
+    "observationId": null,
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "completed",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "teaching-proof",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_2805daab"
+      ],
+      "environment": "live",
+      "sessionId": "0813aacd-1550-4eca-b5be-c15ca29d5ffc"
+    }
+  },
+  {
+    "id": "374cf02e7c78623a",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T07:20:59.000Z",
+    "updatedAt": "2026-09-27T07:21:03.581Z",
+    "timestamp": "2026-09-27T07:20:58.008Z",
+    "traceId": "0813aacd15504ecab5bec15ca29d5ffc",
+    "observationId": "9f0dc3a911a0279a",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "teaching-proof",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_2805daab"
+      ],
+      "environment": "live",
+      "sessionId": "0813aacd-1550-4eca-b5be-c15ca29d5ffc"
+    }
+  },
+  {
+    "id": "887299f5ea8d247c",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "task_attempts",
+    "value": 1,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T07:20:56.000Z",
+    "updatedAt": "2026-09-27T07:21:00.432Z",
+    "timestamp": "2026-09-27T07:20:55.122Z",
+    "traceId": "0813aacd15504ecab5bec15ca29d5ffc",
+    "observationId": "11cc1e35afe4363c",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": null,
+    "dataType": "NUMERIC",
+    "trace": {
+      "userId": "teaching-proof",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_2805daab"
+      ],
+      "environment": "live",
+      "sessionId": "0813aacd-1550-4eca-b5be-c15ca29d5ffc"
+    }
+  },
+  {
+    "id": "eb7ddf576e13d318",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "environment": "live",
+    "name": "gate_outcome",
+    "value": 0,
+    "source": "API",
+    "authorUserId": null,
+    "comment": null,
+    "metadata": {},
+    "configId": null,
+    "queueId": null,
+    "executionTraceId": null,
+    "createdAt": "2026-09-27T07:20:54.000Z",
+    "updatedAt": "2026-09-27T07:20:58.876Z",
+    "timestamp": "2026-09-27T07:20:52.740Z",
+    "traceId": "0813aacd15504ecab5bec15ca29d5ffc",
+    "observationId": "7522433784e30339",
+    "sessionId": null,
+    "datasetRunId": null,
+    "stringValue": "approve",
+    "dataType": "CATEGORICAL",
+    "trace": {
+      "userId": "teaching-proof",
+      "tags": [
+        "gates:human",
+        "mode:run",
+        "ug_2805daab"
+      ],
+      "environment": "live",
+      "sessionId": "0813aacd-1550-4eca-b5be-c15ca29d5ffc"
+    }
+  }
+]

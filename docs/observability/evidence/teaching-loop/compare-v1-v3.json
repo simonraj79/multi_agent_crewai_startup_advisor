@@ -1,0 +1,56 @@
+{
+  "window": {
+    "start": "2026-08-28T07:24:11.257Z",
+    "end": "2026-09-27T07:24:11.257Z",
+    "days": 30
+  },
+  "workflow_id": "ug_2805daab",
+  "axis": "version",
+  "node_id": null,
+  "min_runs": 5,
+  "arms": [
+    {
+      "key": "1",
+      "n": 8,
+      "underpowered": false,
+      "missing": false,
+      "status_mix": {
+        "completed": 8
+      },
+      "verdict_mix": {},
+      "mean_confidence": null,
+      "rating_mix": {
+        "good": 1,
+        "bad": 7,
+        "unsure": 0,
+        "unrated": 0
+      },
+      "gate_revise_rate": 0.0,
+      "median_duration_ms": 5624.968,
+      "cost_per_run_usd": 0.001274
+    },
+    {
+      "key": "3",
+      "n": 8,
+      "underpowered": false,
+      "missing": false,
+      "status_mix": {
+        "completed": 8
+      },
+      "verdict_mix": {},
+      "mean_confidence": null,
+      "rating_mix": {
+        "good": 8,
+        "bad": 0,
+        "unsure": 0,
+        "unrated": 0
+      },
+      "gate_revise_rate": 0.0,
+      "median_duration_ms": 4346.122,
+      "cost_per_run_usd": 0.000635
+    }
+  ],
+  "estimate": true,
+  "error_note": "measured -14.5% to +9.95% against billed",
+  "truncated": false
+}

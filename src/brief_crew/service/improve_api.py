@@ -1104,8 +1104,16 @@ def _gate_hotspots(
     for gate in gates:
         gate_id = str(gate.get("gate_id") or "gate")
         node_id = str(gate.get("node_id") or "")
+        # Bucketed on the canvas NODE, not the gate id. The registry mints a
+        # gate id per run - uuid5 over run id, method and request time - so a
+        # gate-id bucket held exactly one opening, and a workflow run 24 times
+        # listed its one Teacher check as 24 rows of `opened: 1` whose
+        # "median" was a single value. The seeded test gave every run the same
+        # literal id, a shape production never produces, which is why it
+        # passed. `gate_id` on the row is the first one seen, kept so a row
+        # still names a real gate someone can look up.
         bucket = buckets.setdefault(
-            gate_id,
+            node_id or gate_id,
             {
                 "gate_id": gate_id,
                 "node_id": node_id,

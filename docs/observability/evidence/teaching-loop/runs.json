@@ -1,0 +1,456 @@
+{
+  "base": "http://127.0.0.1:8011",
+  "versions": {
+    "1": {
+      "document_version": 1,
+      "runs": [
+        {
+          "run_id": "0813aacd-1550-4eca-b5be-c15ca29d5ffc",
+          "submission": "s1-linear",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "235 words (limit 120)",
+            "gives the answer away",
+            "asks the student nothing"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Math Problem\n\nHello! Let's take a look at your attempt to solve the equation `3x + 5 = 20`. \n\n### What Went Wrong\nYou made a small mistake with the inverse operations. When we want to isolate the variable term (`3x`), we need to do the **opposite** operation to both sides of the equation. Because the equation has a `+ 5`, the opposite of adding 5 is **subtracting** 5. In your steps, you accidentally added 5 to 20 instead, which led you to `25/3`. \n\nLet's walk through the complete correct method step by step so you can see how it works!\n\n---\n\n### The Correct Step-by-Step Method\n\n**Original Equation:**\n`3x + 5 = 20`\n\n* **Step 1: Subtract 5 from both sides.**\n  To get the term with `x` all by itself on the left side, we subtract 5 from 20.\n  `3x = 20 - 5`\n  `3x = 15`\n\n* **Step 2: Divide both sides by 3.**\n  Now we have `3` multiplied by `x`. The opposite of multiplying by 3 is dividing by 3. We divide both sides by 3 to find the value of a single `x`.\n  `x = 15 / 3`\n  `x = 5`\n\n---\n\n### Final Answer\nThe correct final answer is **`x = 5`**.\n\nYou can always check your work by plugging your answer back into the original equation:\n`3(5) + 5 = 15 + 5 = 20`. It matches! \n\nKeep practicing, and let me know if you have any questions about how these steps work!",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 777,
+            "completion_tokens": 473,
+            "total_tokens": 1250,
+            "call_count": 2,
+            "elapsed_ms": 4281,
+            "cost_usd": 0.0014156
+          }
+        },
+        {
+          "run_id": "660c57e5-2884-4d28-9d17-552e550d97e4",
+          "submission": "s2-fractions",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "301 words (limit 120)",
+            "gives the answer away"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Let's Review Adding Fractions!\n\nHello! You gave a very natural first thought for this problem by adding the top numbers (numerators) together and the bottom numbers (denominators) together to get `2/5`. \n\n## What Went Wrong?\n\nThe misconception here is that fractions can be added straight across. However, denominators represent the *size* of the pieces. Think of it like trying to add halves and thirds\u2014they are different-sized slices! Because the denominators (`2` and `3`) are different, we cannot combine them directly. We first need to make the pieces the same size by finding a **common denominator**.\n\n---\n\n## The Correct Step-by-Step Method\n\nTo add fractions with different denominators, we follow these steps:\n\n### Step 1: Find a common denominator\nWe need a number that both `2` and `3` can divide into evenly. \n* Multiples of `2`: 2, 4, **6**, 8...\n* Multiples of `3`: 3, **6**, 9...\n\nThe least common multiple is **`6`**. This will be our common denominator.\n\n### Step 2: Convert each fraction to an equivalent fraction with `6` as the denominator\n* For `1/2`: Multiply both the top and bottom by `3` to get the bottom to `6`.\n  $$\\frac{1 \\times 3}{2 \\times 3} = \\frac{3}{6}$$\n\n* For `1/3`: Multiply both the top and bottom by `2` to get the bottom to `6`.\n  $$\\frac{1 \\times 2}{3 \\times 2} = \\frac{2}{6}$$\n\n### Step 3: Add the numerators\nNow that both fractions have the same denominator, we can add them together by keeping the denominator the same and adding the new numerators:\n$$\\frac{3}{6} + \\frac{2}{6} = \\frac{3 + 2}{6} = \\frac{5}{6}$$\n\n---\n\n## Final Answer\n\nThe correct final answer is **`5/6`**. \n\nKeep practicing, and you'll be a fraction pro in no time! Let me know if you'd like to try another one together.",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 759,
+            "completion_tokens": 544,
+            "total_tokens": 1303,
+            "call_count": 2,
+            "elapsed_ms": 3649,
+            "cost_usd": 0.0015877
+          }
+        },
+        {
+          "run_id": "4824c94f-d608-48b2-9c72-484d314d02bf",
+          "submission": "s3-seasons",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "385 words (limit 120)",
+            "gives the answer away",
+            "asks the student nothing"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Understanding Earth's Seasons\n\nHello! Let's take a look at your answer about why Earth has seasons. \n\n## What You Got Wrong\n\nYou answered that Earth has seasons because it is closer to the Sun in the summer and further away in the winter. While this is a very common misconception, it is actually incorrect! \n\nIf distance from the Sun caused the seasons, then the whole Earth would experience summer at the exact same time. However, we know that when it is summer in the Northern Hemisphere (like in the United States or Europe), it is actually winter in the Southern Hemisphere (like in Australia or Argentina). Furthermore, Earth's orbit is only *slightly* elliptical, meaning our distance from the Sun doesn't change enough to cause such dramatic temperature shifts. In fact, Earth is actually *closest* to the Sun in January, which is the middle of winter for the Northern Hemisphere!\n\n---\n\n## The Correct Explanation: Step by Step\n\nTo understand the real cause of the seasons, we need to look at Earth's tilt:\n\n1. **Earth's Axis Tilt:** Earth spins on an imaginary line called its axis. This axis is not straight up and down; it is tilted at an angle of **23.5 degrees**. \n2. **Staying Tilted:** As Earth travels in its yearly orbit around the Sun, this tilt always points in the exact same direction in space.\n3. **Sunlight Intensity and Angle:** \n   - When your hemisphere is **tilted toward the Sun**, the Sun's rays hit your location more directly (at a steeper angle). This concentrates the sunlight, making it warmer, and the days are longer. This is **summer**.\n   - When your hemisphere is **tilted away from the Sun**, the Sun's rays hit your location at a slant (a lower angle). The sunlight is spread out over a larger area, making it cooler, and the days are shorter. This is **winter**.\n\n---\n\n## The Correct Final Answer\n\nEarth has seasons because **Earth's axis of rotation is tilted at an angle of 23.5 degrees relative to its orbital plane**. This tilt causes different parts of the planet to receive varying angles of sunlight intensity and different day lengths throughout the year as Earth orbits the Sun. \n\nKeep up the great effort, and let me know if you have any questions about how this works!",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 765,
+            "completion_tokens": 588,
+            "total_tokens": 1353,
+            "call_count": 2,
+            "elapsed_ms": 3813,
+            "cost_usd": 0.0016995
+          }
+        },
+        {
+          "run_id": "168bfc1e-3673-4522-8b7e-9753af63446d",
+          "submission": "s4-speed",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "159 words (limit 120)"
+          ],
+          "body": "DIAGNOSIS: correct\n\nFEEDBACK FOR THE STUDENT:\n# Great job!\n\nYou got the correct answer! \n\nYour final answer of **80 km/h** is spot on, and your reasoning was completely right. \n\nLet's quickly walk through the full working step by step to reinforce the method so you can use it confidently for any other speed, distance, and time problem you come across.\n\n## The Step-by-Step Method\n\n**1. Identify the formula:**\nTo find the average speed, we use the formula:\n$$\\text{Speed} = \\frac{\\text{Distance}}{\\text{Time}}$$\n\n**2. Identify the given values from the question:**\n- Distance = `120 km`\n- Time = `1.5 hours`\n\n**3. Substitute the values into the formula:**\n$$\\text{Speed} = \\frac{120}{1.5}$$\n\n**4. Calculate the final result:**\n$$\\text{Speed} = 80\\text{ km/h}$$\n\n## Final Answer\nThe correct final answer is **80 km/h**. \n\nKeep up the fantastic work! If you'd like to practice more, try finding the speed when a car travels 150 km in 2 hours using this exact same method.",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 763,
+            "completion_tokens": 308,
+            "total_tokens": 1071,
+            "call_count": 2,
+            "elapsed_ms": 2915,
+            "cost_usd": 0.0009989
+          }
+        },
+        {
+          "run_id": "f283f8ed-7165-49c0-b4c1-0a3fed052f12",
+          "submission": "s5-powers",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "218 words (limit 120)",
+            "gives the answer away",
+            "asks the student nothing"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Let's Review Exponent Rules!\n\nHi there! You're really close, but let's take a closer look at how exponents work when we raise a power to another power.\n\n## Where the Confusion Happened\nYou added the exponents ($2 + 3 = 5$), which gave you $x^5$. However, the rule for handling an exponent raised to another power (called the **power of a power rule**) tells us to **multiply** the exponents rather than add them. \n\nThink of it this way: when we have `(x^2)^3`, it means we are multiplying `x^2` by itself 3 times:\n`x^2 * x^2 * x^2`\n\nIf we expand that using what we know about multiplying variables with exponents, we get:\n`(x * x) * (x * x) * (x * x) = x^6`\n\n## Step-by-Step Correct Method\n\nTo solve this quickly and correctly every time, follow these steps:\n\n1. **Identify the rule:** Recognize that `(x^a)^b` requires multiplying the exponents together.\n2. **Set up the multiplication:** Multiply the inner exponent by the outer exponent: `2 * 3`.\n3. **Calculate the new exponent:** `2 * 3 = 6`.\n4. **Write the final expression:** Place the new exponent on the base `x`.\n\n## Correct Final Answer\nThe fully simplified expression is **`x^6`**. \n\nKeep up the hard work, and let me know if you want to try another one together!",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 752,
+            "completion_tokens": 416,
+            "total_tokens": 1168,
+            "call_count": 2,
+            "elapsed_ms": 3302,
+            "cost_usd": 0.0012656
+          }
+        },
+        {
+          "run_id": "7dd68018-33f1-4ca2-9294-98a9385c440d",
+          "submission": "s6-photosynthesis",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "285 words (limit 120)",
+            "gives the answer away",
+            "asks the student nothing"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Photosynthesis Question\n\nHello! Let's take a close look at this question together so you feel completely confident about it next time. \n\n### What You Got Wrong\n\nYou answered that plants take in **oxygen** from the air. It is very common to mix this up with respiration! However, oxygen is actually the gas that plants *release* into the air as a waste product during photosynthesis. We need to look at the opposite gas for the process of making food.\n\n---\n\n### Step-by-Step Breakdown of Photosynthesis\n\nTo find the correct gas, let's walk through the full word equation for photosynthesis step by step:\n\n1. **Energy from the Sun:** Plants need sunlight to capture energy.\n2. **Water ($H_2O$):** Plants draw water up through their roots from the soil.\n3. **Carbon Dioxide ($CO_2$):** Plants absorb a specific gas from the air through tiny pores in their leaves called stomata. \n4. **The Reaction:** Inside the plant's leaves, the sunlight, water, and this absorbed gas chemically react to create glucose (sugar for food).\n5. **The Products:** As a result of this reaction, the plant produces food to grow and releases **oxygen** back out into the air for us to breathe.\n\nHere is the complete word equation for photosynthesis:\n\n$$\\text{Carbon Dioxide} + \\text{Water} \\xrightarrow{\\text{Light Energy}} \\text{Glucose} + \\text{Oxygen}$$\n\nLooking at the left side of the equation (what goes *into* the plant), you can see that the gas taken in from the air is carbon dioxide.\n\n---\n\n### The Correct Final Answer\n\nThe gas that plants take in from the air for photosynthesis is **carbon dioxide**. \n\nKeep up the great effort, and let me know if you have any questions about how plants make their food!",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 735,
+            "completion_tokens": 474,
+            "total_tokens": 1209,
+            "call_count": 2,
+            "elapsed_ms": 2822,
+            "cost_usd": 0.0014055
+          }
+        },
+        {
+          "run_id": "747958ee-bafc-4ba7-ab58-08a58e2c1705",
+          "submission": "s7-expand",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "158 words (limit 120)",
+            "gives the answer away",
+            "asks the student nothing"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Math Answer\n\nHello! Let's take a look at your answer for expanding the expression `2(x + 4)`.\n\n### What Went Wrong\n\nYou correctly multiplied the `2` by the first term inside the parentheses (`x`), giving you `2x`. However, you forgot to multiply the `2` by the second term (`4`). When we use the **distributive property**, the number on the outside must be multiplied by *every* term on the inside. \n\n---\n\n### Step-by-Step Correct Method\n\nTo expand `2(x + 4)`, we need to distribute the `2` to both terms inside the parentheses:\n\n1. **First term:** Multiply `2` by `x`\n   $$\\text{2} \\times x = \\text{2x}$$\n\n2. **Second term:** Multiply `2` by `4`\n   $$\\text{2} \\times 4 = 8$$\n\n3. **Combine the results:** Put them together with their signs\n   $$2x + 8$$\n\n---\n\n### Correct Final Answer\n\nThe correct final answer is:\n**`2x + 8`**\n\nKeep up the hard work, and let me know if you want to try another one together!",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 729,
+            "completion_tokens": 337,
+            "total_tokens": 1066,
+            "call_count": 2,
+            "elapsed_ms": 3155,
+            "cost_usd": 0.0010612
+          }
+        },
+        {
+          "run_id": "17344872-6eb0-468e-816a-754d209a009e",
+          "submission": "s8-percent",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: correct\n\nFEEDBACK FOR THE STUDENT:\n# Great job!\n\nYou are completely **correct**! Your final answer is `12`. \n\nHere is why your method is spot on:\n\n- To find **10%** of a number, you divide it by 10. For 80, that gives us $80 \\div 10 = 8$.\n- To find **5%**, you can take half of your 10% value. Since 10% is 8, half of that is $8 \\div 2 = 4$.\n- Finally, you add them together to get 15%: $8 + 4 = 12$.\n\nThis is a brilliant mental maths strategy! Breaking a percentage down into easier chunks like 10% and 5% is a fantastic way to solve these types of problems. \n\nKeep up the fantastic work!",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 724,
+            "completion_tokens": 215,
+            "total_tokens": 939,
+            "call_count": 2,
+            "elapsed_ms": 2747,
+            "cost_usd": 0.0007547
+          }
+        }
+      ]
+    },
+    "2": {
+      "document_version": 2,
+      "runs": [
+        {
+          "run_id": "fd13a018-836b-4a19-ac04-7908a49b6da8",
+          "submission": "s1-linear",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Equation\n\nYou applied the inverse operation incorrectly by adding instead of subtracting when moving a positive term across the equals sign. \n\n* **Hint:** Whatever you do to one side of the equation, you must do to the other to keep it balanced. \n\nWhat happens to the `+ 5` on the left side if you subtract `5` from both sides instead of adding?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 853,
+            "completion_tokens": 147,
+            "total_tokens": 1000,
+            "call_count": 2,
+            "elapsed_ms": 2566,
+            "cost_usd": 0.0006234
+          }
+        },
+        {
+          "run_id": "d9c17122-3808-49bf-904f-4e40e01674d1",
+          "submission": "s2-fractions",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt looks like you added the numerators and denominators straight across, but fractions need to be parts of the *same* whole before you can combine them. \n\n* **Hint:** Try converting both fractions so they share a common denominator.\n* **Question:** What common multiple do the numbers `2` and `3` share that you could use as a new denominator?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 843,
+            "completion_tokens": 137,
+            "total_tokens": 980,
+            "call_count": 2,
+            "elapsed_ms": 1683,
+            "cost_usd": 0.0005954
+          }
+        },
+        {
+          "run_id": "227d4302-8b4a-467c-95a9-b5227b44fc0b",
+          "submission": "s3-seasons",
+          "status": "completed",
+          "rating": "bad",
+          "reasons": [
+            "gives the answer away"
+          ],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt is a common idea that Earth's distance from the Sun causes the seasons, but the actual driver is the angle at which sunlight hits Earth's surface. \n\n* **Hint:** Think about how Earth's axis is oriented as it travels around the Sun, and how that changes the directness of the sunbeams in different hemispheres.\n\nHow does the tilt of Earth's axis change the intensity of the sunlight we receive throughout the year?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 831,
+            "completion_tokens": 171,
+            "total_tokens": 1002,
+            "call_count": 2,
+            "elapsed_ms": 2521,
+            "cost_usd": 0.0006768
+          }
+        },
+        {
+          "run_id": "e9159a8b-1986-41ba-a546-2401508a3569",
+          "submission": "s4-speed",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: correct\n\nFEEDBACK FOR THE STUDENT:\n# Great job!\n\nYou nailed this problem! You correctly identified the formula for average speed by dividing the total distance by the total time (`120` divided by `1.5`) and got the right numerical result with the correct units. \n\n*To stretch your thinking further:* \nIf the car had to make the return trip in only `1` hour, what would its average speed need to be for that second leg of the journey?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 847,
+            "completion_tokens": 137,
+            "total_tokens": 984,
+            "call_count": 2,
+            "elapsed_ms": 2483,
+            "cost_usd": 0.0005966
+          }
+        },
+        {
+          "run_id": "3f60198f-fde1-4f6a-96a7-2feaf2466a2e",
+          "submission": "s5-powers",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt looks like you added the exponents together instead of multiplying them for this power of a power expression. \n\n- Remember that when you raise a power to another power, the operation to use on the exponents is repeated multiplication rather than addition.\n\nIf you expand `(x^2)^3` as `(x^2) * (x^2) * (x^2)`, what do you get when you multiply those out?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 835,
+            "completion_tokens": 170,
+            "total_tokens": 1005,
+            "call_count": 2,
+            "elapsed_ms": 1940,
+            "cost_usd": 0.0006755
+          }
+        },
+        {
+          "run_id": "8d15b088-3e6c-4cd4-ad49-544570e06b61",
+          "submission": "s6-photosynthesis",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Photosynthesis\n\nIt looks like you might be mixing up the gases used in photosynthesis with the ones used in animal respiration. \n\n* **Hint:** Think about what humans and animals exhale into the air that plants need to make their food. \n* **Question:** Looking at the overall process of photosynthesis, which gas do plants pull *into* their leaves from the atmosphere to build sugars, and which one do they release as a byproduct?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 814,
+            "completion_tokens": 162,
+            "total_tokens": 976,
+            "call_count": 2,
+            "elapsed_ms": 2633,
+            "cost_usd": 0.0006492
+          }
+        },
+        {
+          "run_id": "960407db-3b71-44dd-adf6-75064a4c3b3a",
+          "submission": "s7-expand",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt looks like you multiplied the outer factor by the first term inside the parentheses, but forgot to distribute it to the second term as well. \n\n- Remember that the number outside the parentheses must be multiplied by **every** term on the inside.\n\nWhat do you get when you multiply `2` by the second term inside the parentheses?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 816,
+            "completion_tokens": 145,
+            "total_tokens": 961,
+            "call_count": 2,
+            "elapsed_ms": 1882,
+            "cost_usd": 0.0006073
+          }
+        },
+        {
+          "run_id": "66d08c58-7387-4627-87ba-3edcb6b56317",
+          "submission": "s8-percent",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: correct\n\nFEEDBACK FOR THE STUDENT:\n# Great job!\n\nYou did an **excellent** job breaking the percentage down into manageable parts (`10%` and `5%`) to find your solution efficiently. Using mental math like that is a fantastic strategy for calculating percentages quickly. \n\nTo challenge yourself further: How could you use this exact same method to find **15% of 120**?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 823,
+            "completion_tokens": 123,
+            "total_tokens": 946,
+            "call_count": 2,
+            "elapsed_ms": 1648,
+            "cost_usd": 0.0005544
+          }
+        }
+      ]
+    },
+    "3": {
+      "document_version": 3,
+      "runs": [
+        {
+          "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+          "submission": "s1-linear",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Equation\n\nYou applied the inverse operation incorrectly by adding the constant term to the other side instead of subtracting it. \n\n* **Hint:** Whatever you do to one side of an equation, you must do to the other to keep it balanced. \n\nWhat operation should you use to undo the positive 5 on the left side of the equation?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 896,
+            "completion_tokens": 138,
+            "total_tokens": 1034,
+            "call_count": 2,
+            "elapsed_ms": 1855,
+            "cost_usd": 0.0006138
+          }
+        },
+        {
+          "run_id": "1b59ecc9-0578-4a80-8482-eb9c7503bdc7",
+          "submission": "s2-fractions",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt looks like you added the top numbers and the bottom numbers straight across, but fractions need to be split into equal-sized pieces before they can be combined. \n\n- *Hint:* Try rewriting both fractions so they have the exact same bottom number.\n\nWhat common multiple do the numbers `2` and `3` share that you could use as a new denominator?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 886,
+            "completion_tokens": 135,
+            "total_tokens": 1021,
+            "call_count": 2,
+            "elapsed_ms": 1825,
+            "cost_usd": 0.0006033
+          }
+        },
+        {
+          "run_id": "54a2b663-ea58-4221-98d8-7917db0a181b",
+          "submission": "s3-seasons",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt looks like you are thinking that Earth's distance from the Sun is what creates our changing weather throughout the year. \n\n* **Hint:** Think about how Earth leans as it travels, and notice that when it is summer in the Northern Hemisphere, it is actually winter in the Southern Hemisphere, even though the whole planet is the same distance from the Sun. \n\n* **Question:** If distance alone caused the seasons, wouldn't the whole Earth experience summer at the exact same time?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 880,
+            "completion_tokens": 184,
+            "total_tokens": 1064,
+            "call_count": 2,
+            "elapsed_ms": 1908,
+            "cost_usd": 0.000724
+          }
+        },
+        {
+          "run_id": "a1ccf2bc-6730-44ba-b9cc-28d019cebfca",
+          "submission": "s4-speed",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: correct\n\nFEEDBACK FOR THE STUDENT:\n# Great job!\n\nYou successfully set up the calculation by taking the total distance and dividing it by the total time taken. \n\nTo take your understanding further: \n- How would your result change if the car had to travel the same distance of 120 km, but the trip took 2 hours instead?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 878,
+            "completion_tokens": 98,
+            "total_tokens": 976,
+            "call_count": 2,
+            "elapsed_ms": 2281,
+            "cost_usd": 0.0005084
+          }
+        },
+        {
+          "run_id": "ebab19c5-f2f1-4921-828b-b7e5136b6649",
+          "submission": "s5-powers",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\nIt looks like you used the rule for combining exponents through addition, rather than the rule for raising a power to another power. \n\n* **Hint:** Think about what `(x^2)^3` actually means\u2014it represents `x^2` multiplied by itself three times. \n* **Question:** If you write that out as repeated multiplication `(x^2) * (x^2) * (x^2)` and expand each term, what do you get when you apply the product rule for exponents there?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 889,
+            "completion_tokens": 194,
+            "total_tokens": 1083,
+            "call_count": 2,
+            "elapsed_ms": 2921,
+            "cost_usd": 0.0007517
+          }
+        },
+        {
+          "run_id": "cba8d427-ff52-4f2b-b905-fb0f6ec76820",
+          "submission": "s6-photosynthesis",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Photosynthesis\n\nIt looks like you might be confusing the gas plants take in for photosynthesis with the gas they need for respiration. \n\n* **Hint:** Think about what green leaves need to absorb from the surrounding air to build their food during daylight, compared to what they produce and release as a waste product. \n\n* **Question:** If you look at the overall word equation for photosynthesis, which gas goes *into* the leaf from the air, and which one comes *out*?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 864,
+            "completion_tokens": 178,
+            "total_tokens": 1042,
+            "call_count": 2,
+            "elapsed_ms": 1958,
+            "cost_usd": 0.0007042
+          }
+        },
+        {
+          "run_id": "d465c995-626a-4ad1-85e9-1341b783cf98",
+          "submission": "s7-expand",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: incorrect\n\nFEEDBACK FOR THE STUDENT:\n# Feedback on Your Answer\n\nIt looks like you multiplied the first term by the coefficient, but forgot to distribute that multiplication to the second term inside the parentheses as well. \n\n- Remember that everything on the outside needs to be multiplied by *each* separate term on the inside. \n\nWhat do you get when you multiply the number outside by the second term inside?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 856,
+            "completion_tokens": 141,
+            "total_tokens": 997,
+            "call_count": 2,
+            "elapsed_ms": 1781,
+            "cost_usd": 0.0006093
+          }
+        },
+        {
+          "run_id": "7f469103-1e81-4ff3-a105-5b6c50bc8989",
+          "submission": "s8-percent",
+          "status": "completed",
+          "rating": "good",
+          "reasons": [],
+          "body": "DIAGNOSIS: correct\n\nFEEDBACK FOR THE STUDENT:\n# Feedback\n\nGreat job! You broke down the percentage into **10%** and **5%** to find your answer efficiently, which is an excellent mental math strategy. \n\nSince you mastered that method, how could you use your strategy of breaking down percentages to find **17.5%** of **80**?",
+          "usage": {
+            "successful_requests": 2,
+            "prompt_tokens": 874,
+            "completion_tokens": 122,
+            "total_tokens": 996,
+            "call_count": 2,
+            "elapsed_ms": 1763,
+            "cost_usd": 0.0005672
+          }
+        }
+      ]
+    }
+  },
+  "workflow_id": "ug_2805daab"
+}

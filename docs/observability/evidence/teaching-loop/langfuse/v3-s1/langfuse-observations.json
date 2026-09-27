@@ -1,0 +1,3099 @@
+[
+  {
+    "id": "90aa830d3f5a7d06",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:24.400Z",
+    "endTime": "2026-09-27T07:23:24.407Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "final",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": {
+      "output_chars": 438,
+      "output_fingerprint": "88cbd902d932c19dafb3bb16086232a92e042a2a35da99cee5ce1f9e657c81bd"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "final",
+      "frame_seq": 65,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-27T07:23:24.400Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "report",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.007,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "d63f445f75e9f996",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:24.393Z",
+    "endTime": "2026-09-27T07:23:24.399Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "report",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": {
+      "output_chars": 388,
+      "output_fingerprint": "6d334e681dd3e3570bf0edeb4e579d72710c77f3634ceba05baf7cefd61ff309"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "report",
+      "frame_seq": 62,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-27T07:23:24.392Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "tutor",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.006,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "4c1a6de9e25b27a1",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:24.385Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "028fc52ecd40b996",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 60,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:24.385Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "after",
+        "total_tokens": 535
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "3803129f94649fc1",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:24.381Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "c69c5a279e7caaea",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 58,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:24.381Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "after",
+        "task": {
+          "chars": 4,
+          "sha256": "4bc74b21357c6cf5cca8f66b4d4ee948be64d0396feb434c9645e168ad61ceaf"
+        },
+        "output": {
+          "chars": 340,
+          "sha256": "c955202d4d3abedf8760b39cd7944e984d7144e4b81ce615b4a189a6635c6d95"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "03385e689d1ee34b",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:24.378Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "c69c5a279e7caaea",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.877Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 57,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:24.377Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "after",
+        "flow": {
+          "chars": 13,
+          "sha256": "856d8b3d7481291b599e73bd41f8c1d7f9d612fc69d8f18854fe8ed2eea76854"
+        },
+        "nested": true,
+        "result": {
+          "chars": 9,
+          "sha256": "4ddb3e96801a1ee2b77dc5247c0db478d5f97a93b90e7cdb09f5f51d43764b08"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "c69c5a279e7caaea",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:23.432Z",
+    "endTime": "2026-09-27T07:23:24.381Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "2fdb7a43d3a99fa8",
+    "type": "AGENT",
+    "environment": "live",
+    "name": "Tutor",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "agent_role": "Tutor",
+      "frame_seq": 50,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-27T07:23:23.431Z",
+      "null_fields": "task_name",
+      "observation_role": "agent",
+      "reasoning_steps": 1,
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.949,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "f818271cc4ce2a50",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:23.432Z",
+    "endTime": "2026-09-27T07:23:24.372Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "c69c5a279e7caaea",
+    "type": "GENERATION",
+    "environment": "live",
+    "name": "google/gemini-3.5-flash-lite:nitro",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:27:46.472Z",
+    "updatedAt": "2026-09-27T07:27:46.472Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "agent_role": "Tutor",
+      "frame_seq": 50,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-27T07:23:23.431Z",
+      "null_fields": "task_name",
+      "call_id": "05c4874d-815b-433f-a5b4-511186888e87",
+      "attempt": 1,
+      "cost_source": "openrouter-billed",
+      "observation_role": "generation",
+      "prompt_fingerprint": "d266f1ccf5b820da05a61902e2a0f75bd9691d113f6584d60ba4f00dadc10be7",
+      "prompt_fingerprint_basis": "messages",
+      "message_count": 2,
+      "prompt_chars": 2009,
+      "finish_reason": "stop",
+      "response_id": "gen-1790493803-vIgXrhuCyJs9M76ozfdj",
+      "openrouter_cost_usd": 0.0003233,
+      "provider": "Google AI Studio",
+      "completion_chars": 340,
+      "stream_chunks": 2,
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.94,
+    "timeToFirstToken": null,
+    "usageDetails": {
+      "input": 461,
+      "output": 74,
+      "total": 535,
+      "reasoning": 0,
+      "cached": 0
+    },
+    "costDetails": {
+      "total": 0.0003233
+    },
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": 0.0003233,
+    "unit": "TOKENS",
+    "promptTokens": 461,
+    "completionTokens": 74,
+    "totalTokens": 535,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 461,
+      "output": 74,
+      "total": 535
+    }
+  },
+  {
+    "id": "ba17019ef93b6d25",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:23.427Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "2fdb7a43d3a99fa8",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.852Z",
+    "updatedAt": "2026-09-27T07:23:23.852Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 49,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:23.426Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before",
+        "flow": {
+          "chars": 13,
+          "sha256": "856d8b3d7481291b599e73bd41f8c1d7f9d612fc69d8f18854fe8ed2eea76854"
+        },
+        "nested": true,
+        "inputs": null
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "5d9a0a7f3a8ca0c2",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:23.424Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "2fdb7a43d3a99fa8",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.852Z",
+    "updatedAt": "2026-09-27T07:23:23.852Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 48,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:23.423Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before",
+        "task": {
+          "chars": 4,
+          "sha256": "4bc74b21357c6cf5cca8f66b4d4ee948be64d0396feb434c9645e168ad61ceaf"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "2fdb7a43d3a99fa8",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:23.419Z",
+    "endTime": "2026-09-27T07:23:24.381Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "028fc52ecd40b996",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "tutor",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 47,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:23.419Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "task",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.962,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "419d3612c2eda7ed",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:23.405Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "028fc52ecd40b996",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.852Z",
+    "updatedAt": "2026-09-27T07:23:23.852Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 46,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:23.405Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before"
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "028fc52ecd40b996",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.981Z",
+    "endTime": "2026-09-27T07:23:24.392Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "tutor",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:24.877Z",
+    "updatedAt": "2026-09-27T07:23:24.878Z",
+    "input": null,
+    "output": {
+      "output_chars": 340,
+      "output_fingerprint": "c955202d4d3abedf8760b39cd7944e984d7144e4b81ce615b4a189a6635c6d95"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "tutor",
+      "frame_seq": 44,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-27T07:23:22.981Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "verdict",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 1.411,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "d6037c396f4f482f",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.973Z",
+    "endTime": "2026-09-27T07:23:22.980Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "verdict",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.344Z",
+    "input": null,
+    "output": {
+      "output_chars": 9,
+      "output_fingerprint": "203d3536bd62ad33ac70b7ea3d4f5e10b6d52ebd0cb7582841a053aebb7186a3"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "verdict",
+      "frame_seq": 41,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-27T07:23:22.973Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "assess",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.007,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "446952464f68faa5",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.965Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "9321f7a969f2e5db",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.344Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 39,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.965Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "after",
+        "total_tokens": 499
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "408517c1fd046f1e",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.960Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "3134c01a73805dca",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.343Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 37,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.959Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "after",
+        "task": {
+          "chars": 4,
+          "sha256": "4bc74b21357c6cf5cca8f66b4d4ee948be64d0396feb434c9645e168ad61ceaf"
+        },
+        "output": {
+          "chars": 246,
+          "sha256": "27eee478cb8fd1f92c1fcce464b3bfe5353d943d842589bad52a56c25892089e"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "8f1f77b3203be46b",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.956Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "3134c01a73805dca",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.343Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 36,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.956Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "after",
+        "flow": {
+          "chars": 13,
+          "sha256": "856d8b3d7481291b599e73bd41f8c1d7f9d612fc69d8f18854fe8ed2eea76854"
+        },
+        "nested": true,
+        "result": {
+          "chars": 9,
+          "sha256": "4ddb3e96801a1ee2b77dc5247c0db478d5f97a93b90e7cdb09f5f51d43764b08"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "3134c01a73805dca",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.038Z",
+    "endTime": "2026-09-27T07:23:22.959Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "8f2aac2541694130",
+    "type": "AGENT",
+    "environment": "live",
+    "name": "Assessor",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.343Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "agent_role": "Assessor",
+      "frame_seq": 29,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-27T07:23:22.036Z",
+      "null_fields": "task_name",
+      "observation_role": "agent",
+      "reasoning_steps": 1,
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.921,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "7de1a3c6655c80fb",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.038Z",
+    "endTime": "2026-09-27T07:23:22.951Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "3134c01a73805dca",
+    "type": "GENERATION",
+    "environment": "live",
+    "name": "google/gemini-3.5-flash-lite:nitro",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:27:46.165Z",
+    "updatedAt": "2026-09-27T07:27:46.165Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "agent_role": "Assessor",
+      "frame_seq": 29,
+      "frame_kind": "llm",
+      "event_type": "MODEL_CALL",
+      "frame_ts": "2026-09-27T07:23:22.036Z",
+      "null_fields": "task_name",
+      "call_id": "05bd5eda-9812-41c3-ae53-b4e2d6649af5",
+      "attempt": 1,
+      "cost_source": "openrouter-billed",
+      "observation_role": "generation",
+      "prompt_fingerprint": "ca37a8b3680d13cfbcd3b16b39cf79b1bf3fc7b3c7d098a8edb78bc0124f3018",
+      "prompt_fingerprint_basis": "messages",
+      "message_count": 2,
+      "prompt_chars": 1628,
+      "finish_reason": "stop",
+      "response_id": "gen-1790493802-cVS0ytclOG6a5qOZQaWd",
+      "openrouter_cost_usd": 0.0002905,
+      "provider": "Google AI Studio",
+      "completion_chars": 254,
+      "stream_chunks": 2,
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": "google/gemini-3.5-flash-lite:nitro",
+    "modelParameters": {},
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.913,
+    "timeToFirstToken": null,
+    "usageDetails": {
+      "input": 435,
+      "output": 64,
+      "total": 499,
+      "reasoning": 0,
+      "cached": 0
+    },
+    "costDetails": {
+      "total": 0.0002905
+    },
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": 0.0002905,
+    "unit": "TOKENS",
+    "promptTokens": 435,
+    "completionTokens": 64,
+    "totalTokens": 499,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 435,
+      "output": 64,
+      "total": 499
+    }
+  },
+  {
+    "id": "4ae164242008cbd1",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.033Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "8f2aac2541694130",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.736Z",
+    "updatedAt": "2026-09-27T07:23:22.736Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 28,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.032Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before",
+        "flow": {
+          "chars": 13,
+          "sha256": "856d8b3d7481291b599e73bd41f8c1d7f9d612fc69d8f18854fe8ed2eea76854"
+        },
+        "nested": true,
+        "inputs": null
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "8de6173727a8d387",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.030Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "8f2aac2541694130",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.736Z",
+    "updatedAt": "2026-09-27T07:23:22.736Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 27,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.029Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before",
+        "task": {
+          "chars": 4,
+          "sha256": "4bc74b21357c6cf5cca8f66b4d4ee948be64d0396feb434c9645e168ad61ceaf"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "8f2aac2541694130",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.025Z",
+    "endTime": "2026-09-27T07:23:22.959Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "9321f7a969f2e5db",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "assess",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.344Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 26,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.025Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "task",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.934,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "5aa126400039fba0",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:22.011Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "9321f7a969f2e5db",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "AGENT_CALL",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.736Z",
+    "updatedAt": "2026-09-27T07:23:22.736Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 25,
+      "frame_kind": "agent",
+      "event_type": "AGENT_CALL",
+      "frame_ts": "2026-09-27T07:23:22.011Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "before"
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "9321f7a969f2e5db",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:21.620Z",
+    "endTime": "2026-09-27T07:23:22.972Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "assess",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:23.343Z",
+    "updatedAt": "2026-09-27T07:23:23.344Z",
+    "input": null,
+    "output": {
+      "output_chars": 254,
+      "output_fingerprint": "028c0f5beafc9c479b03aebe7ac738a80a61b0229b408f5ff929814fb904dc6d"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "assess",
+      "frame_seq": 23,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-27T07:23:21.619Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "teacher_check",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 1.352,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "1aa98d36e7c30e46",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:21.614Z",
+    "endTime": "2026-09-27T07:23:21.619Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "teacher_check",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.086Z",
+    "updatedAt": "2026-09-27T07:23:22.086Z",
+    "input": null,
+    "output": {
+      "output_chars": 10,
+      "output_fingerprint": "b3ec91eb673cb0bb8cf73856aba5ad94f9c98a00328fa235d0d2f7f5b848fc91"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "teacher_check",
+      "frame_seq": 20,
+      "frame_kind": "node_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:21.613Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.005,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "08726ed799ee0987",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:21.605Z",
+    "endTime": "2026-09-27T07:23:21.612Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "teacher_check",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.086Z",
+    "updatedAt": "2026-09-27T07:23:22.086Z",
+    "input": null,
+    "output": {
+      "output_chars": 488,
+      "output_fingerprint": "5b03cc8b137f5e14e1322f6daa9ebb15ab9f1f87a40deb19b790969a22a14a72"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "teacher_check",
+      "frame_seq": 18,
+      "frame_kind": "node_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:21.605Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.007,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "528bd9eb40ab12a2",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:21.585Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "dc0067e5bb88ce50",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "gate:0db31038-e28b-53df-825d-3515331d6a62",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.086Z",
+    "updatedAt": "2026-09-27T07:23:22.086Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "teacher_check",
+      "frame_seq": 15,
+      "frame_kind": "gate_closed",
+      "event_type": "HUMAN_INTERACTION",
+      "frame_ts": "2026-09-27T07:23:21.585Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "gate_id": "0db31038-e28b-53df-825d-3515331d6a62",
+        "outcome": "approve",
+        "fields": {},
+        "late": false
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "e930f43fe15ef53b",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.138Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "dc0067e5bb88ce50",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "gate:0db31038-e28b-53df-825d-3515331d6a62",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "teacher_check",
+      "frame_seq": 14,
+      "frame_kind": "gate_open",
+      "event_type": "HUMAN_INTERACTION",
+      "frame_ts": "2026-09-27T07:23:20.137Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "gate_id": "0db31038-e28b-53df-825d-3515331d6a62",
+        "node_id": "teacher_check",
+        "title": {
+          "chars": 13,
+          "sha256": "f1370d5425933339b56baa3824711cf70f705d73b3b56725eb1a8e3a4b8fb803"
+        },
+        "summary": {
+          "chars": 156,
+          "sha256": "6403f2f243b0165b388aeb62deddf109028c9ad8c64b76c9cc0303733a5d12d2"
+        },
+        "editable": true,
+        "expires_at": {
+          "chars": 26,
+          "sha256": "57bbc922b9c9f09aa13372d07f5b0a3ec90e40b02c6ffc2ff705db51febd8715"
+        },
+        "options": [
+          {
+            "id": {
+              "chars": 7,
+              "sha256": "74e21680eac7385ca408cb01878465fd693b37e58eb0c0c32663a2d8f15d8136"
+            },
+            "label": {
+              "chars": 7,
+              "sha256": "6007acbe30b2cd98703e83350ea665c06009fcd51f26dd73b309294235f45f21"
+            },
+            "emphasis": {
+              "chars": 7,
+              "sha256": "986a1b7135f4986150aa5fa0028feeaa66cdaf3ed6a00a355dd86e042f7fb494"
+            }
+          },
+          {
+            "id": {
+              "chars": 6,
+              "sha256": "aa53d35cdecfe4a2bc65f25f9a20e040c9a1a9afe89366a0608b14cfe587dfc7"
+            },
+            "label": {
+              "chars": 6,
+              "sha256": "f1323f09f63c867d520b3b267f6e314e4eaf92fb314f916b1c50b67076dfcab7"
+            }
+          }
+        ],
+        "revise_turns_remaining": 1,
+        "max_revise_turns": 1,
+        "fields": {
+          "feedback": {
+            "chars": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        "derived": [
+          {
+            "key": {
+              "chars": 7,
+              "sha256": "761b7ad8ad439b2855fcbb611331c646ef0870b0631247bba3f3025cb6df5a53"
+            },
+            "value": {
+              "chars": 101,
+              "sha256": "b1a50bce678266f818f2da4d67d788cb33ca966e8814489a8569bcf0aa43f29e"
+            },
+            "kind": "text"
+          }
+        ],
+        "verdict": null,
+        "confidence": null
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "3df228c0aaf0ddc9",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.111Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "dc0067e5bb88ce50",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_PAUSED",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "teacher_check",
+      "frame_seq": 13,
+      "frame_kind": "node_state",
+      "event_type": "NODE_PAUSED",
+      "frame_ts": "2026-09-27T07:23:20.110Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "paused",
+        "message": {
+          "chars": 156,
+          "sha256": "6403f2f243b0165b388aeb62deddf109028c9ad8c64b76c9cc0303733a5d12d2"
+        }
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "dc0067e5bb88ce50",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.104Z",
+    "endTime": "2026-09-27T07:23:21.605Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "teacher_check",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:22.086Z",
+    "updatedAt": "2026-09-27T07:23:22.086Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "teacher_check",
+      "frame_seq": 11,
+      "frame_kind": "edge_taken",
+      "event_type": "EDGE_PROCESS",
+      "frame_ts": "2026-09-27T07:23:20.103Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "entered_from": "submission",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 1.501,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "1c4690b6d83ef14f",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.095Z",
+    "endTime": "2026-09-27T07:23:20.103Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "SPAN",
+    "environment": "live",
+    "name": "submission",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": {
+      "output_chars": 101,
+      "output_fingerprint": "b1a50bce678266f818f2da4d67d788cb33ca966e8814489a8569bcf0aa43f29e"
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "submission",
+      "frame_seq": 9,
+      "frame_kind": "node_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.095Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "node",
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 0.008,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "46989b319edfb2d3",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.086Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 4,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 4,
+        "of": 7,
+        "label": {
+          "chars": 7,
+          "sha256": "4a36f89dafb0a1014671aaf16e3a380a999a33836e4c3a31fe5594a7da034da5"
+        },
+        "node_ids": [
+          {
+            "chars": 7,
+            "sha256": "11e221bd1b7fc99544f3f765b0c39dd2786e636c3422d6bec026d1ed03884cac"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "496e6379ae123270",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.086Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 5,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 5,
+        "of": 7,
+        "label": {
+          "chars": 5,
+          "sha256": "1555a832ced645fb67687a25eefec0e9e542ce0f7bd3d7b54bbaa0fcf002ee9b"
+        },
+        "node_ids": [
+          {
+            "chars": 5,
+            "sha256": "038740ef981ab56f4e0529bec9101d1a1d1181886b0c8a917c98029636341360"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "5c6715061b1c8236",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.086Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 6,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 6,
+        "of": 7,
+        "label": {
+          "chars": 14,
+          "sha256": "ad5e9a7888aba3455b00992802ecbc48693e29ca594de1c11b4b743606047a84"
+        },
+        "node_ids": [
+          {
+            "chars": 6,
+            "sha256": "845e91831319e89c4d656bdb80c278ac09a7230d61e5dfd2e1b1fbb436ac8917"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "ba1a64f16e8fd0c3",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.086Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.591Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 7,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 7,
+        "of": 7,
+        "label": {
+          "chars": 8,
+          "sha256": "aac77df347205252b074d45aff7891debdba0ff1466cc0c351416d1662bb71ab"
+        },
+        "node_ids": [
+          {
+            "chars": 5,
+            "sha256": "2443630b4620165c8b173e7265e17526fe2787ae594364dd6d839ad58f2fc007"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "c79aa7eb6dc2bb21",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.085Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.590Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 2,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 2,
+        "of": 7,
+        "label": {
+          "chars": 13,
+          "sha256": "f1370d5425933339b56baa3824711cf70f705d73b3b56725eb1a8e3a4b8fb803"
+        },
+        "node_ids": [
+          {
+            "chars": 13,
+            "sha256": "b6c5aaaf04a198faf0070649cf012ffb4de20a5cfa7ec66ca27004c6257fe1ef"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "db85053f5a7b2599",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.085Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.590Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 1,
+        "of": 7,
+        "label": {
+          "chars": 10,
+          "sha256": "8d11f7f3b359a9a01cfc1d1ac4abf016895ef363dd8d2b4fa2e25f7ff2b8f1e4"
+        },
+        "node_ids": [
+          {
+            "chars": 10,
+            "sha256": "293f1d2ee206a7cbebe633764a26ea455bd39f494a774a7289f8663da31916a2"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "e418d5085bb99471",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.085Z",
+    "endTime": null,
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": "327ad1df22a8289d",
+    "type": "EVENT",
+    "environment": "live",
+    "name": "NODE_START",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:20.590Z",
+    "updatedAt": "2026-09-27T07:23:20.591Z",
+    "input": null,
+    "output": null,
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 3,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "observation_role": "event",
+      "details": {
+        "stage": "plan",
+        "index": 3,
+        "of": 7,
+        "label": {
+          "chars": 6,
+          "sha256": "b7629cecee74de732c203019eb744cbca8f67a67c4e39575063e2e5c282094cf"
+        },
+        "node_ids": [
+          {
+            "chars": 6,
+            "sha256": "14b9005e4f90ef7ebbee9f3e6559a67ce4fb2c16d0dff884213e4d1a0b825ff9"
+          }
+        ]
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": null,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "327ad1df22a8289d",
+    "traceId": "3120758ed7b645a78f0528e138a203d9",
+    "startTime": "2026-09-27T07:23:20.085Z",
+    "endTime": "2026-09-27T07:23:24.409Z",
+    "projectId": "cmto3mj7t06ykad0ipon3ksbw",
+    "parentObservationId": null,
+    "type": "SPAN",
+    "environment": "live",
+    "name": "run",
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "createdAt": "2026-09-27T07:23:25.370Z",
+    "updatedAt": "2026-09-27T07:23:25.371Z",
+    "input": {
+      "input_chars": 112,
+      "input_fingerprint": "c7da35cf9bcc7f98163e1268327d85ce6b78dc66e6a3f79f9f84dec7f26a0e18",
+      "input_keys": [
+        "submission"
+      ]
+    },
+    "output": {
+      "status": "completed",
+      "reason": null,
+      "error_class": null
+    },
+    "metadata": {
+      "run_id": "3120758e-d7b6-45a7-8f05-28e138a203d9",
+      "node_id": "workflow",
+      "frame_seq": 1,
+      "frame_kind": "run_state",
+      "event_type": "NODE_START",
+      "frame_ts": "2026-09-27T07:23:20.084Z",
+      "null_fields": "agent_role,task_name",
+      "workflow_id": "ug_2805daab",
+      "app_session_id": "ba600e85-4acb-4e64-a362-b65a96860c2b",
+      "gates": "human",
+      "mode": "run",
+      "synthetic": false,
+      "user_id": "teaching-proof",
+      "graph_version": "51e4b255c3e5d29d",
+      "observation_role": "run",
+      "run_metrics": {
+        "reason": "run_completed",
+        "usage": {
+          "successful_requests": 2,
+          "prompt_tokens": 896,
+          "completion_tokens": 138,
+          "total_tokens": 1034,
+          "call_count": 2,
+          "elapsed_ms": 1855,
+          "cost_usd": 0.0006138
+        },
+        "frames": {
+          "captured": 68,
+          "dropped": 0,
+          "gaps": 0,
+          "emit_errors": 0,
+          "subscriber_dropped": 0,
+          "unattributed": 0
+        },
+        "source": "app-snapshot"
+      },
+      "unhandled_event_counts": {
+        "hook_dispatched": 12,
+        "agent_logs_started": 2,
+        "cc_env": 2,
+        "flow_created": 2,
+        "flow_paused": 1
+      },
+      "resourceAttributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "langfuse.environment": "live",
+        "service.name": "unknown_service"
+      },
+      "scope": {
+        "name": "langfuse-sdk",
+        "version": "4.15.1",
+        "attributes": {
+          "public_key": "<redacted>"
+        }
+      }
+    },
+    "model": null,
+    "modelParameters": null,
+    "completionStartTime": null,
+    "promptId": null,
+    "promptName": null,
+    "promptVersion": null,
+    "latency": 4.324,
+    "timeToFirstToken": null,
+    "usageDetails": {},
+    "costDetails": {},
+    "usagePricingTierId": null,
+    "usagePricingTierName": null,
+    "modelId": null,
+    "inputPrice": null,
+    "outputPrice": null,
+    "totalPrice": null,
+    "calculatedInputCost": null,
+    "calculatedOutputCost": null,
+    "calculatedTotalCost": null,
+    "unit": "TOKENS",
+    "promptTokens": 0,
+    "completionTokens": 0,
+    "totalTokens": 0,
+    "usage": {
+      "unit": "TOKENS",
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  }
+]

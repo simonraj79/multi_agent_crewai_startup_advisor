@@ -645,6 +645,31 @@ Index(
 )
 
 
+# Personal API keys (plan 22). A NEW table, so `create_all()` creates it whole.
+#
+# `secret_hash` is the SHA-256 of the whole key and the only form of the secret
+# that is ever written anywhere; it is UNIQUE so resolving a presented key is
+# one indexed equality. `user_email` / `user_name` are copied from the session
+# that minted the key, because a script has no JWT to read them from and the
+# spend-cap exemption and `is_admin` both key on the e-mail. `revoked_at` is a
+# soft delete: a revoked row stays so an audit can still name the key.
+api_keys = Table(
+    "api_keys",
+    metadata,
+    Column("id", String(32), primary_key=True),
+    Column("user_id", String(128), nullable=False),
+    Column("user_email", String(320)),
+    Column("user_name", String(255)),
+    Column("name", String(64), nullable=False),
+    Column("prefix", String(32), nullable=False),
+    Column("secret_hash", String(64), nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("last_used_at", DateTime(timezone=True)),
+    Column("revoked_at", DateTime(timezone=True)),
+)
+Index("ix_api_keys_user", api_keys.c.user_id, api_keys.c.created_at)
+
+
 # The tables above, by name, for the boot-time inspector assertion and the
 # isolation matrix. Order is the order they were declared.
 GAUNTLET_TABLES: tuple[str, ...] = (
@@ -2901,6 +2926,140 @@ class PostgresFlowPersistence(FlowPersistence):
             connection.execute(insert(improve_digests).values(**values))
         return self._digest_dict(values)
 
+    # --- Personal API keys (plan 22) ------------------------------------
+
+    @staticmethod
+    def _api_key_dict(row: Any) -> dict[str, Any]:
+        """The public shape of a key. Never carries `secret_hash`."""
+
+        return {
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "user_email": row["user_email"],
+            "user_name": row["user_name"],
+            "name": row["name"],
+            "prefix": row["prefix"],
+            "created_at": _as_utc(row["created_at"]),
+            "last_used_at": _as_utc(row["last_used_at"]),
+            "revoked_at": _as_utc(row["revoked_at"]),
+        }
+
+    def create_api_key(
+        self,
+        *,
+        key_id: str,
+        user_id: str,
+        name: str,
+        prefix: str,
+        secret_hash: str,
+        user_email: str | None,
+        user_name: str | None,
+        max_active: int,
+    ) -> dict[str, Any] | None:
+        """Insert a key unless the owner already holds `max_active` live ones.
+
+        Answers None at the limit. The count and the insert share one
+        transaction; two concurrent creates at `max_active - 1` can still both
+        land (no row lock on a COUNT), which overshoots the cap by one. That is
+        accepted rather than engineered around: the cap is a tidiness bound on
+        a list a person manages, not a spend control.
+        """
+
+        values = {
+            "id": _identifier(key_id, label="key_id", limit=32),
+            "user_id": _identifier(user_id, label="user_id"),
+            "user_email": (user_email or None) and str(user_email)[:320],
+            "user_name": (user_name or None) and str(user_name)[:255],
+            "name": str(name)[:64],
+            "prefix": str(prefix)[:32],
+            "secret_hash": str(secret_hash),
+            "created_at": _utcnow(),
+            "last_used_at": None,
+            "revoked_at": None,
+        }
+        with self._begin() as connection:
+            active = connection.execute(
+                select(func.count())
+                .select_from(api_keys)
+                .where(
+                    api_keys.c.user_id == values["user_id"],
+                    api_keys.c.revoked_at.is_(None),
+                )
+            ).scalar_one()
+            if active >= max_active:
+                return None
+            connection.execute(insert(api_keys).values(**values))
+        return self._api_key_dict(values)
+
+    def list_api_keys(self, user_id: str) -> list[dict[str, Any]]:
+        """One owner's live keys, newest first. Revoked keys are not listed."""
+
+        user_id = _identifier(user_id, label="user_id")
+        with self._connect() as connection:
+            rows = connection.execute(
+                select(api_keys)
+                .where(
+                    api_keys.c.user_id == user_id,
+                    api_keys.c.revoked_at.is_(None),
+                )
+                .order_by(api_keys.c.created_at.desc())
+            ).mappings().all()
+        return [self._api_key_dict(row) for row in rows]
+
+    def revoke_api_key(self, user_id: str, key_id: str) -> bool:
+        """Revoke one of THIS owner's live keys. False for anybody else's.
+
+        The owner is in the WHERE clause, so another user's key id is
+        indistinguishable from an unknown one - the route answers 404 for both.
+        """
+
+        with self._begin() as connection:
+            result = connection.execute(
+                update(api_keys)
+                .where(
+                    api_keys.c.id == str(key_id)[:32],
+                    api_keys.c.user_id == str(user_id),
+                    api_keys.c.revoked_at.is_(None),
+                )
+                .values(revoked_at=_utcnow())
+            )
+        return result.rowcount == 1
+
+    def resolve_api_key(self, secret_hash: str) -> dict[str, Any] | None:
+        """The live key whose hash this is, or None (unknown OR revoked)."""
+
+        with self._connect() as connection:
+            row = connection.execute(
+                select(api_keys).where(
+                    api_keys.c.secret_hash == str(secret_hash),
+                    api_keys.c.revoked_at.is_(None),
+                )
+            ).mappings().first()
+        return None if row is None else self._api_key_dict(row)
+
+    def touch_api_key(self, key_id: str, *, min_interval_seconds: int) -> bool:
+        """Stamp `last_used_at`, but only if it is older than the interval.
+
+        One conditional UPDATE: a key used every second writes once a minute,
+        and two requests racing at the boundary write at most twice.
+        """
+
+        now = _utcnow()
+        threshold = now - timedelta(seconds=max(0, int(min_interval_seconds)))
+        with self._begin() as connection:
+            result = connection.execute(
+                update(api_keys)
+                .where(
+                    api_keys.c.id == str(key_id)[:32],
+                    or_(
+                        api_keys.c.last_used_at.is_(None),
+                        api_keys.c.last_used_at < threshold,
+                    ),
+                )
+                .values(last_used_at=now)
+            )
+        return result.rowcount == 1
+
     def list_digests(
         self, workflow_id: str, *, limit: int = 20
     ) -> list[dict[str, Any]]:
@@ -3684,6 +3843,7 @@ __all__ = [
     "GateAnswerResult",
     "PersistenceValueError",
     "PostgresFlowPersistence",
+    "api_keys",
     "flow_states",
     "improve_digests",
     "metadata",

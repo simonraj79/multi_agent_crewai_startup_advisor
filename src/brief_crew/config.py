@@ -2024,6 +2024,25 @@ MAX_RUN_RESULT_BODY_CHARS = 64 * 1024
 #: value, deliberately: the column is what a driver would truncate silently.
 MAX_RATING_NOTE_CHARS = 500
 
+# --- Personal API keys (plan 22) -------------------------------------------
+#
+# A key is `API_KEY_PREFIX` + `secrets.token_urlsafe(API_KEY_SECRET_BYTES)`.
+# The prefix is what lets the identity resolver tell a key from a JWT without
+# parsing it, and what lets a secret scanner find a leaked one. Stored as its
+# SHA-256 only (service/api_keys.py says why a fast hash is right here).
+# Constants, not knobs: none of them is a deployment preference.
+API_KEY_PREFIX = "cs_live_"
+API_KEY_SECRET_BYTES = 32
+#: Characters of the full key kept in the clear so a person can tell two keys
+#: apart in the list. `cs_live_` plus four characters of the random part -
+#: 24 bits, far too few to help anyone guess the other 232.
+API_KEY_DISPLAY_CHARS = len(API_KEY_PREFIX) + 4
+MAX_API_KEYS_PER_USER = 10
+API_KEY_NAME_MAX_CHARS = 64
+#: `last_used_at` is rewritten at most this often per key, by a conditional
+#: UPDATE, so a script polling a run every second is not a write per request.
+API_KEY_LAST_USED_WRITE_SECONDS = 60
+
 #: How long after a CLEAR the rating's Langfuse score is swept a second time.
 #:
 #: MEASURED, and the reason this constant exists at all. `create_score` sits

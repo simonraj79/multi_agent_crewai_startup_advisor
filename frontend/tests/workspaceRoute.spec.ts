@@ -74,6 +74,15 @@ describe('the hash names the workspace', () => {
     expect(workspaceRoute('#/admin/money')).toEqual({ name: 'admin' })
   })
 
+  it('reads the API keys page from #/account/api-keys, and nothing else under #/account', () => {
+    // Plan 22 D9. An address, not a permission: the key routes are
+    // session-only on the server, and that is the control.
+    expect(workspaceRoute('#/account/api-keys')).toEqual({ name: 'apiKeys' })
+    expect(workspaceRoute('#/account/api-keys/')).toEqual({ name: 'apiKeys' })
+    expect(workspaceRoute('#/account')).toEqual({ name: 'home' })
+    expect(workspaceRoute('#/account/keys')).toEqual({ name: 'home' })
+  })
+
   it('reads the empty builder from #/build', () => {
     expect(workspaceRoute('#/build')).toEqual({ name: 'builder', documentId: null })
     expect(workspaceRoute('#/build/')).toEqual({ name: 'builder', documentId: null })
@@ -114,6 +123,7 @@ describe('every route round-trips through the address bar', () => {
     { name: 'home' },
     { name: 'studio' },
     { name: 'admin' },
+    { name: 'apiKeys' },
     { name: 'builder', documentId: null },
     { name: 'builder', documentId: ID },
   ]
@@ -124,12 +134,15 @@ describe('every route round-trips through the address bar', () => {
     }
   })
 
-  it('writes the five hashes an author would recognise', () => {
+  it('writes the six hashes an author would recognise', () => {
     // Five since plan 17. `#/admin` is in the round trip like any other route:
     // a hand-rolled parser and a hand-rolled serialiser that disagree is the
     // whole risk R13 accepted, and a route exempted from this check is the one
     // that would drift.
-    expect(routes.map(routeHash)).toEqual(['#/', '#/run', '#/admin', '#/build', `#/build/${ID}`])
+    // Six since plan 22's `#/account/api-keys`.
+    expect(routes.map(routeHash)).toEqual([
+      '#/', '#/run', '#/admin', '#/account/api-keys', '#/build', `#/build/${ID}`,
+    ])
   })
 })
 
@@ -204,6 +217,14 @@ describe('useWorkspaceRoute follows the window and leads it', () => {
     navigate({ name: 'admin' })
     expect(route.value).toEqual({ name: 'admin' })
     expect(window.location.hash).toBe('#/admin')
+    app.unmount()
+  })
+
+  it('writes #/account/api-keys when it is sent to the API keys page', () => {
+    const [{ route, navigate }, app] = atHash('#/', () => withSetup(() => useWorkspaceRoute()))
+    navigate({ name: 'apiKeys' })
+    expect(route.value).toEqual({ name: 'apiKeys' })
+    expect(window.location.hash).toBe('#/account/api-keys')
     app.unmount()
   })
 
